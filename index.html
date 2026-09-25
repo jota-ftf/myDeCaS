@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Conductor — DeCA</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#0f1420; --card:#171d2b; --card2:#1e2536; --border:#2a3348;
+    --text:#eef1f8; --muted:#9aa6bf; --accent:#3ea6ff; --ok:#34c98f; --warn:#ff9f43; --bad:#ff5c5c;
+    box-sizing:border-box;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f4f6fb; --card:#ffffff; --card2:#f0f2f8; --border:#dfe4ee;
+      --text:#151a26; --muted:#5b657c;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,sans-serif;}
+  .wrap{max-width:480px;margin:0 auto;padding:16px 16px 40px;width:100%}
+  .grid{display:block}
+  h1{font-size:1.15rem;margin:4px 0 2px}
+  @media (min-width:760px){
+    .wrap{max-width:960px;padding:24px 24px 48px}
+    .grid{display:grid;grid-template-columns:1.35fr .9fr;gap:20px;align-items:start}
+    .col-side{position:sticky;top:20px}
+    h1{font-size:1.4rem}
+    .sub{font-size:.95rem}
+  }
+  @media (min-width:1100px){
+    .wrap{max-width:1080px}
+  }
+  .sub{color:var(--muted);font-size:.85rem;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  select,input[type=text]{width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:10px;font-size:1rem;margin-top:6px}
+  label{font-size:.8rem;color:var(--muted)}
+  .pallet{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+  .pallet:last-child{border-bottom:none}
+  .pname{font-weight:600;font-size:.92rem}
+  .pmeta{color:var(--muted);font-size:.75rem}
+  .stepper{display:flex;align-items:center;gap:8px}
+  .stepper button{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--card2);
+    color:var(--text);font-size:1.1rem}
+  .stepper span{min-width:22px;text-align:center;font-weight:700}
+  .toggle{font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:4px;margin-top:2px}
+  .bar-wrap{background:var(--card2);border-radius:8px;height:16px;overflow:hidden;margin-top:8px}
+  .bar{height:100%;background:var(--ok);transition:width .2s}
+  .bar.warn{background:var(--warn)} .bar.bad{background:var(--bad)}
+  .ldm-txt{display:flex;justify-content:space-between;font-size:.85rem;margin-top:6px}
+  .btn{display:block;width:100%;padding:14px;border-radius:12px;border:none;font-size:1rem;font-weight:700;
+    margin-top:6px;cursor:pointer}
+  .btn-primary{background:var(--accent);color:#04121f}
+  .btn-primary:disabled{opacity:.4}
+  .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+  .badge{font-size:.7rem;padding:3px 8px;border-radius:20px;background:var(--card2);color:var(--muted)}
+  .badge.ok{background:rgba(52,201,143,.15);color:var(--ok)}
+  .badge.bad{background:rgba(255,92,92,.15);color:var(--bad)}
+  .hist-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+  .hist-item:last-child{border-bottom:none}
+  #qrbox{display:flex;justify-content:center;margin:10px 0}
+  .empty{color:var(--muted);font-size:.85rem;text-align:center;padding:12px 0}
+  .locfeed{font-size:.72rem;color:var(--muted);margin-top:6px}
+  .synctag{font-size:.68rem;color:var(--muted);text-align:right;margin-top:-8px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🚚 App del Conductor</h1>
+  <div class="sub">Ajusta la carga real, confirma y genera el DeCA con QR</div>
+  <div class="synctag" id="syncTag">Conectando con el servidor…</div>
+
+  <div class="grid">
+  <div class="col-main">
+  <div class="card">
+    <label>Conductor</label>
+    <input type="text" id="driverName" value="Chófer de prueba" placeholder="Nombre del conductor">
+    <label style="margin-top:8px;display:block">Matrícula del cofre</label>
+    <input type="text" id="plate" value="0000-ABC / RM-0000-XX">
+  </div>
+
+  <div class="card">
+    <div class="row"><strong>Carga planificada</strong><span class="badge" id="planBadge">Sin datos</span></div>
+    <div class="pmeta" style="margin-top:4px" id="planDetail">Esperando asignación de Tráfico…</div>
+  </div>
+
+  <div class="card">
+    <strong>✏️ Carga real (ajusta si hay cambios)</strong>
+    <div id="palletList"></div>
+    <div class="ldm-txt"><span>Espacio ocupado</span><span id="ldmTxt">0.0 / 13.6 LDM</span></div>
+    <div class="bar-wrap"><div class="bar" id="ldmBar" style="width:0%"></div></div>
+    <div id="ldmFit" class="pmeta" style="margin-top:6px"></div>
+    <div id="ldmMsg" class="pmeta" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><strong>📍 Ubicación</strong><span class="badge" id="gpsBadge">Sin capturar</span></div>
+    <button class="btn btn-ghost" id="gpsBtn" style="margin-top:10px">Capturar ubicación actual</button>
+    <div class="locfeed" id="gpsFeed"></div>
+  </div>
+
+  <button class="btn btn-primary" id="confirmBtn" disabled>🔒 Confirmar carga y generar DeCA</button>
+
+  <div class="card" id="resultCard" style="display:none">
+    <strong>✅ DeCA generado</strong>
+    <div id="qrbox"></div>
+    <div class="pmeta" id="resultMeta" style="text-align:center"></div>
+    <button class="btn btn-primary" id="downloadBtn" style="margin-top:10px">⬇️ Descargar PDF del DeCA</button>
+  </div>
+
+  </div><!-- /col-main -->
+
+  <div class="col-side">
+  <div class="card">
+    <div class="row"><strong>🕓 Historial (Supabase)</strong><span class="badge" id="histBadge">—</span></div>
+    <div id="history"><div class="empty">Cargando…</div></div>
+  </div>
+  </div><!-- /col-side -->
+  </div><!-- /grid -->
+</div>
+
+<script>
+try{
+// ====== CONFIGURACIÓN SUPABASE (rellena con tu proyecto nuevo) ======
+const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
+const SUPABASE_ANON_KEY = 'TU_ANON_KEY_PUBLICA';
+// =====================================================================
+
+const sb = (SUPABASE_URL.includes('TU-PROYECTO')) ? null :
+  window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const TYPES = [
+  {id:'euro', name:'Palet Europeo', meta:'1,20 × 0,80 m', ldmUnit:0.4},
+  {id:'amer', name:'Palet Americano', meta:'1,20 × 1,00 m', ldmUnit:0.5},
+  {id:'box',  name:'Box de Plástico', meta:'1,20 × 1,00 m', ldmUnit:0.5},
+];
+const CAPACITY = 13.6;
+let state = TYPES.reduce((a,t)=>(a[t.id]={qty:0, remontable:false}, a), {});
+let lastGeo = null;
+let currentCarga = null; // fila activa de cargas_planificadas
+
+function ldmFor(type, s){ const base = type.ldmUnit * s.qty; return s.remontable ? base/2 : base; }
+function totalLdm(){ return TYPES.reduce((sum,t)=>sum+ldmFor(t, state[t.id]), 0); }
+
+function render(){
+  const list = document.getElementById('palletList');
+  list.innerHTML = TYPES.map(t=>{
+    const s = state[t.id];
+    return `<div class="pallet">
+      <div>
+        <div class="pname">${t.name}</div>
+        <div class="pmeta">${t.meta}</div>
+        <label class="toggle"><input type="checkbox" data-remontable="${t.id}" ${s.remontable?'checked':''}> Remontable</label>
+      </div>
+      <div class="stepper">
+        <button data-dec="${t.id}">−</button>
+        <span>${s.qty}</span>
+        <button data-inc="${t.id}">+</button>
+      </div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{state[b.dataset.inc].qty++; render();});
+  list.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{const s=state[b.dataset.dec]; if(s.qty>0)s.qty--; render();});
+  list.querySelectorAll('[data-remontable]').forEach(c=>c.onchange=()=>{state[c.dataset.remontable].remontable=c.checked; render();});
+
+  const ldm = totalLdm();
+  const pct = Math.min(100, (ldm/CAPACITY)*100);
+  document.getElementById('ldmTxt').textContent = `${ldm.toFixed(1)} / ${CAPACITY} LDM`;
+  const bar = document.getElementById('ldmBar');
+  bar.style.width = pct+'%';
+  bar.className = 'bar' + (ldm>CAPACITY?' bad':(pct>85?' warn':''));
+
+  const fitEl = document.getElementById('ldmFit');
+  const free = Math.max(0, CAPACITY - ldm);
+  if(ldm>=CAPACITY){ fitEl.textContent = 'Sin espacio libre.'; }
+  else {
+    const fitEuro = Math.floor(free / TYPES.find(t=>t.id==='euro').ldmUnit);
+    const fitAmer = Math.floor(free / TYPES.find(t=>t.id==='amer').ldmUnit);
+    fitEl.textContent = `Espacio libre: ${free.toFixed(1)} LDM → caben ${fitEuro} palets europeos más, o ${fitAmer} americanos/box más (sin remontar).`;
+  }
+
+  const msg = document.getElementById('ldmMsg');
+  const confirmBtn = document.getElementById('confirmBtn');
+  if(ldm>CAPACITY){
+    msg.textContent = '⚠️ ¡ERROR! Supera la capacidad del remolque. Reduce la carga o notifica a Tráfico.';
+    msg.style.color = 'var(--bad)'; confirmBtn.disabled = true;
+  } else if(TYPES.every(t=>state[t.id].qty===0)){
+    msg.textContent = 'Añade al menos un bulto para poder confirmar.';
+    msg.style.color = 'var(--muted)'; confirmBtn.disabled = true;
+  } else {
+    msg.textContent = '✅ Dentro de capacidad. Listo para confirmar.';
+    msg.style.color = 'var(--ok)'; confirmBtn.disabled = false;
+  }
+}
+
+document.getElementById('gpsBtn').onclick = ()=>{
+  const badge = document.getElementById('gpsBadge');
+  const feed = document.getElementById('gpsFeed');
+  if(!navigator.geolocation){ feed.textContent='Geolocalización no disponible en este navegador.'; return; }
+  badge.textContent = 'Buscando...';
+  navigator.geolocation.getCurrentPosition(pos=>{
+    lastGeo = {lat:pos.coords.latitude, lng:pos.coords.longitude};
+    badge.textContent = 'Capturada'; badge.classList.add('ok');
+    feed.textContent = `Lat ${lastGeo.lat.toFixed(4)}, Lng ${lastGeo.lng.toFixed(4)}`;
+  }, err=>{
+    badge.textContent = 'Error';
+    feed.textContent = 'No se pudo obtener ubicación (' + err.message + '). Puedes confirmar igualmente.';
+  }, {timeout:8000});
+};
+
+// ====== Polling cada 8s (mismo patrón que el TPV) ======
+async function pollCargaPlanificada(){
+  if(!sb) return;
+  const { data, error } = await sb.from('cargas_planificadas')
+    .select('*').eq('estado','asignada')
+    .order('created_at', {ascending:false}).limit(1);
+  if(error){ document.getElementById('syncTag').textContent = 'Error de sincronización'; return; }
+  document.getElementById('syncTag').textContent = 'Sincronizado · ' + new Date().toLocaleTimeString('es-ES');
+  if(data && data.length){
+    currentCarga = data[0];
+    document.getElementById('planBadge').textContent = 'Almacén: ' + (currentCarga.almacen || '—');
+    document.getElementById('planDetail').textContent = 'Planificado: ' + (currentCarga.detalle_planificado || '—');
+  } else {
+    currentCarga = null;
+    document.getElementById('planBadge').textContent = 'Sin datos';
+    document.getElementById('planDetail').textContent = 'Esperando asignación de Tráfico…';
+  }
+}
+
+async function pollHistorial(){
+  if(!sb) return;
+  const { data, error } = await sb.from('decas')
+    .select('*').order('fecha', {ascending:false}).limit(10);
+  const box = document.getElementById('history');
+  const badge = document.getElementById('histBadge');
+  if(error){ badge.textContent = 'error'; return; }
+  badge.textContent = data.length + ' registros';
+  if(!data.length){ box.innerHTML = '<div class="empty">Aún no hay DeCAs confirmados</div>'; return; }
+  box.innerHTML = data.map(r=>`<div class="hist-item">
+      <span>${r.deca_id}<br><span class="pmeta">${r.conductor} · ${r.ldm} LDM</span></span>
+      <span class="badge ok">Generado</span>
+    </div>`).join('');
+}
+
+document.getElementById('confirmBtn').onclick = async ()=>{
+  const id = 'DECA-' + Date.now().toString(36).toUpperCase();
+  const driver = document.getElementById('driverName').value || 'Sin especificar';
+  const plate = document.getElementById('plate').value || 'Sin especificar';
+  const ldm = totalLdm();
+  const detail = TYPES.filter(t=>state[t.id].qty>0)
+    .map(t=>`${state[t.id].qty} ${t.name}${state[t.id].remontable?' (remontado)':''}`)
+    .join(', ');
+  const now = new Date();
+  const geo = lastGeo ? `${lastGeo.lat.toFixed(4)}, ${lastGeo.lng.toFixed(4)}` : 'No capturada';
+  const record = {id, driver, plate, detail, ldm: ldm.toFixed(1), date: now.toLocaleString('es-ES'), geo};
+
+  if(sb){
+    const { error } = await sb.from('decas').insert({
+      deca_id: id, carga_id: currentCarga ? currentCarga.id : null,
+      conductor: driver, matricula: plate, detalle: detail, ldm: ldm.toFixed(1), geo, fecha: now.toISOString()
+    });
+    if(error){ alert('No se pudo guardar en el servidor: ' + error.message); return; }
+    if(currentCarga){
+      await sb.from('cargas_planificadas').update({estado:'cerrada'}).eq('id', currentCarga.id);
+    }
+    pollHistorial(); pollCargaPlanificada();
+  }
+  showResult(record);
+};
+
+function showResult(r){
+  const card = document.getElementById('resultCard');
+  card.style.display = 'block';
+  document.getElementById('resultMeta').innerHTML =
+    `<strong>${r.id}</strong><br>${r.driver} · ${r.plate}<br>${r.detail}<br>${r.ldm} LDM · ${r.date}`;
+
+  const payload = `DECA:${r.id}|COND:${r.driver}|MATR:${r.plate}|CARGA:${r.detail}|LDM:${r.ldm}|GEO:${r.geo}|FECHA:${r.date}`;
+  const qrbox = document.getElementById('qrbox');
+  qrbox.innerHTML = '';
+  let qrDataUrl = null;
+  try{
+    const qr = qrcode(0, 'M');
+    qr.addData(payload);
+    qr.make();
+    qrDataUrl = qr.createDataURL(6, 8); // cellSize, margin -> imagen PNG en base64
+    const img = document.createElement('img');
+    img.src = qrDataUrl; img.width = 160; img.height = 160; img.alt = 'QR del DeCA';
+    qrbox.appendChild(img);
+  }catch(e){
+    qrbox.innerHTML = '<div class="pmeta">No se pudo generar el QR visual, pero el DeCA quedó guardado y el PDF se puede descargar igualmente.</div>';
+  }
+
+  // El botón de descarga se conecta SIEMPRE, generemos QR o no, para que
+  // nunca se quede sin hacer nada al pulsarlo.
+  const btn = document.getElementById('downloadBtn');
+  btn.onclick = ()=>{
+    const oldTxt = btn.textContent;
+    try{
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(16); doc.text('Documento electrónico de Control Administrativo', 15, 20);
+      doc.setFontSize(11);
+      doc.text(`Identificador: ${r.id}`, 15, 35);
+      doc.text(`Conductor: ${r.driver}`, 15, 43);
+      doc.text(`Matrícula / cofre: ${r.plate}`, 15, 51);
+      doc.text(`Mercancía: ${r.detail}`, 15, 59, {maxWidth:180});
+      doc.text(`Espacio ocupado: ${r.ldm} LDM de 13.6 LDM`, 15, 75);
+      doc.text(`Ubicación de confirmación: ${r.geo}`, 15, 83);
+      doc.text(`Fecha y hora: ${r.date}`, 15, 91);
+      doc.text('Documento de simulación (MVP) — sin validez legal real.', 15, 105);
+      if(qrDataUrl){ doc.addImage(qrDataUrl, 'PNG', 140, 30, 50, 50); }
+
+      doc.save(`${r.id}.pdf`);
+
+      // Fallback: si el navegador bloquea la descarga directa (frecuente en
+      // webviews de móvil/apps embebidas), abrimos el PDF en una pestaña nueva
+      // a partir de un Blob, para que el usuario pueda guardarlo desde ahí.
+      setTimeout(()=>{
+        try{
+          const blob = doc.output('blob');
+          const url = URL.createObjectURL(blob);
+          let fallback = document.getElementById('pdfFallbackLink');
+          if(!fallback){
+            fallback = document.createElement('a');
+            fallback.id = 'pdfFallbackLink';
+            fallback.className = 'btn btn-ghost';
+            fallback.style.marginTop = '8px';
+            fallback.target = '_blank';
+            fallback.rel = 'noopener';
+            btn.insertAdjacentElement('afterend', fallback);
+          }
+          fallback.href = url;
+          fallback.download = `${r.id}.pdf`;
+          fallback.textContent = '📄 Si no se descargó, ábrelo aquí';
+        }catch(inner){ /* silencioso: la descarga directa ya se intentó */ }
+      }, 300);
+    }catch(e){
+      btn.textContent = '⚠️ Error generando el PDF';
+      setTimeout(()=>{ btn.textContent = oldTxt; }, 2500);
+    }
+  };
+}
+
+render();
+if(sb){
+  pollCargaPlanificada(); pollHistorial();
+  setInterval(pollCargaPlanificada, 8000);
+  setInterval(pollHistorial, 8000);
+} else {
+  document.getElementById('syncTag').textContent = '⚠️ Sin configurar Supabase — funciona solo en local';
+  document.getElementById('planDetail').textContent = 'Configura SUPABASE_URL y SUPABASE_ANON_KEY en el script.';
+  document.getElementById('history').innerHTML = '<div class="empty">Conecta Supabase para ver el historial</div>';
+}
+}catch(e){
+  document.body.innerHTML = '<div style="padding:20px;font-family:sans-serif;color:#c00">Error cargando la app: '+e.message+'</div>';
+}
+</script>
+</body>
+</html>
