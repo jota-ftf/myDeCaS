@@ -330,7 +330,23 @@ function valorMatricula(){
 }
 
 // ---- Detalle planificado: líneas de "cantidad + tipo de bulto" ----
+// Peso medio orientativo por palet (kg), para fruta y verdura — sirve para
+// autorellenar un peso aproximado según lo que se va cargando; siempre se puede
+// corregir a mano o desmarcar "peso aproximado" si se pesa en báscula.
+const PESO_APROX_KG = {
+  'europeo': 300,
+  'grande (americano)': 450,
+  'carro': 250,
+  'box': 200,
+  'especial': 300
+};
 let detalleItems = [];
+function actualizarPesoAprox(){
+  if(!document.getElementById('pesoAprox').checked) return;
+  if(document.getElementById('mercancia').value !== 'fruta y verdura') return;
+  const total = detalleItems.reduce((sum, it)=> sum + (Number(it.cantidad)||0) * (PESO_APROX_KG[it.tipo] || 0), 0);
+  document.getElementById('peso').value = total || '';
+}
 function renderDetalleLista(){
   const box = document.getElementById('detalleLista');
   if(!detalleItems.length){
@@ -341,7 +357,7 @@ function renderDetalleLista(){
         <span class="badge" style="cursor:pointer" data-i="${i}">✕ quitar</span>
       </div>`).join('');
     box.querySelectorAll('[data-i]').forEach(el=>{
-      el.onclick = ()=>{ detalleItems.splice(Number(el.dataset.i),1); renderDetalleLista(); };
+      el.onclick = ()=>{ detalleItems.splice(Number(el.dataset.i),1); renderDetalleLista(); actualizarPesoAprox(); };
     });
   }
   document.getElementById('detalle').value = detalleItems.map(it=>`${it.cantidad} ${it.tipo}`).join(', ');
@@ -354,7 +370,10 @@ document.getElementById('addDetalleBtn').onclick = ()=>{
   document.getElementById('detCantidad').value = '';
   document.getElementById('detTipo').value = '';
   renderDetalleLista();
+  actualizarPesoAprox();
 };
+document.getElementById('pesoAprox').addEventListener('change', actualizarPesoAprox);
+document.getElementById('mercancia').addEventListener('change', actualizarPesoAprox);
 rellenarDatalist();
 renderDetalleLista();
 
@@ -574,13 +593,13 @@ function limpiarDatosDelViaje(){
   document.getElementById('destinoTelefono').value = '';
   document.getElementById('destinoGPS').value = '';
   document.getElementById('destinoNuevoAviso').style.display = 'none';
-  document.getElementById('mercancia').value = '';
+  document.getElementById('mercancia').value = 'fruta y verdura';
   document.getElementById('mercanciaOtra').value = '';
   document.getElementById('mercanciaOtra').style.display = 'none';
   detalleItems = [];
   renderDetalleLista();
-  document.getElementById('peso').value = '';
   document.getElementById('pesoAprox').checked = true;
+  actualizarPesoAprox();
   document.getElementById('almacen').focus();
 }
 
@@ -717,8 +736,22 @@ if(sb){
   cargarHistorial();
   cargarClienteDecasSel();
   cargarMatriculas();
+  let choferesDestinoCache = [];
   sb.from('personal').select('*').eq('puesto','chofer').order('nombre').then(({data})=>{
-    if(data){ document.getElementById('choferDestinoSel').innerHTML = '<option value="">Elige…</option>' + data.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join(''); }
+    if(data){
+      choferesDestinoCache = data;
+      document.getElementById('choferDestinoSel').innerHTML = '<option value="">Elige…</option>' + data.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+    }
+  });
+  document.getElementById('choferDestinoSel').addEventListener('change', ()=>{
+    const chofer = choferesDestinoCache.find(c=>c.id === document.getElementById('choferDestinoSel').value);
+    if(chofer && chofer.matricula_actual){
+      const [tHab, rHab] = chofer.matricula_actual.split('/').map(s=>s && s.trim());
+      const tSel = document.getElementById('tractoraDestinoSel');
+      const rSel = document.getElementById('remolqueDestinoSel');
+      if(tHab && Array.from(tSel.options).some(o=>o.value===tHab)) tSel.value = tHab;
+      if(rHab && Array.from(rSel.options).some(o=>o.value===rHab)) rSel.value = rHab;
+    }
   });
   setInterval(cargarHistorial, 8000);
 } else {
