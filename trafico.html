@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tráfico — Órdenes de carga</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#0f1420; --card:#171d2b; --card2:#1e2536; --border:#2a3348;
+    --text:#eef1f8; --muted:#9aa6bf; --accent:#3ea6ff; --ok:#34c98f; --bad:#ff5c5c;
+    box-sizing:border-box;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f4f6fb; --card:#ffffff; --card2:#f0f2f8; --border:#dfe4ee;
+      --text:#151a26; --muted:#5b657c;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,sans-serif;}
+  .wrap{max-width:480px;margin:0 auto;padding:16px 16px 40px;width:100%}
+  @media (min-width:760px){ .wrap{max-width:760px;padding:24px} }
+  h1{font-size:1.15rem;margin:4px 0 2px}
+  .sub{color:var(--muted);font-size:.85rem;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px}
+  label{font-size:.8rem;color:var(--muted);display:block;margin-top:8px}
+  select,input[type=text],input[type=checkbox]{width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:10px;font-size:1rem;margin-top:4px}
+  input[type=checkbox]{width:auto;margin-top:0;vertical-align:middle}
+  .chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:.85rem;color:var(--text)}
+  .row2{display:flex;gap:8px}
+  .row2 > div{flex:1}
+  .btn{display:block;width:100%;padding:14px;border-radius:12px;border:none;font-size:1rem;font-weight:700;
+    margin-top:14px;cursor:pointer;background:var(--accent);color:#04121f}
+  .btn-sm{padding:8px 12px;font-size:.85rem;margin-top:6px;width:auto}
+  .list{max-height:220px;overflow-y:auto;margin-top:8px}
+  .item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+  .item:last-child{border-bottom:none}
+  .badge{font-size:.7rem;padding:3px 8px;border-radius:20px;background:var(--card2);color:var(--muted)}
+  .badge.ok{background:rgba(52,201,143,.15);color:var(--ok)}
+  .badge.bad{background:rgba(220,80,80,.15);color:#dc5050}
+  .msg{font-size:.8rem;margin-top:8px}
+  .empty{color:var(--muted);font-size:.85rem;text-align:center;padding:10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🚦 Panel de Tráfico</h1>
+  <div class="sub">Crea la orden de carga: el conductor la verá aparecer sola en su app</div>
+  <a href="carton.html" class="btn" style="text-decoration:none;text-align:center;margin:0 0 14px">🗂️ Abrir el cartón del día</a>
+
+  <div class="card">
+    <strong>Cliente (cargador contractual)</strong>
+    <select id="clienteSel"><option value="">Cargando…</option></select>
+    <button class="btn btn-ghost btn-sm" id="editarClienteBtn" type="button">✏️ Completar/editar datos del seleccionado</button>
+    <div class="row2" style="margin-top:6px">
+      <input type="text" id="nuevoClienteNombre" placeholder="Nombre (nuevo o el seleccionado)">
+      <input type="text" id="nuevoClienteNif" placeholder="NIF">
+    </div>
+    <div class="row2" style="margin-top:6px">
+      <input type="text" id="nuevoClienteDom" placeholder="Domicilio">
+      <input type="text" id="nuevoClienteTel" placeholder="Teléfono contacto">
+    </div>
+    <button class="btn btn-sm" id="addClienteBtn">💾 Guardar (nuevo o actualiza el existente)</button>
+  </div>
+
+  <div class="card">
+    <strong>Transportista efectivo</strong>
+    <select id="transSel"><option value="">Cargando…</option></select>
+    <button class="btn btn-ghost btn-sm" id="editarTransBtn" type="button">✏️ Completar/editar datos del seleccionado</button>
+    <div class="row2" style="margin-top:6px">
+      <input type="text" id="nuevoTransNombre" placeholder="Nombre (nuevo o el seleccionado)">
+      <input type="text" id="nuevoTransNif" placeholder="NIF">
+    </div>
+    <input type="text" id="nuevoTransTel" placeholder="Teléfono contacto" style="margin-top:6px">
+    <button class="btn btn-sm" id="addTransBtn">💾 Guardar (nuevo o actualiza el existente)</button>
+  </div>
+
+  <div class="card">
+    <strong>Personal asignado a esta carga</strong>
+    <div class="pmeta" style="margin:4px 0 6px">Quien la va a cargar o llevar — puede ser un cargador o un chófer</div>
+    <select id="asignadoSel"><option value="">Cargando…</option></select>
+    <div class="row2" style="margin-top:8px">
+      <input type="text" id="nuevoPersonalNombre" placeholder="Nombre del trabajador nuevo">
+      <select id="nuevoPersonalPuesto">
+        <option value="cargador">Cargador</option>
+        <option value="chofer">Chófer</option>
+      </select>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="addPersonalBtn" type="button" style="margin-top:6px">➕ Añadir / actualizar trabajador</button>
+  </div>
+
+  <div class="card">
+    <strong>Datos del viaje</strong>
+
+    <label>Almacén / punto de recogida</label>
+    <input type="text" id="almacen" list="puntosList" placeholder="Escribe o elige un almacén…" autocomplete="off">
+    <div class="row2">
+      <div><label>GPS origen</label><input type="text" id="origenGPS" readonly placeholder="—"></div>
+      <div><label>Tel. salidas</label><input type="text" id="origenTel" readonly placeholder="—"></div>
+    </div>
+    <label>Lugar de origen (dirección completa)</label>
+    <input type="text" id="origen" placeholder="Se autocompleta al elegir almacén; puedes completarla a mano">
+
+    <label>Lugar de destino</label>
+    <input type="text" id="destino" list="destinosList" placeholder="Escribe o elige un destino…" autocomplete="off">
+    <div id="destinoNuevoAviso" class="msg" style="display:none;color:var(--muted)">Destino nuevo — rellena su ficha para guardarla y reutilizarla la próxima vez:</div>
+    <label>Dirección completa</label>
+    <input type="text" id="destinoDireccion" placeholder="Se autocompleta si el destino ya existe">
+    <div class="row2">
+      <div><label>Teléfono contacto</label><input type="text" id="destinoTelefono" placeholder="—"></div>
+      <div><label>GPS (lat, lng)</label><input type="text" id="destinoGPS" placeholder="—"></div>
+    </div>
+    <button class="btn btn-sm" id="gpsDestinoBtn" type="button">📍 Usar mi ubicación actual</button>
+
+    <datalist id="puntosList"></datalist>
+    <datalist id="destinosList"></datalist>
+
+    <label>Naturaleza de la mercancía</label>
+    <select id="mercancia"></select>
+    <input type="text" id="mercanciaOtra" placeholder="Especifica la naturaleza de la mercancía" style="display:none;margin-top:6px">
+
+    <label>Detalle planificado (lo que verá el conductor)</label>
+    <div class="row2">
+      <input type="text" id="detCantidad" placeholder="Cantidad (ej. 10)" inputmode="numeric">
+      <select id="detTipo"></select>
+    </div>
+    <button class="btn btn-sm" id="addDetalleBtn" type="button">+ Añadir a la carga</button>
+    <div class="list" id="detalleLista"><div class="empty">Aún no has añadido bultos</div></div>
+    <input type="hidden" id="detalle">
+
+    <label>Peso (kg)</label>
+    <input type="text" id="peso" value="3200">
+    <div class="row2" style="margin-top:6px">
+      <div>
+        <label>Tractora</label>
+        <select id="tractoraSel"></select>
+      </div>
+      <div>
+        <label>Remolque</label>
+        <select id="remolqueSel"></select>
+      </div>
+    </div>
+    <input type="text" id="matriculaOtra" placeholder="Otra combinación tractora / remolque (si no está en la lista)" style="display:none;margin-top:6px">
+    <div class="chk"><input type="checkbox" id="pesoAprox" checked> <span>Peso aproximado (no pesado en báscula)</span></div>
+
+    <div class="row2" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+      <div>
+        <input type="text" id="nuevaTractora" placeholder="Matrícula de tractora nueva">
+        <input type="text" id="nuevaTractoraRemolqueHabitual" placeholder="Remolque habitual (opcional)" style="margin-top:6px">
+        <button class="btn btn-ghost btn-sm" id="addTractoraBtn" type="button" style="margin-top:6px">➕ Añadir tractora</button>
+      </div>
+      <div>
+        <input type="text" id="nuevoRemolque" placeholder="Matrícula de remolque nuevo">
+        <button class="btn btn-ghost btn-sm" id="addRemolqueBtn" type="button" style="margin-top:6px">➕ Añadir remolque</button>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn" id="enviarBtn">📤 Enviar orden de carga al conductor</button>
+  <div class="msg" id="enviarMsg"></div>
+
+  <div class="card">
+    <strong>📂 DeCAs por cliente</strong>
+    <div class="pmeta" style="margin:4px 0 6px">Consulta los DeCA ya generados de un cliente y envíalos, con matrícula nueva, al chófer que los va a llevar</div>
+    <select id="clienteDecasSel"><option value="">Elige un cliente…</option></select>
+    <div class="list" id="decasClienteLista" style="margin-top:8px"></div>
+    <div id="envioMatriculaBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+      <label>Chófer destino</label>
+      <select id="choferDestinoSel"></select>
+      <div class="row2" style="margin-top:6px">
+        <div><label>Tractora</label><select id="tractoraDestinoSel"></select></div>
+        <div><label>Remolque</label><select id="remolqueDestinoSel"></select></div>
+      </div>
+      <button class="btn btn-sm" id="enviarMatriculaBtn" type="button">📤 Enviar actualización de matrícula al chófer</button>
+      <div class="msg" id="envioMatriculaMsg"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>📤 Propuestas de matrícula enviadas, pendientes de confirmar</strong>
+    <div class="pmeta" style="margin:4px 0 6px">En cuanto el chófer las confirme (o las cambie) en su app, desaparecen de aquí</div>
+    <div class="list" id="propuestasPendientes"><div class="empty">Cargando…</div></div>
+  </div>
+
+  <div class="card">
+    <strong>🚚 DeCAs en ruta, por chófer</strong>
+    <div class="pmeta" style="margin:4px 0 6px">Lo que lleva cada chófer ahora mismo, hasta que marque la descarga como hecha</div>
+    <div class="list" id="decasEnRutaPorChofer"><div class="empty">Cargando…</div></div>
+  </div>
+
+  <div class="card">
+    <strong>Órdenes recientes</strong>
+    <div class="list" id="historial"><div class="empty">Cargando…</div></div>
+  </div>
+</div>
+
+<script>
+try{
+// ====== DATOS DE REFERENCIA (extraídos de base-datos-DeCa.xlsx) ======
+const DATOS_TRAFICO = {"almacenes": [{"nombre": "Acosta Infante", "lat": 36.78539, "lon": -2.7502, "tel": null}, {"nombre": "Acrena", "lat": 36.79883, "lon": -2.72704, "tel": null}, {"nombre": "Adrián Navarro", "lat": 36.76157, "lon": -2.79841, "tel": null}, {"nombre": "Africa Food (La Gangosa)", "lat": 36.80362, "lon": -2.62523, "tel": null}, {"nombre": "Agaleuropa", "lat": 36.78776, "lon": -2.73074, "tel": null}, {"nombre": "Agatropy (Venta El Viso)", "lat": 36.791577, "lon": -2.709066, "tel": null}, {"nombre": "Agrícola 92", "lat": 37.30603, "lon": -1.81727, "tel": null}, {"nombre": "Agrícola Alborán (Motril)", "lat": 36.727519, "lon": -3.537692, "tel": null}, {"nombre": "Agrícola Perichan", "lat": 37.564126, "lon": -1.380436, "tel": null}, {"nombre": "Agrícola Vasan (pasar Maleno & Torres)", "lat": 36.773806, "lon": -2.737345, "tel": "687 084 393"}, {"nombre": "Agro San Isidro", "lat": 36.94179, "lon": -2.13375, "tel": null}, {"nombre": "AgroAguadulce (AgroMullor)", "lat": 36.80119, "lon": -2.61989, "tel": "610 522 967"}, {"nombre": "Agroaldeilla", "lat": 36.77734, "lon": -2.78168, "tel": null}, {"nombre": "AgroAsesores (Mj)", "lat": 36.80116, "lon": -2.6884, "tel": "635 041 921"}, {"nombre": "Agrober (Agrogarte)", "lat": 36.79222, "lon": -2.70574, "tel": null}, {"nombre": "AgroDolores (Adra)", "lat": 36.761096, "lon": -2.979906, "tel": null}, {"nombre": "AgroDolores (Las Norias)", "lat": 36.752943, "lon": -2.704497, "tel": null}, {"nombre": "Agrodunas (San Agustín)", "lat": 36.71364, "lon": -2.6829, "tel": null}, {"nombre": "AgroEjido", "lat": 36.76811, "lon": -2.82735, "tel": null}, {"nombre": "AgroEjido (Cartón)", "lat": 36.768113, "lon": -2.825343, "tel": null}, {"nombre": "AgroEjido // Zafarralla (Kamal)", "lat": 36.980806, "lon": -4.155389, "tel": null}, {"nombre": "AgroEjido Berja", "lat": 36.83163, "lon": -2.92455, "tel": null}, {"nombre": "AgroGapa (Roquetas)", "lat": 36.74422, "lon": -2.62079, "tel": null}, {"nombre": "AgroIris", "lat": 36.74413, "lon": -2.80011, "tel": null}, {"nombre": "Agroiris Adra", "lat": 36.76018, "lon": -2.98508, "tel": null}, {"nombre": "Agrolumar", "lat": 36.749112, "lon": -2.673195, "tel": null}, {"nombre": "Agromontes fresh food (San Javier -Murcia) -Levante-", "lat": 37.83417, "lon": -0.85884, "tel": null}, {"nombre": "AgroNatur fresh (entrada por encima del decatlón o cementerio Vicar)", "lat": 36.814229, "lon": -2.614952, "tel": null}, {"nombre": "AgroNejite", "lat": 36.82678, "lon": -2.97928, "tel": null}, {"nombre": "Agroponiente", "lat": 36.78376, "lon": -2.74212, "tel": null}, {"nombre": "AgroPoniente (Berja)", "lat": 36.834972, "lon": -2.92175, "tel": null}, {"nombre": "Agroponiente (Campohermoso) Nijar", "lat": 36.94398, "lon": -2.13416, "tel": null}, {"nombre": "Agroponiente (del 30) El pincho", "lat": 36.77784, "lon": -2.78945, "tel": null}, {"nombre": "Agroponiente Adra", "lat": 36.761408, "lon": -2.979153, "tel": null}, {"nombre": "Agroponiente Export", "lat": 36.78281, "lon": -2.74219, "tel": null}, {"nombre": "AgroPoniente Guardias Viejas (El Golfo)", "lat": 36.75709, "lon": -2.84375, "tel": null}, {"nombre": "Agroponiente Subastas", "lat": 36.7838, "lon": -2.74191, "tel": null}, {"nombre": "AgroSol (Coopera)", "lat": 36.74746, "lon": -2.74045, "tel": "632 238 115"}, {"nombre": "AgroTecno", "lat": 36.80163, "lon": -2.6373, "tel": null}, {"nombre": "Agrotropical sat (Castillo de Baños)", "lat": 36.746305, "lon": -3.305274, "tel": null}, {"nombre": "Agrupa Almería", "lat": 36.84115, "lon": -2.39742, "tel": null}, {"nombre": "Agrupa ejido (Dunamar)", "lat": 36.7902, "lon": -2.70451, "tel": null}, {"nombre": "AgrupaAdra (La Curva) [x semáforos]", "lat": 36.761174, "lon": -2.978544, "tel": null}, {"nombre": "Agrupación Campos de Levante (Campohermoso)", "lat": 36.94285, "lon": -2.13433, "tel": null}, {"nombre": "Agrupación Campos de Levante (La redonda)", "lat": 36.77254, "lon": -2.75373, "tel": null}, {"nombre": "Agrupación de Labradores (El Pozuelo)", "lat": 36.74782, "lon": -3.15882, "tel": null}, {"nombre": "AgrupaEjido (El Canario)", "lat": 36.782298, "lon": -2.751121, "tel": null}, {"nombre": "AgrupaEjido (Las Marinas)", "lat": 36.731279, "lon": -2.646602, "tel": null}, {"nombre": "AgrupaEjido (Panda)", "lat": 36.75206, "lon": -2.69771, "tel": null}, {"nombre": "AgrupaEjido (redonda)", "lat": 36.78224, "lon": -2.75109, "tel": null}, {"nombre": "Agruporticola", "lat": 36.74786, "lon": -3.15794, "tel": null}, {"nombre": "Alcoaxarquia", "lat": 36.76734, "lon": -4.09199, "tel": null}, {"nombre": "Aldy (Albatera - San Isidro) [no sellan albatanes]", "lat": 38.165872, "lon": -0.863467, "tel": null}, {"nombre": "Aldy (Dos hermanas) - Sevilla -Sur-", "lat": 37.284568, "lon": -5.998422, "tel": null}, {"nombre": "Alimer (Lorca) Antes de las 22:00-22:30 - (salida 630)", "lat": 37.683444, "lon": -1.645861, "tel": null}, {"nombre": "Almagro Nature", "lat": 36.76731, "lon": -2.82761, "tel": null}, {"nombre": "Almerca", "lat": 37.791504, "lon": -1.019998, "tel": null}, {"nombre": "Almerifresh (Almagro Roquetas) // descarga hasta las 14:00", "lat": 36.77171, "lon": -2.61738, "tel": null}, {"nombre": "Aloe Aljarilla (Cuevas de Almanzora)", "lat": 37.289954, "lon": -1.885368, "tel": null}, {"nombre": "Alpi (Murcia)", "lat": 37.817825, "lon": -0.890359, "tel": null}, {"nombre": "AndalExport", "lat": 36.755278, "lon": -2.967694, "tel": null}, {"nombre": "Axarfruit", "lat": 36.83836, "lon": -4.12478, "tel": null}, {"nombre": "Balanegraplant (HortoCampo)", "lat": 36.75706, "lon": -2.89119, "tel": null}, {"nombre": "Balcón de Nijar", "lat": 36.948167, "lon": -2.163333, "tel": "600 042 297"}, {"nombre": "Benasabor", "lat": 36.706972, "lon": -2.6855, "tel": null}, {"nombre": "Berenguer Castilla (La Rabita) Agrover", "lat": 36.75124, "lon": -3.16856, "tel": null}, {"nombre": "Biaqui (Abonos - El Ejido)", "lat": 36.73351, "lon": -2.77722, "tel": null}, {"nombre": "BioAlgarrobo", "lat": 36.76536, "lon": -4.04915, "tel": null}, {"nombre": "Biofresh (Segura y García)", "lat": 36.96618, "lon": -2.10072, "tel": null}, {"nombre": "BiolitoralNijar", "lat": 36.89712, "lon": -2.15728, "tel": null}, {"nombre": "BioNatur (Arandalu) [Por BioLitoral]", "lat": 36.903229, "lon": -2.154561, "tel": "634 227 977"}, {"nombre": "Biosabor", "lat": 36.92063, "lon": -2.19248, "tel": null}, {"nombre": "Biotomate", "lat": 36.876885, "lon": -2.371335, "tel": null}, {"nombre": "Blue Water (Mercabarna)", "lat": null, "lon": null, "tel": null}, {"nombre": "Cabasc Balanegra", "lat": 36.74915, "lon": -2.90485, "tel": "619 076 594"}, {"nombre": "Caliche", "lat": 36.78513, "lon": -2.75252, "tel": null}, {"nombre": "CampoJoyma", "lat": 36.94169, "lon": -2.13994, "tel": null}, {"nombre": "CampoJoyma  (Bio)", "lat": 36.9418, "lon": -2.14087, "tel": null}, {"nombre": "Campos de Granada (Castell de Ferro)", "lat": 36.73182, "lon": -3.3589, "tel": null}, {"nombre": "Campos de Levante (Tarambana)", "lat": 36.768452, "lon": -2.858739, "tel": null}, {"nombre": "CampoSol", "lat": 36.78159, "lon": -2.82442, "tel": null}, {"nombre": "CampSur (detrás de Grupo Rosegar // entrar de culo // )", "lat": 36.784778, "lon": -2.680917, "tel": null}, {"nombre": "Cañadasol", "lat": 36.861194, "lon": -2.39325, "tel": null}, {"nombre": "Caparros", "lat": 36.85123, "lon": -2.36351, "tel": null}, {"nombre": "Caparros el Pita (llamar para barrera)", "lat": 36.876592, "lon": -2.33771, "tel": null}, {"nombre": "Carrefour  (Roquetas - descarga)", "lat": 36.774222, "lon": -2.614806, "tel": null}, {"nombre": "Carrefour (Roquetas - CTG)", "lat": 36.773417, "lon": -2.614694, "tel": null}, {"nombre": "Carrefour Málaga", "lat": 36.7043, "lon": -4.51516, "tel": null}, {"nombre": "Carrefour Vicar", "lat": 36.81608, "lon": -2.60304, "tel": null}, {"nombre": "Cash Lepe (Huelva) -Sur-", "lat": 37.25394, "lon": -7.22993, "tel": null}, {"nombre": "Casi (Aeropuerto)", "lat": 36.85266, "lon": -2.37103, "tel": null}, {"nombre": "Casi (San Isidro)", "lat": 36.90408, "lon": -2.17844, "tel": null}, {"nombre": "Casi [Partidores]", "lat": 36.84049, "lon": -2.41958, "tel": null}, {"nombre": "Casi [Partidores]- Cajas vacías", "lat": 36.84228, "lon": -2.42535, "tel": null}, {"nombre": "Casur (Natusur)", "lat": 36.87662, "lon": -2.40925, "tel": null}, {"nombre": "Catman North S.A. (salida 644 ITV Lorca)", "lat": 37.616745, "lon": -1.758787, "tel": null}, {"nombre": "Cehorpa", "lat": 36.78513, "lon": -2.73441, "tel": null}, {"nombre": "Cítricos Andarax", "lat": 36.941933, "lon": -2.485486, "tel": null}, {"nombre": "Cítricos Mula", "lat": 38.03873, "lon": -1.501047, "tel": null}, {"nombre": "Cítricos Orgánicos Reunidos (Arboleas)", "lat": 37.351264, "lon": -2.093203, "tel": null}, {"nombre": "Coaguilas (Aguilas)", "lat": 37.420295, "lon": -1.586652, "tel": null}, {"nombre": "Cohorsan (San Agustín)", "lat": 36.70988, "lon": -2.69175, "tel": null}, {"nombre": "Comercial Mosameh", "lat": 36.80086, "lon": -2.63734, "tel": null}, {"nombre": "Copisi", "lat": 36.78296, "lon": -2.79496, "tel": null}, {"nombre": "Coprohnijar", "lat": 36.91176, "lon": -2.17113, "tel": null}, {"nombre": "Coprohnijar Bio", "lat": 36.91476, "lon": -2.16836, "tel": null}, {"nombre": "Costa Almería (San Agustín)", "lat": 36.715109, "lon": -2.68544, "tel": null}, {"nombre": "Costa de Almería (Cortijo Marín)", "lat": 36.75827, "lon": -2.64653, "tel": null}, {"nombre": "Costa de Almería (Cortijo Marín)-sandías", "lat": 36.757598, "lon": -2.644716, "tel": null}, {"nombre": "Costa de Almería (Export) [La Guarra]", "lat": 36.70936, "lon": -2.73377, "tel": null}, {"nombre": "Costa de Nijar", "lat": 36.92055, "lon": -2.15198, "tel": "659 931 344"}, {"nombre": "Crespo Fuentes (San Agustín)", "lat": 36.723667, "lon": -2.680778, "tel": null}, {"nombre": "Cualin Quality", "lat": 37.22612, "lon": -1.90155, "tel": null}, {"nombre": "Dachser Jaén (parque empresarial nuevo Jaén)", "lat": 37.826158, "lon": -3.772536, "tel": null}, {"nombre": "Dachser Málaga (centro de transportes)", "lat": 36.716807, "lon": -4.51292, "tel": null}, {"nombre": "Dalifrut", "lat": 36.77612, "lon": -2.68044, "tel": null}, {"nombre": "Daliver (Dalias)", "lat": 36.836075, "lon": -2.888871, "tel": null}, {"nombre": "Daza Palmero 1", "lat": 36.787556, "lon": -2.828028, "tel": null}, {"nombre": "Daza Palmero 2", "lat": 36.7765, "lon": -2.79868, "tel": null}, {"nombre": "Delgafruits", "lat": 36.75961, "lon": -2.66535, "tel": null}, {"nombre": "Día (Dos hermanas) - Sevilla -Sur-", "lat": 37.27616, "lon": -5.9997, "tel": null}, {"nombre": "Dinaverde (subir por Refrip )", "lat": 36.787806, "lon": -2.753333, "tel": null}, {"nombre": "Diosur", "lat": 36.871472, "lon": -2.218639, "tel": null}, {"nombre": "Disfruta (Zafarralla)", "lat": 36.980781, "lon": -4.155656, "tel": null}, {"nombre": "Divine Veg (Vicar)", "lat": 36.80325, "lon": -2.620889, "tel": null}, {"nombre": "Dofran", "lat": 36.78759, "lon": -2.82827, "tel": null}, {"nombre": "Duniagro (El Panda)", "lat": 36.75206, "lon": -2.69771, "tel": null}, {"nombre": "Ecoculture de Almería", "lat": 36.920218, "lon": -2.118156, "tel": null}, {"nombre": "Ecoinver (AgrupaEjido Panda) [La Mojonera]", "lat": 36.75206, "lon": -2.69771, "tel": null}, {"nombre": "Ecoinver Bio", "lat": 36.75027, "lon": -2.75104, "tel": null}, {"nombre": "Ecopark (Hortichuelas)", "lat": 36.87338, "lon": -2.21435, "tel": null}, {"nombre": "EcoSur", "lat": 36.93239, "lon": -2.45957, "tel": null}, {"nombre": "Ejido Zone", "lat": 36.77984, "lon": -2.75117, "tel": null}, {"nombre": "EjidoCam (Taller)", "lat": 36.76083, "lon": -2.79799, "tel": null}, {"nombre": "EjidoLuz", "lat": 36.724, "lon": -2.79812, "tel": null}, {"nombre": "EjidoMar", "lat": 36.74604, "lon": -2.80376, "tel": null}, {"nombre": "El Ciruelo de Alhama (Murcia)", "lat": 37.82475, "lon": -1.402839, "tel": null}, {"nombre": "El Ciruelo de Cieza (Murcia)", "lat": 38.302596, "lon": -1.516838, "tel": null}, {"nombre": "El Grupo (Castell de Ferro)", "lat": 36.73574, "lon": -3.364, "tel": null}, {"nombre": "El Grupo [Antiguo](Castell de Ferro)", "lat": 36.729144, "lon": -3.363552, "tel": null}, {"nombre": "El Oasis (frente a ibericos)", "lat": 36.78639, "lon": -2.74885, "tel": null}, {"nombre": "El plantel (El Ejido)", "lat": 36.7543, "lon": -2.85848, "tel": null}, {"nombre": "El plantel (Vicar)", "lat": 36.79655, "lon": -2.662417, "tel": null}, {"nombre": "El tostaera", "lat": 36.752828, "lon": -2.741723, "tel": null}, {"nombre": "Envases Durá ( Castalla)", "lat": 38.60325, "lon": -0.669083, "tel": null}, {"nombre": "Envases Fernández Molina", "lat": 36.797001, "lon": -2.62732, "tel": null}, {"nombre": "Envases Rafa", "lat": 36.748949, "lon": -3.156322, "tel": null}, {"nombre": "Escobar Reyes", "lat": 36.75907, "lon": -2.74322, "tel": null}, {"nombre": "Escobar y Castañeda (Berdea)", "lat": 36.74232, "lon": -2.73475, "tel": null}, {"nombre": "Escobí", "lat": 36.75753, "lon": -2.74878, "tel": null}, {"nombre": "EsferaVerde (La Mojonera)", "lat": 36.79437, "lon": -2.688803, "tel": null}, {"nombre": "EsferaVerde (Nijar)", "lat": 36.77693, "lon": -2.21483, "tel": "667 840 029"}, {"nombre": "Espafruit (Dos Hermanas) -Sur-", "lat": 37.28144, "lon": -6.0239, "tel": null}, {"nombre": "Espalmex (La Campana) -Sur-", "lat": 37.62301, "lon": -5.49911, "tel": null}, {"nombre": "Eurobanan (Alicante) -Levante-", "lat": 38.33973, "lon": -0.53881, "tel": null}, {"nombre": "EuroCastell", "lat": 36.73923, "lon": -3.36477, "tel": null}, {"nombre": "EuroCastell Bio (El Ejido)", "lat": 36.78945, "lon": -2.75112, "tel": null}, {"nombre": "Eurofresh (El Morche)", "lat": 36.74218, "lon": -3.97838, "tel": null}, {"nombre": "Eurofruits (antiguo TomSpring) La Cañada", "lat": 36.846247, "lon": -2.421441, "tel": null}, {"nombre": "Eurosol (Vicar)", "lat": 36.791537, "lon": -2.656726, "tel": null}, {"nombre": "Expoaguilas scoop  (Águilas)", "lat": 37.422149, "lon": -1.581899, "tel": null}, {"nombre": "ExpoAlma", "lat": 36.749434, "lon": -2.630627, "tel": null}, {"nombre": "Family Cash (San Juan de Enova) -Levante-", "lat": 39.06875, "lon": -0.47685, "tel": null}, {"nombre": "Ferasa (disfruta)", "lat": 36.91883, "lon": -2.15343, "tel": "641 939 932"}, {"nombre": "Ferofruit Almuñécar", "lat": 36.72737, "lon": -3.53893, "tel": null}, {"nombre": "Ferva (La Mojonera)", "lat": 36.78874, "lon": -2.70878, "tel": null}, {"nombre": "Filabres", "lat": 36.78098, "lon": -2.71835, "tel": null}, {"nombre": "Franial Export (San Agustin)", "lat": 36.720934, "lon": -2.662334, "tel": null}, {"nombre": "FranMartos", "lat": 36.7764, "lon": -2.79725, "tel": null}, {"nombre": "Frescover (Bartolo)", "lat": 36.75564, "lon": -2.72196, "tel": null}, {"nombre": "Fresh European", "lat": 36.7578, "lon": -2.78836, "tel": null}, {"nombre": "Fresh Premiun (Adra)", "lat": 36.75856, "lon": -2.98103, "tel": null}, {"nombre": "Fresss", "lat": 36.76741, "lon": -2.82618, "tel": null}, {"nombre": "Fruca Adra", "lat": 36.7595, "lon": -2.98637, "tel": null}, {"nombre": "Frulupe  (Molvizar)", "lat": 36.778917, "lon": -3.588636, "tel": null}, {"nombre": "Frutas Alhambra  (Matagorda)", "lat": 36.712246, "lon": -2.854726, "tel": null}, {"nombre": "Frutas Antonio", "lat": 36.78124, "lon": -2.75149, "tel": null}, {"nombre": "Frutas Atochares (Nijar)", "lat": 36.887183, "lon": -2.170498, "tel": null}, {"nombre": "Frutas Castilla -Sur-", "lat": 37.52396, "lon": -5.0847, "tel": null}, {"nombre": "Frutas el Cerval", "lat": 36.74516, "lon": -3.68593, "tel": null}, {"nombre": "Frutas el Guapo (Murcia)", "lat": 38.144773, "lon": -0.760113, "tel": null}, {"nombre": "Frutas El Portón", "lat": 36.783889, "lon": -3.603082, "tel": null}, {"nombre": "Frutas Herrera (Osuna-Sevilla) -Sur-", "lat": 37.232989, "lon": -5.091285, "tel": null}, {"nombre": "Frutas la Carrichosa", "lat": 38.282219, "lon": -1.496046, "tel": null}, {"nombre": "Frutas Matillas (Dalias)", "lat": 36.836075, "lon": -2.888871, "tel": null}, {"nombre": "Frutas Poveda (entrar Avda. Miguel Indurain)", "lat": 37.962337, "lon": -1.074287, "tel": null}, {"nombre": "Frutas Rafael Manzano e Hijos (Salobreña)", "lat": 36.749114, "lon": -3.588214, "tel": null}, {"nombre": "Frutas Rocalla", "lat": 36.794033, "lon": -2.692066, "tel": null}, {"nombre": "Frutinter (onda) [Villareal / Castellón] -Levante-", "lat": 39.944483, "lon": -0.126533, "tel": null}, {"nombre": "Fruva", "lat": 36.80727, "lon": -2.86078, "tel": null}, {"nombre": "Fruvedis (la venta del viso)", "lat": 36.799331, "lon": -2.690501, "tel": null}, {"nombre": "Fruveg (murcia)", "lat": 37.751062, "lon": -1.000757, "tel": null}, {"nombre": "Fulgencio - AgroCosta - (Torrenueva)", "lat": 36.71951, "lon": -3.49751, "tel": null}, {"nombre": "Fulgencio - Castillo de Baños (Campos de Granada)", "lat": 36.74481, "lon": -3.30395, "tel": null}, {"nombre": "FuturaSol (La redonda - encima de los bomberos)", "lat": 36.796189, "lon": -2.75872, "tel": null}, {"nombre": "Gami", "lat": 36.78281, "lon": -2.79387, "tel": null}, {"nombre": "Garri", "lat": 36.77814, "lon": -2.76489, "tel": null}, {"nombre": "Geycle (La Gangosa)", "lat": 36.804253, "lon": -2.619019, "tel": null}, {"nombre": "Glinwell Spain (retamar-tlno Juan Montes)", "lat": 36.835335, "lon": -2.285001, "tel": null}, {"nombre": "Godoy", "lat": 36.70524, "lon": -2.76427, "tel": null}, {"nombre": "Godoy Nijar (invernaderos)", "lat": 36.929236, "lon": -2.166438, "tel": null}, {"nombre": "Green Norias", "lat": 36.759167, "lon": -2.735419, "tel": null}, {"nombre": "Green Quality", "lat": 36.802716, "lon": -2.619866, "tel": null}, {"nombre": "Guadalfeo", "lat": 36.73522, "lon": -3.5515, "tel": null}, {"nombre": "Herbex", "lat": 36.78985, "lon": -2.8541, "tel": null}, {"nombre": "Higos Alpujarreños", "lat": 36.73789, "lon": -3.51171, "tel": "608 05 99 59"}, {"nombre": "Hispalus (finca de Victor)", "lat": 36.82297, "lon": -2.20484, "tel": null}, {"nombre": "Hispalus (Naturfresh)", "lat": 36.81677, "lon": -2.15728, "tel": null}, {"nombre": "Hortamar  (Roquetas)", "lat": 36.78198, "lon": -2.60735, "tel": null}, {"nombre": "Hortamar (Adra)", "lat": 36.759917, "lon": -2.964972, "tel": null}, {"nombre": "Hortamar Bio", "lat": 36.7803, "lon": -2.60756, "tel": null}, {"nombre": "Hortibalanegra (La Mojonera)", "lat": 36.76123, "lon": -2.69192, "tel": null}, {"nombre": "Hortichuelas", "lat": 36.80091, "lon": -2.60236, "tel": null}, {"nombre": "Hortícola de Mazarrón", "lat": 37.558404, "lon": -1.379623, "tel": null}, {"nombre": "Hortícola Mazarrón  (RM 332 hasta RM D21)", "lat": 37.558348, "lon": -1.379606, "tel": null}, {"nombre": "Hortifervisa (Nijar)", "lat": 36.939341, "lon": -2.165881, "tel": null}, {"nombre": "Hortirecursos", "lat": 36.74236, "lon": -2.75337, "tel": null}, {"nombre": "Hortofrutícola Las Norias (no se pasa adentro)", "lat": 36.750359, "lon": -2.739106, "tel": null}, {"nombre": "Hortoventas (Ventas de Zafarralla)", "lat": 36.957423, "lon": -4.11406, "tel": null}, {"nombre": "Iberiana Frutch (Valencia) -Levante-", "lat": 39.58861, "lon": -0.35255, "tel": null}, {"nombre": "Ibericos (Reverfruit)", "lat": 36.78612, "lon": -2.74919, "tel": null}, {"nombre": "Ikersa", "lat": 36.98965, "lon": -2.05756, "tel": null}, {"nombre": "Indaldynamics", "lat": 36.930938, "lon": -2.076949, "tel": null}, {"nombre": "Indasol", "lat": 36.78857, "lon": -2.8252, "tel": null}, {"nombre": "Indasur (la Mojonera)", "lat": 36.79264, "lon": -2.648022, "tel": null}, {"nombre": "Iniciativas (García y González)", "lat": 36.753194, "lon": -2.625652, "tel": null}, {"nombre": "Inver", "lat": 36.805837, "lon": -2.605691, "tel": null}, {"nombre": "Jovimer (Valencia)", "lat": 39.02145, "lon": -0.21441, "tel": null}, {"nombre": "Jualpasur (Pampanico)", "lat": 36.77712, "lon": -2.828232, "tel": null}, {"nombre": "Jualpasur surorganica ( vía de servicio al lado de Mayba)", "lat": 36.766897, "lon": -2.840199, "tel": null}, {"nombre": "Jumasur", "lat": 36.76114, "lon": -2.79865, "tel": null}, {"nombre": "Kaneco (Cortijos de Marín)", "lat": 36.758975, "lon": -2.64429, "tel": null}, {"nombre": "Karpos  (Delgafruit)", "lat": 36.7601, "lon": -2.98237, "tel": null}, {"nombre": "Kopalmería", "lat": 36.78097, "lon": -2.6821, "tel": "607 463 421"}, {"nombre": "La Carrichosa (venta del olivo - salida 91) dirección Albacete", "lat": 38.282586, "lon": -1.494927, "tel": null}, {"nombre": "La Huerta de Xpaña (Motril)", "lat": 36.727728, "lon": -3.536047, "tel": "645984796.0"}, {"nombre": "La Ñeca (Las Ñecas)", "lat": 36.77746, "lon": -2.843368, "tel": null}, {"nombre": "La Palma", "lat": 36.7003, "lon": -3.44596, "tel": null}, {"nombre": "La Palma (el puntalon)- sábados tarde, no trabajan", "lat": 36.737295, "lon": -3.460404, "tel": null}, {"nombre": "La Unión (Los Primores)", "lat": 36.79419, "lon": -2.69161, "tel": "673 542 180"}, {"nombre": "La Unión (María)", "lat": 36.78106, "lon": -2.74926, "tel": null}, {"nombre": "La Unión (Mercado del Poniente)", "lat": 36.78075, "lon": -2.74712, "tel": null}, {"nombre": "La unión (Nicolás)", "lat": 36.78097, "lon": -2.74832, "tel": "670 871 557"}, {"nombre": "La Unión (Subastas)", "lat": 36.78129, "lon": -2.75024, "tel": null}, {"nombre": "La Unión Adra", "lat": 36.76069, "lon": -2.9826, "tel": null}, {"nombre": "Leroy Merlín Almería", "lat": 36.85902, "lon": -2.4357, "tel": null}, {"nombre": "Leroy Merlín Roquetas", "lat": 36.77312, "lon": -2.6147, "tel": null}, {"nombre": "Lomanoryas", "lat": 36.743889, "lon": -2.733936, "tel": null}, {"nombre": "Los Pisaos (el puntalón)", "lat": 36.731584, "lon": -3.484313, "tel": null}, {"nombre": "Lusia Fruit (Valencia) -Levante-", "lat": 39.07554, "lon": -0.47932, "tel": null}, {"nombre": "Maleno García (Magar)", "lat": 36.767925, "lon": -2.754896, "tel": null}, {"nombre": "Maleno y Torres", "lat": 36.76864, "lon": -2.74071, "tel": null}, {"nombre": "Marbroer (La Redonda)", "lat": 36.78659, "lon": -2.747319, "tel": null}, {"nombre": "Maskomo Málaga", "lat": 36.69449, "lon": -4.49788, "tel": null}, {"nombre": "Massanassa (Silla) -Levante-", "lat": 39.366123, "lon": -0.404193, "tel": null}, {"nombre": "Mayba", "lat": 36.76711, "lon": -2.84443, "tel": null}, {"nombre": "Mayes", "lat": 36.75493, "lon": -2.72199, "tel": null}, {"nombre": "Mercadona - Centro Logístico (Albatera- San Isidro)", "lat": 38.168738, "lon": -0.861425, "tel": null}, {"nombre": "Mercadona - Centro Logístico (Antequera)", "lat": 37.038273, "lon": -4.530467, "tel": null}, {"nombre": "MercaMálaga -Sur-", "lat": 36.7043, "lon": -4.51529, "tel": null}, {"nombre": "MercaOsuna (Osuna-Sevilla) -Sur-", "lat": 37.23373, "lon": -5.09047, "tel": null}, {"nombre": "MercaSevilla -Sur-", "lat": 37.38727, "lon": -5.93587, "tel": null}, {"nombre": "Mercophal", "lat": 36.802441, "lon": -2.627182, "tel": null}, {"nombre": "MerkaFress", "lat": 37.280915, "lon": -7.234605, "tel": null}, {"nombre": "Miguel García (El Puntalón) [Envases]", "lat": 36.72628, "lon": -3.48087, "tel": "608 56 50 91"}, {"nombre": "Mmax", "lat": 36.787486, "lon": -2.747404, "tel": null}, {"nombre": "Montivel (Berja) [Entrada por Cubitos Pakote]", "lat": 36.837546, "lon": -2.930496, "tel": null}, {"nombre": "Mr Cucumber (San Agustin)", "lat": 36.720847, "lon": -2.687975, "tel": null}, {"nombre": "Much More Roquetas (cash&carry)", "lat": 36.78575, "lon": -2.60568, "tel": null}, {"nombre": "MurgiVerde (Almerimar)", "lat": 36.72749, "lon": -2.80118, "tel": null}, {"nombre": "MurgiVerde (Ejido)", "lat": 36.75818, "lon": -2.80197, "tel": null}, {"nombre": "MurgiVerde (Vicar) -3-", "lat": 36.79786, "lon": -2.65279, "tel": null}, {"nombre": "Murgiverde Roquetas (geosur) -4-4", "lat": 36.78888, "lon": -2.61796, "tel": null}, {"nombre": "NationWide (la redonda)", "lat": 36.787032, "lon": -2.750423, "tel": null}, {"nombre": "Natural de Montaña (Anna) Valencia -Levante-", "lat": 39.01704, "lon": -0.65216, "tel": null}, {"nombre": "Natural DP", "lat": 36.78336, "lon": -2.74448, "tel": null}, {"nombre": "Natural Tropic", "lat": 36.76071, "lon": -4.09413, "tel": "952507709.0"}, {"nombre": "Nature Choice", "lat": 36.7213, "lon": -2.80007, "tel": "950 607 778"}, {"nombre": "Naturinda (La Mojonera)", "lat": 36.798702, "lon": -2.68954, "tel": null}, {"nombre": "Navamar", "lat": 36.7619, "lon": -2.7983, "tel": null}, {"nombre": "Navarro de Haro", "lat": 37.256904, "lon": -1.808275, "tel": null}, {"nombre": "New Serco (Vicar)", "lat": 36.798583, "lon": -2.66225, "tel": null}, {"nombre": "Nijar Green", "lat": 36.927306, "lon": -2.092389, "tel": null}, {"nombre": "NijarFruct", "lat": 36.88939, "lon": -2.19706, "tel": null}, {"nombre": "NijarSol", "lat": 36.89275, "lon": -2.19505, "tel": null}, {"nombre": "NijarStar", "lat": 36.93257, "lon": -2.18758, "tel": null}, {"nombre": "NijaSol", "lat": 36.95293, "lon": -2.16178, "tel": null}, {"nombre": "NijaSol (La Mojonera)", "lat": 36.779639, "lon": -2.697528, "tel": "658 804 835"}, {"nombre": "Novofrut", "lat": 36.7448, "lon": -3.67331, "tel": null}, {"nombre": "Nufri (El Moche)", "lat": 36.73737, "lon": -3.98132, "tel": null}, {"nombre": "NutriFer", "lat": 36.757278, "lon": -2.731972, "tel": null}, {"nombre": "Oasis Selection (el tostaera)", "lat": 36.752278, "lon": -2.742667, "tel": null}, {"nombre": "OriginalFresh", "lat": 36.73954, "lon": -2.69194, "tel": null}, {"nombre": "Pan Hidalgo (Viator)", "lat": 36.880518, "lon": -2.412122, "tel": null}, {"nombre": "Panamar (Málaga) -Sur-", "lat": 36.69961, "lon": -4.50021, "tel": null}, {"nombre": "Parafruts", "lat": 36.81297, "lon": -2.59132, "tel": null}, {"nombre": "Parking Ejido", "lat": 36.759, "lon": -2.79773, "tel": null}, {"nombre": "Parque Natural (NatursSur)", "lat": 36.817056, "lon": -2.184861, "tel": null}, {"nombre": "Peluche Castillo (Málaga)", "lat": 36.760667, "lon": -4.050528, "tel": null}, {"nombre": "Peregrin", "lat": 37.3945, "lon": -1.74022, "tel": null}, {"nombre": "Piedra Trujillo (P. Quemadas / Cordoba) -Sur-", "lat": 37.899791, "lon": -4.724552, "tel": null}, {"nombre": "PimarFresh", "lat": 36.96686, "lon": -2.09688, "tel": null}, {"nombre": "Ponex", "lat": 36.846583, "lon": -2.407861, "tel": null}, {"nombre": "Poniente Natura (antiguo Hortibalanegra)", "lat": 36.756781, "lon": -2.889893, "tel": "633 94 08 80"}, {"nombre": "Primaflor", "lat": 37.37051, "lon": -1.76406, "tel": null}, {"nombre": "Procam", "lat": 36.73229, "lon": -3.50799, "tel": "683 16 06 90"}, {"nombre": "Queen Traditional Fruit (Nijar)", "lat": 36.95675, "lon": -2.10875, "tel": null}, {"nombre": "R. Martínez Sau - La Curva", "lat": 36.757549, "lon": -2.9758, "tel": null}, {"nombre": "Ramafrut (Valencia)[Benaguacil] -Levante-", "lat": 39.59941, "lon": -0.58098, "tel": null}, {"nombre": "Refrip", "lat": 36.78518, "lon": -2.75372, "tel": null}, {"nombre": "ReyRosa (EuroTomate)", "lat": 36.8203, "lon": -2.24009, "tel": null}, {"nombre": "RocianiExport", "lat": 36.758167, "lon": -2.632889, "tel": null}, {"nombre": "Romelina", "lat": 36.7657, "lon": -2.84618, "tel": null}, {"nombre": "Romenatur (La Huerta de Laura)", "lat": 36.70705, "lon": -2.76948, "tel": null}, {"nombre": "RoqueVicar", "lat": 36.758667, "lon": -2.644222, "tel": null}, {"nombre": "Sabores de África (Roquetas)", "lat": 36.730972, "lon": -2.647778, "tel": null}, {"nombre": "Saborum (Haciendas Bio- Ramafrut)", "lat": 36.79582, "lon": -2.61832, "tel": "690 199 701"}, {"nombre": "Salvensen Logistic (Sant Joan)- Barcelona", "lat": 41.48799, "lon": 2.0499, "tel": null}, {"nombre": "San Silvestre", "lat": 36.78097, "lon": -2.70178, "tel": null}, {"nombre": "Sandi fruit Nijar (por biolitoral)", "lat": 36.904889, "lon": -2.138389, "tel": null}, {"nombre": "SanLucar (Valencia)", "lat": 39.61071, "lon": -0.31303, "tel": null}, {"nombre": "SAT Rio Verde (Almuñecar)", "lat": 36.737167, "lon": -3.686722, "tel": null}, {"nombre": "Semillero Los Crespos (Adra-Playa)", "lat": 36.744647, "lon": -2.960787, "tel": null}, {"nombre": "Semilleros MojoneraPlant (cierra a las 18:00)", "lat": 36.913667, "lon": -2.166111, "tel": null}, {"nombre": "Semilleros Segasaplant (Nijar)", "lat": 36.816083, "lon": -2.158417, "tel": null}, {"nombre": "Serviagro 2000", "lat": 36.669806, "lon": -4.538833, "tel": null}, {"nombre": "Stef Málaga (congelado)", "lat": 36.722278, "lon": -4.667361, "tel": null}, {"nombre": "Taramay", "lat": 36.74402, "lon": -3.6744, "tel": null}, {"nombre": "TariBlanca  (cerca de transred)", "lat": 36.787611, "lon": -2.737861, "tel": null}, {"nombre": "Tejerina", "lat": 36.72895, "lon": -3.54309, "tel": null}, {"nombre": "Toledano", "lat": 36.756537, "lon": -2.967135, "tel": null}, {"nombre": "Tomasol", "lat": 37.26043, "lon": -1.79862, "tel": "647 15 91 57"}, {"nombre": "TomSpring", "lat": 36.85206, "lon": -2.40214, "tel": null}, {"nombre": "ToniKar  (Carlet)", "lat": 39.232944, "lon": -0.491972, "tel": null}, {"nombre": "Tradia (Calpe)", "lat": 38.644131, "lon": 0.056171, "tel": null}, {"nombre": "Transgourmet (Fuente Piedra) -Sur- [Mikel]", "lat": 37.13366, "lon": -4.72048, "tel": null}, {"nombre": "Transportes Melluso (rotonda Indasol-la redonda x encima de los bomberos)", "lat": 36.79694, "lon": -2.794119, "tel": null}, {"nombre": "Tropicado (Vélez-Málaga) - Aguacates", "lat": 36.79096, "lon": -4.1048, "tel": null}, {"nombre": "Tropical Millenium", "lat": 36.75999, "lon": -4.08934, "tel": "952 507 240"}, {"nombre": "Unifresh  (Redonda)", "lat": 36.77241, "lon": -2.7529, "tel": null}, {"nombre": "Upper (Murcia) -Levante-", "lat": 37.61972, "lon": -0.95827, "tel": null}, {"nombre": "UveSA [Cajas]", "lat": 36.703537, "lon": -4.521149, "tel": null}, {"nombre": "Vefruver", "lat": 36.833613, "lon": -2.927691, "tel": null}, {"nombre": "Vega Cañada", "lat": 36.88668, "lon": -2.36589, "tel": null}, {"nombre": "Velasgro", "lat": 36.730236, "lon": -2.654831, "tel": null}, {"nombre": "Vicasol 1", "lat": 36.80181, "lon": -2.64789, "tel": null}, {"nombre": "Vicasol 2", "lat": 36.78199, "lon": -2.67999, "tel": null}, {"nombre": "Vicasol 3", "lat": 36.73787, "lon": -2.81743, "tel": null}, {"nombre": "Vicasol 4 (Nijar)", "lat": 36.8625, "lon": -2.21801, "tel": null}, {"nombre": "Vicente Perez", "lat": 36.76448, "lon": -2.75496, "tel": null}, {"nombre": "Villagrow", "lat": 36.80064, "lon": -2.68882, "tel": "667 999 243"}, {"nombre": "Xarki (Vélez-Málaga) - Sandías", "lat": 36.80156, "lon": -4.11935, "tel": null}, {"nombre": "Zeus Export.", "lat": 36.80165, "lon": -2.73479, "tel": null}, {"nombre": "Zoi", "lat": 36.91726, "lon": -2.41589, "tel": null}], "destinos": ["Il Vento", "Sur", "Sur-Canarias", "Kolla Suiza", "Kolla / Tonykar /", "Sanlucar", "Ligersol", "Levante", "Málaga", "Herrera", "Martia", "Terra y Xufa", "Iberiana", "Hermanos García", "Grober", "Family", "Greenfood / Miafruto /", "Hermanos Fernández . Sevilla", "Hermanos Fernández - Barcelona", "Sagunto - Sanlucar", "Sagunto - Aldi", "Benaguacil", "Bibifrut", "Mamper", "Aldi Sevilla", "Aldi San Isidro", "Bluewater", "Montaña", "Tae", "Vilsa", "Eurogroup Francia", "Eurogroup Alemania", "Fuentes", "Cash Lepe", "Cultivar", "Lusia", "Unexport", "Riel", "Ecoveritas", "Frutas Antonio", "Frutas Llonch", "Ipl", "García Lax Polonia", "García Lax Alemania", "Frutas Alhambra", "Legafrut", "Ragrom", "Caliche Ejido", "Coviran Sevilla", "Hiervas Aromex", "Salsas", "Diego Chaves", "Belcaire Sur", "Belcaire Levante", "Belcaire Malaga", "Victoria", "Chatteris", "Musgrave", "Upper", "Rizzi", "Castell", "Bonfred", "Consorfrut / Friló", "Sangra", "Urpinas", "Capdevilla", "Central Dika", "Cmr", "Bakkavor", "Matias Roig", "K Bueno", "Master Fruits", "Vitaal", "Sendra", "Exquisite Fruit", "Abogard", "Alifresca / Mikel / Fuente Piedra", "Alifresca Málaga  / Mikel Málaga  /", "Alifresca Suiza", "Mesguen", "Primaver", "Premium", "Frutas Valenciana Reyes", "LoyevPont", "Armesa", "Juicy Fruit", "Frutas Faustino", "Servifruta", "Sol y Nature", "Morrison", "Frutaria", "Cartón", "Cajas", "Citriber", "Ica", "Frutas Xavi", "Hortisol / Gufresco / Gustavo Ferrada", "Medina", "Musseros", "Fountain", "Algemesí", "Frutas Luna", "Meissner", "Caliche Murcia", "Caliche Valencia", "Delifresh", "GreenYard", "Fruhorta", "One Fruit", "La Tercia", "Langard", "La Gergaleña", "Transmediterránea", "River Food", "Eurobanan Sevilla", "Frulupe", "Oliva", "Plantas Sevilla", "Plantas Sagunto", "Fruvalmed", "Frehnordic", "Kamal", "Orange Frutch", "Keelings", "Ferasa", "Explaco", "Jovimer", "Biosabor", "P. Trujillo", "Costco", "Día Dos Hermanas"], "nat_mercancia": ["fruta y verdura", "congelado", "plantas vivas", "secos", "productos perecederos"], "tipos_palet": ["europeo", "grande (americano)", "carro", "box", "especial"], "matriculas": [{"tractora": "1740KFL", "remolque": "0035BCM"}, {"tractora": "2382FVZ", "remolque": "0397BDK"}, {"tractora": "3080JHL", "remolque": "1248BDS"}, {"tractora": "4773JVL", "remolque": "1637BCJ"}, {"tractora": "5684JWJ", "remolque": "2585BCR"}, {"tractora": "5807CRD", "remolque": "2698BCS"}, {"tractora": "6018HVW", "remolque": "3561BDP"}, {"tractora": "6112KDM", "remolque": "4445BCW"}, {"tractora": "7092KCY", "remolque": "7159BCS"}, {"tractora": "7245GVC", "remolque": "7460BDB"}, {"tractora": "7498JNC", "remolque": "8115BCV"}, {"tractora": "7846CJV", "remolque": "8234BCN"}, {"tractora": "8381MPW", "remolque": "8282BCV"}, {"tractora": "8809DRB", "remolque": "8305BDF"}, {"tractora": "9022DVC", "remolque": "8904BDF"}, {"tractora": "9355FFZ", "remolque": "9485BCY"}, {"tractora": "9753HZK", "remolque": "9673BB"}, {"tractora": "", "remolque": "9673BBZ"}, {"tractora": "", "remolque": "9718BCM"}], "tractoras": ["1740KFL", "2382FVZ", "3080JHL", "4773JVL", "5684JWJ", "5807CRD", "6018HVW", "6112KDM", "7092KCY", "7245GVC", "7498JNC", "7846CJV", "8381MPW", "8809DRB", "9022DVC", "9355FFZ", "9753HZK"], "remolques": ["0035BCM", "0397BDK", "1248BDS", "1637BCJ", "2585BCR", "2698BCS", "3561BDP", "4445BCW", "7159BCS", "7460BDB", "8115BCV", "8234BCN", "8282BCV", "8305BDF", "8904BDF", "9485BCY", "9673BB", "9673BBZ", "9718BCM"]}
+;
+// Creación y declaración explícita del objeto
+const PUNTOS_IDX = {};
+
+DATOS_TRAFICO.almacenes.forEach(a => { 
+  PUNTOS_IDX[a.nombre] = { lat: a.lat, lon: a.lon, tel: a.tel }; 
+});
+
+DATOS_TRAFICO.destinos.forEach(nombre => { 
+  if (!(nombre in PUNTOS_IDX)) {
+    PUNTOS_IDX[nombre] = { lat: null, lon: null, tel: null }; 
+  }
+});
+
+function rellenarDatalist(){
+  const dl = document.getElementById('puntosList');
+  dl.innerHTML = Object.keys(PUNTOS_IDX).sort((a,b)=>a.localeCompare(b,'es')).map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('');
+}
+
+function aplicarPunto(nombre, gpsId, telId, direccionId){
+  const info = PUNTOS_IDX[nombre];
+  const gpsEl = document.getElementById(gpsId);
+  const telEl = document.getElementById(telId);
+  if(!info){
+    gpsEl.value = ''; telEl.value = '';
+    return;
+  }
+  gpsEl.value = (info.lat!=null && info.lon!=null) ? `${info.lat}, ${info.lon}` : 'Sin GPS en la base de datos';
+  telEl.value = info.tel || 'Sin teléfono registrado';
+  if(direccionId){
+    const dirEl = document.getElementById(direccionId);
+    if(!dirEl.value.trim() || dirEl.dataset.auto === '1'){
+      dirEl.value = nombre;
+      dirEl.dataset.auto = '1';
+    }
+  }
+}
+
+document.getElementById('almacen').addEventListener('input', (e)=>{
+  aplicarPunto(e.target.value, 'origenGPS', 'origenTel', 'origen');
+});
+document.getElementById('origen').addEventListener('input', (e)=>{ e.target.dataset.auto = '0'; });
+document.getElementById('destino').addEventListener('input', (e)=>{
+  aplicarPunto(e.target.value, 'destinoGPS', 'destinoTel', null);
+});
+
+function rellenarSelect(id, opciones, conOtra){
+  const sel = document.getElementById(id);
+  sel.innerHTML = '<option value="">Selecciona…</option>' +
+    opciones.map(o=>`<option value="${o.replace(/"/g,'&quot;')}">${o}</option>`).join('') +
+    (conOtra ? '<option value="__otra__">Otra…</option>' : '');
+}
+rellenarSelect('mercancia', DATOS_TRAFICO.nat_mercancia, true);
+document.getElementById('mercancia').value = 'fruta y verdura';
+rellenarSelect('detTipo', DATOS_TRAFICO.tipos_palet, false);
+
+// ====== Tractoras y remolques: viven en Supabase (para poder añadir matrículas desde aquí) ======
+let tractorasCache = [];
+let remolquesCache = [];
+async function cargarMatriculas(){
+  if(!sb) return;
+  const [{data: tData, error: tErr}, {data: rData, error: rErr}] = await Promise.all([
+    sb.from('tractoras').select('*').order('matricula'),
+    sb.from('remolques').select('*').order('matricula')
+  ]);
+  tractorasCache = tErr ? [] : tData;
+  remolquesCache = rErr ? [] : rData;
+  const tractoraVals = tractorasCache.map(x=>x.matricula);
+  const remolqueVals = remolquesCache.map(x=>x.matricula);
+  const tSelActual = document.getElementById('tractoraSel').value;
+  const rSelActual = document.getElementById('remolqueSel').value;
+  rellenarSelect('tractoraSel', tractoraVals, true);
+  rellenarSelect('remolqueSel', remolqueVals, true);
+  if(tSelActual) document.getElementById('tractoraSel').value = tSelActual;
+  if(rSelActual) document.getElementById('remolqueSel').value = rSelActual;
+  rellenarSelect('tractoraDestinoSel', tractoraVals, false);
+  rellenarSelect('remolqueDestinoSel', remolqueVals, false);
+}
+
+document.getElementById('tractoraSel').addEventListener('change', ()=>{
+  const t = tractorasCache.find(x=>x.matricula === document.getElementById('tractoraSel').value);
+  if(t && t.remolque_habitual){
+    const remSel = document.getElementById('remolqueSel');
+    const existe = Array.from(remSel.options).some(o=>o.value === t.remolque_habitual);
+    if(existe) remSel.value = t.remolque_habitual;
+  }
+});
+
+document.getElementById('addTractoraBtn').onclick = async ()=>{
+  if(!sb) return;
+  const val = document.getElementById('nuevaTractora').value.trim();
+  if(!val){ alert('Escribe la matrícula de la tractora.'); return; }
+  const remolque_habitual = document.getElementById('nuevaTractoraRemolqueHabitual').value.trim() || null;
+  const { error } = await sb.from('tractoras').insert({matricula: val, remolque_habitual});
+  if(error){
+    if(error.code === '23505'){ alert('Esa tractora ya estaba en la lista.'); }
+    else alert('No se pudo guardar: ' + error.message);
+    return;
+  }
+  document.getElementById('nuevaTractora').value = '';
+  document.getElementById('nuevaTractoraRemolqueHabitual').value = '';
+  cargarMatriculas();
+};
+document.getElementById('addRemolqueBtn').onclick = async ()=>{
+  if(!sb) return;
+  const val = document.getElementById('nuevoRemolque').value.trim();
+  if(!val){ alert('Escribe la matrícula del remolque.'); return; }
+  const { error } = await sb.from('remolques').insert({matricula: val});
+  if(error){
+    if(error.code === '23505'){ alert('Ese remolque ya estaba en la lista.'); }
+    else alert('No se pudo guardar: ' + error.message);
+    return;
+  }
+  document.getElementById('nuevoRemolque').value = '';
+  cargarMatriculas();
+};
+
+document.getElementById('mercancia').addEventListener('change', (e)=>{
+  document.getElementById('mercanciaOtra').style.display = (e.target.value === '__otra__') ? 'block' : 'none';
+});
+function actualizarVisibilidadMatriculaOtra(){
+  const t = document.getElementById('tractoraSel').value;
+  const r = document.getElementById('remolqueSel').value;
+  document.getElementById('matriculaOtra').style.display = (t === '__otra__' || r === '__otra__') ? 'block' : 'none';
+}
+document.getElementById('tractoraSel').addEventListener('change', actualizarVisibilidadMatriculaOtra);
+document.getElementById('remolqueSel').addEventListener('change', actualizarVisibilidadMatriculaOtra);
+
+function valorMercancia(){
+  const sel = document.getElementById('mercancia').value;
+  return sel === '__otra__' ? document.getElementById('mercanciaOtra').value.trim() : sel;
+}
+function valorMatricula(){
+  const t = document.getElementById('tractoraSel').value;
+  const r = document.getElementById('remolqueSel').value;
+  if(t === '__otra__' || r === '__otra__'){
+    return document.getElementById('matriculaOtra').value.trim();
+  }
+  if(!t && !r) return '';
+  return `${t || '—'} / ${r || '—'}`;
+}
+
+// ---- Detalle planificado: líneas de "cantidad + tipo de bulto" ----
+// Peso medio orientativo por palet (kg), para fruta y verdura — sirve para
+// autorellenar un peso aproximado según lo que se va cargando; siempre se puede
+// corregir a mano o desmarcar "peso aproximado" si se pesa en báscula.
+const PESO_APROX_KG = {
+  'europeo': 300,
+  'grande (americano)': 450,
+  'carro': 250,
+  'box': 200,
+  'especial': 300
+};
+let detalleItems = [];
+function actualizarPesoAprox(){
+  if(!document.getElementById('pesoAprox').checked) return;
+  if(document.getElementById('mercancia').value !== 'fruta y verdura') return;
+  const total = detalleItems.reduce((sum, it)=> sum + (Number(it.cantidad)||0) * (PESO_APROX_KG[it.tipo] || 0), 0);
+  document.getElementById('peso').value = total || '';
+}
+function renderDetalleLista(){
+  const box = document.getElementById('detalleLista');
+  if(!detalleItems.length){
+    box.innerHTML = '<div class="empty">Aún no has añadido bultos</div>';
+  } else {
+    box.innerHTML = detalleItems.map((it,i)=>`<div class="item">
+        <span>${it.cantidad} × ${it.tipo}</span>
+        <span class="badge" style="cursor:pointer" data-i="${i}">✕ quitar</span>
+      </div>`).join('');
+    box.querySelectorAll('[data-i]').forEach(el=>{
+      el.onclick = ()=>{ detalleItems.splice(Number(el.dataset.i),1); renderDetalleLista(); actualizarPesoAprox(); };
+    });
+  }
+  document.getElementById('detalle').value = detalleItems.map(it=>`${it.cantidad} ${it.tipo}`).join(', ');
+}
+document.getElementById('addDetalleBtn').onclick = ()=>{
+  const cantidad = document.getElementById('detCantidad').value.trim();
+  const tipo = document.getElementById('detTipo').value;
+  if(!cantidad || !tipo){ alert('Indica cantidad y tipo de bulto.'); return; }
+  detalleItems.push({cantidad, tipo});
+  document.getElementById('detCantidad').value = '';
+  document.getElementById('detTipo').value = '';
+  renderDetalleLista();
+  actualizarPesoAprox();
+};
+document.getElementById('pesoAprox').addEventListener('change', actualizarPesoAprox);
+document.getElementById('mercancia').addEventListener('change', actualizarPesoAprox);
+rellenarDatalist();
+renderDetalleLista();
+
+// ====== CONFIGURACIÓN SUPABASE (el mismo proyecto que usa index.html) ======
+const SUPABASE_URL = 'https://abeutxnyyyaxrmhoeemv.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiZXV0eG55eXlheHJtaG9lZW12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyODIyNTAsImV4cCI6MjEwNTg1ODI1MH0.qQ0q0H3HbR6Dcno35uCWFYRPhKYHbSEIZAXf-_HtTfY';
+// =============================================================================
+const sb = (SUPABASE_URL.includes('TU-PROYECTO')) ? null :
+  window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let clientesCache = [];
+let transCache = [];
+
+async function cargarSelect(tabla, selectId){
+  const sel = document.getElementById(selectId);
+  if(!sb){ sel.innerHTML = '<option value="">Sin conexión a Supabase</option>'; return; }
+  try{
+    const { data, error } = await sb.from(tabla).select('*').order('nombre');
+    if(error){ sel.innerHTML = `<option value="">Error: ${error.message}</option>`; return; }
+    if(tabla==='clientes') clientesCache = data; else transCache = data;
+    const opciones = data.map(x=>`<option value="${x.id}">${x.nombre}${x.nif? ' · '+x.nif : ''}</option>`).join('');
+    sel.innerHTML = '<option value="">Selecciona…</option>' + (opciones || '<option value="" disabled>Sin datos — añade uno abajo</option>');
+  }catch(e){
+    sel.innerHTML = `<option value="">Fallo de red: ${e.message}</option>`;
+  }
+}
+
+document.getElementById('editarClienteBtn').onclick = ()=>{
+  const c = clientesCache.find(x=>x.id === document.getElementById('clienteSel').value);
+  if(!c){ alert('Primero elige un cliente en el desplegable.'); return; }
+  document.getElementById('nuevoClienteNombre').value = c.nombre || '';
+  document.getElementById('nuevoClienteNif').value = c.nif || '';
+  document.getElementById('nuevoClienteDom').value = c.domicilio || '';
+  document.getElementById('nuevoClienteTel').value = c.telefono || '';
+};
+document.getElementById('editarTransBtn').onclick = ()=>{
+  const t = transCache.find(x=>x.id === document.getElementById('transSel').value);
+  if(!t){ alert('Primero elige un transportista en el desplegable.'); return; }
+  document.getElementById('nuevoTransNombre').value = t.nombre || '';
+  document.getElementById('nuevoTransNif').value = t.nif || '';
+  document.getElementById('nuevoTransTel').value = t.telefono || '';
+};
+
+document.getElementById('addClienteBtn').onclick = async ()=>{
+  if(!sb) return;
+  const nombre = document.getElementById('nuevoClienteNombre').value.trim();
+  if(!nombre){ alert('Escribe al menos el nombre del cliente.'); return; }
+  const nif = document.getElementById('nuevoClienteNif').value.trim();
+  const domicilio = document.getElementById('nuevoClienteDom').value.trim();
+  const telefono = document.getElementById('nuevoClienteTel').value.trim();
+  const existente = clientesCache.find(c=>c.nombre.toLowerCase() === nombre.toLowerCase());
+  const { error } = existente
+    ? await sb.from('clientes').update({nif, domicilio, telefono}).eq('id', existente.id)
+    : await sb.from('clientes').insert({nombre, nif, domicilio, telefono});
+  if(error){ alert('No se pudo guardar: ' + error.message); return; }
+  document.getElementById('nuevoClienteNombre').value = '';
+  document.getElementById('nuevoClienteNif').value = '';
+  document.getElementById('nuevoClienteDom').value = '';
+  document.getElementById('nuevoClienteTel').value = '';
+  cargarSelect('clientes','clienteSel');
+};
+
+document.getElementById('addTransBtn').onclick = async ()=>{
+  if(!sb) return;
+  const nombre = document.getElementById('nuevoTransNombre').value.trim();
+  if(!nombre){ alert('Escribe al menos el nombre del transportista.'); return; }
+  const nif = document.getElementById('nuevoTransNif').value.trim();
+  const telefono = document.getElementById('nuevoTransTel').value.trim();
+  const existente = transCache.find(t=>t.nombre.toLowerCase() === nombre.toLowerCase());
+  const { error } = existente
+    ? await sb.from('transportistas').update({nif, telefono}).eq('id', existente.id)
+    : await sb.from('transportistas').insert({nombre, nif, telefono});
+  if(error){ alert('No se pudo guardar: ' + error.message); return; }
+  document.getElementById('nuevoTransNombre').value = '';
+  document.getElementById('nuevoTransNif').value = '';
+  document.getElementById('nuevoTransTel').value = '';
+  cargarSelect('transportistas','transSel');
+};
+
+// ====== Personal asignado (cualquier empleado, cargador o chófer) ======
+let personalListCache = [];
+async function cargarPersonal(){
+  const sel = document.getElementById('asignadoSel');
+  if(!sb){ sel.innerHTML = '<option value="">Sin conexión</option>'; return; }
+  try{
+    const { data, error } = await sb.from('personal').select('*').order('puesto').order('nombre');
+    if(error){ sel.innerHTML = `<option value="">Error: ${error.message}</option>`; return; }
+    personalListCache = data;
+    sel.innerHTML = '<option value="">Selecciona…</option>' +
+      data.map(x=>`<option value="${x.id}">${x.nombre} (${x.puesto})</option>`).join('');
+  }catch(e){
+    sel.innerHTML = `<option value="">Fallo de red</option>`;
+  }
+}
+
+document.getElementById('addPersonalBtn').onclick = async ()=>{
+  if(!sb) return;
+  const nombre = document.getElementById('nuevoPersonalNombre').value.trim();
+  if(!nombre){ alert('Escribe el nombre del trabajador.'); return; }
+  const puesto = document.getElementById('nuevoPersonalPuesto').value;
+  const existente = personalListCache.find(p=>p.nombre.trim().toLowerCase() === nombre.toLowerCase());
+  const { error } = existente
+    ? await sb.from('personal').update({puesto}).eq('id', existente.id)
+    : await sb.from('personal').insert({nombre, puesto});
+  if(error){ alert('No se pudo guardar: ' + error.message); return; }
+  document.getElementById('nuevoPersonalNombre').value = '';
+  cargarPersonal();
+};
+
+// ====== Destinos: ficha completa (dirección, teléfono, GPS) reutilizable ======
+let destinosCache = [];
+async function cargarDestinos(){
+  const dl = document.getElementById('destinosList');
+  if(!sb) return;
+  const { data, error } = await sb.from('destinos').select('*').order('nombre');
+  if(error) return;
+  destinosCache = data;
+  const nombresDestinos = data.map(d=>String(d.nombre));
+  const nombresAlmacenes = (DATOS_TRAFICO.almacenes||[]).map(a=>String(a.nombre));
+  const todos = Array.from(new Set([...nombresDestinos, ...nombresAlmacenes])).sort((a,b)=>a.localeCompare(b));
+  dl.innerHTML = todos.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('');
+}
+
+document.getElementById('destino').addEventListener('input', (e)=>{
+  const match = destinosCache.find(d=>d.nombre === e.target.value);
+  const aviso = document.getElementById('destinoNuevoAviso');
+  if(match){
+    document.getElementById('destinoDireccion').value = match.direccion || '';
+    document.getElementById('destinoTelefono').value = match.telefono || '';
+    document.getElementById('destinoGPS').value = (match.lat!=null && match.lng!=null) ? `${match.lat}, ${match.lng}` : '';
+    aviso.style.display = 'none';
+  } else if(e.target.value.trim()){
+    aviso.style.display = 'block';
+  } else {
+    aviso.style.display = 'none';
+  }
+});
+
+document.getElementById('gpsDestinoBtn').onclick = ()=>{
+  if(!navigator.geolocation){ alert('Este navegador no permite obtener la ubicación.'); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    document.getElementById('destinoGPS').value = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
+  }, err=>{ alert('No se pudo obtener la ubicación: ' + err.message); });
+};
+
+// Guarda (o actualiza) la ficha del destino en Supabase antes de enviar la orden.
+// Devuelve el nombre del destino, que es lo que se guarda en cargas_planificadas.destino.
+async function guardarFichaDestino(){
+  const nombre = document.getElementById('destino').value.trim();
+  if(!nombre || !sb) return nombre;
+  const direccion = document.getElementById('destinoDireccion').value.trim();
+  const telefono = document.getElementById('destinoTelefono').value.trim();
+  const gps = document.getElementById('destinoGPS').value.trim();
+  let lat = null, lng = null;
+  const m = gps.match(/^(-?[\d.]+)\s*,\s*(-?[\d.]+)$/);
+  if(m){ lat = parseFloat(m[1]); lng = parseFloat(m[2]); }
+  const existing = destinosCache.find(d=>d.nombre === nombre);
+  if(existing){
+    await sb.from('destinos').update({direccion, telefono, lat, lng}).eq('id', existing.id);
+  } else {
+    await sb.from('destinos').insert({nombre, direccion, telefono, lat, lng});
+  }
+  cargarDestinos();
+  return nombre;
+}
+
+document.getElementById('enviarBtn').onclick = async ()=>{
+  const msg = document.getElementById('enviarMsg');
+  if(!sb){ msg.textContent = '⚠️ Configura SUPABASE_URL y SUPABASE_ANON_KEY arriba en el script.'; msg.style.color='var(--bad)'; return; }
+  const clienteId = document.getElementById('clienteSel').value;
+  const transId = document.getElementById('transSel').value;
+  const asignadoId = document.getElementById('asignadoSel').value;
+  if(!clienteId || !transId){ msg.textContent = '⚠️ Elige un cliente y un transportista.'; msg.style.color='var(--bad)'; return; }
+  if(!asignadoId){ msg.textContent = '⚠️ Elige quién va a cargar o llevar esta carga.'; msg.style.color='var(--bad)'; return; }
+
+  const destinoNombre = await guardarFichaDestino();
+
+  const { error } = await sb.from('cargas_planificadas').insert({
+    almacen: document.getElementById('almacen').value,
+    detalle_planificado: document.getElementById('detalle').value,
+    estado: 'asignada',
+    cliente_id: clienteId,
+    transportista_id: transId,
+    asignado_id: asignadoId,
+    origen: document.getElementById('origen').value,
+    destino: destinoNombre,
+    mercancia: valorMercancia(),
+    peso: document.getElementById('peso').value,
+    peso_aproximado: document.getElementById('pesoAprox').checked,
+    matricula: valorMatricula()
+  });
+  if(error){ msg.textContent = '❌ Error: ' + error.message; msg.style.color='var(--bad)'; return; }
+  msg.textContent = '✅ Orden enviada. Esa persona la verá en su app en unos segundos.';
+  msg.style.color = 'var(--ok)';
+  cargarHistorial();
+
+  const otra = confirm('Orden enviada.\n\n¿Enviar OTRA orden a la misma persona asignada?\n(Se mantiene cliente, transportista y personal asignado; se borran los datos del viaje y los palets)');
+  if(otra){
+    limpiarDatosDelViaje();
+  } else {
+    const mismoCliente = confirm('¿El cliente (cargador) seguirá siendo el mismo en la próxima orden?');
+    const mismoTrans = confirm('¿El transportista seguirá siendo el mismo en la próxima orden?');
+    limpiarDatosDelViaje();
+    document.getElementById('asignadoSel').value = '';
+    if(!mismoCliente) document.getElementById('clienteSel').value = '';
+    if(!mismoTrans) document.getElementById('transSel').value = '';
+  }
+};
+
+function limpiarDatosDelViaje(){
+  document.getElementById('almacen').value = '';
+  document.getElementById('origenGPS').value = '';
+  document.getElementById('origenTel').value = '';
+  document.getElementById('origen').value = '';
+  document.getElementById('destino').value = '';
+  document.getElementById('destinoDireccion').value = '';
+  document.getElementById('destinoTelefono').value = '';
+  document.getElementById('destinoGPS').value = '';
+  document.getElementById('destinoNuevoAviso').style.display = 'none';
+  document.getElementById('mercancia').value = 'fruta y verdura';
+  document.getElementById('mercanciaOtra').value = '';
+  document.getElementById('mercanciaOtra').style.display = 'none';
+  detalleItems = [];
+  renderDetalleLista();
+  document.getElementById('pesoAprox').checked = true;
+  actualizarPesoAprox();
+  document.getElementById('almacen').focus();
+}
+
+function limpiarTodoElFormulario(){
+  limpiarDatosDelViaje();
+  document.getElementById('clienteSel').value = '';
+  document.getElementById('transSel').value = '';
+  document.getElementById('asignadoSel').value = '';
+  document.getElementById('tractoraSel').value = '';
+  document.getElementById('remolqueSel').value = '';
+  document.getElementById('matriculaOtra').value = '';
+  document.getElementById('matriculaOtra').style.display = 'none';
+}
+
+async function cargarHistorial(){
+  const box = document.getElementById('historial');
+  if(!sb){ box.innerHTML = '<div class="empty">Sin conexión a Supabase</div>'; return; }
+  try{
+    const { data, error } = await sb.from('cargas_planificadas')
+      .select('*, clientes(nombre), transportistas(nombre), personal:asignado_id(nombre,puesto)')
+      .order('created_at', {ascending:false}).limit(10);
+    if(error){ box.innerHTML = `<div class="empty">Error: ${error.message}</div>`; return; }
+    if(!data.length){ box.innerHTML = '<div class="empty">Aún no hay órdenes enviadas</div>'; return; }
+    box.innerHTML = data.map(o=>`<div class="item" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div class="row">
+          <span><b>📦 ${o.almacen||'—'}</b> — <span style="color:var(--accent)">${o.personal?.nombre||'—'}</span> (${o.personal?.puesto||'—'})<br><span class="pmeta">${o.clientes?.nombre||'—'} · ${o.detalle_planificado||''}</span></span>
+          <span style="display:flex;align-items:center;gap:6px">
+            <span class="badge ${o.estado==='cerrada'?'ok':(o.estado==='cancelada'?'bad':'')}">${o.estado}</span>
+            ${o.estado==='asignada' ? `<button class="btn btn-ghost btn-sm" data-toggle-gestion="${o.id}" style="margin-top:0">⋯ Gestionar</button>` : ''}
+          </span>
+        </div>
+        ${o.estado==='asignada' ? `<div id="gestion-${o.id}" style="display:none;border-top:1px solid var(--border);padding-top:8px;margin-top:2px">
+          <label style="font-size:.85em">Reasignar a otro trabajador</label>
+          <select id="reasignarSel-${o.id}">
+            <option value="">Elige…</option>
+            ${personalListCache.filter(p=>p.id!==o.asignado_id).map(p=>`<option value="${p.id}">${p.nombre} (${p.puesto})</option>`).join('')}
+          </select>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-sm" data-reasignar="${o.id}">🔄 Reasignar</button>
+            <button class="btn btn-ghost btn-sm" data-cancelar="${o.id}">✖ Cancelar orden</button>
+          </div>
+        </div>` : ''}
+      </div>`).join('');
+    box.querySelectorAll('[data-toggle-gestion]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const panel = document.getElementById('gestion-'+btn.dataset.toggleGestion);
+        panel.style.display = panel.style.display==='none' ? 'block' : 'none';
+      };
+    });
+    box.querySelectorAll('[data-reasignar]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const id = btn.dataset.reasignar;
+        const nuevoId = document.getElementById('reasignarSel-'+id).value;
+        if(!nuevoId){ alert('Elige a quién reasignar la orden.'); return; }
+        const { error } = await sb.from('cargas_planificadas').update({asignado_id: nuevoId}).eq('id', id);
+        if(error){ alert('Error al reasignar: ' + error.message); return; }
+        cargarHistorial();
+      };
+    });
+    box.querySelectorAll('[data-cancelar]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        if(!confirm('¿Cancelar esta orden? El camión ya no la recogerá.')) return;
+        const id = btn.dataset.cancelar;
+        const { error } = await sb.from('cargas_planificadas').update({estado:'cancelada'}).eq('id', id);
+        if(error){ alert('Error al cancelar: ' + error.message); return; }
+        cargarHistorial();
+      };
+    });
+  }catch(e){
+    box.innerHTML = `<div class="empty">Fallo de red: ${e.message}</div>`;
+  }
+}
+
+// ====== DeCAs por cliente → enviar actualización de matrícula al chófer ======
+async function cargarClienteDecasSel(){
+  const sel = document.getElementById('clienteDecasSel');
+  if(!sb) return;
+  const { data, error } = await sb.from('clientes').select('*').order('nombre');
+  if(error) return;
+  sel.innerHTML = '<option value="">Elige un cliente…</option>' + data.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+}
+
+let decasSeleccionados = [];
+document.getElementById('clienteDecasSel').addEventListener('change', async ()=>{
+  const clienteId = document.getElementById('clienteDecasSel').value;
+  const box = document.getElementById('decasClienteLista');
+  decasSeleccionados = [];
+  document.getElementById('envioMatriculaBox').style.display = 'none';
+  if(!clienteId){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="empty">Cargando…</div>';
+  const { data, error } = await sb.from('decas')
+    .select('*, cargas_planificadas!inner(cliente_id)')
+    .eq('cargas_planificadas.cliente_id', clienteId)
+    .order('fecha', {ascending:false}).limit(30);
+  if(error){ box.innerHTML = `<div class="empty">Error: ${error.message}</div>`; return; }
+  if(!data.length){ box.innerHTML = '<div class="empty">Este cliente todavía no tiene DeCAs generados</div>'; return; }
+  box.innerHTML = data.map(r=>`<div class="item">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" style="width:auto" data-deca="${r.id}">
+        <span>${r.deca_id}<br><span class="pmeta">Matrícula actual: ${r.matricula||'—'}</span></span>
+      </label>
+    </div>`).join('');
+  box.querySelectorAll('[data-deca]').forEach(chk=>{
+    chk.onchange = ()=>{
+      if(chk.checked) decasSeleccionados.push(chk.dataset.deca);
+      else decasSeleccionados = decasSeleccionados.filter(id=>id!==chk.dataset.deca);
+      document.getElementById('envioMatriculaBox').style.display = decasSeleccionados.length ? 'block' : 'none';
+    };
+  });
+});
+
+document.getElementById('enviarMatriculaBtn').onclick = async ()=>{
+  const msg = document.getElementById('envioMatriculaMsg');
+  const choferId = document.getElementById('choferDestinoSel').value;
+  const t = document.getElementById('tractoraDestinoSel').value;
+  const r = document.getElementById('remolqueDestinoSel').value;
+  if(!choferId){ msg.textContent = '⚠️ Elige el chófer destino.'; msg.style.color='var(--bad)'; return; }
+  if(!t || !r){ msg.textContent = '⚠️ Elige tractora y remolque.'; msg.style.color='var(--bad)'; return; }
+  if(!decasSeleccionados.length){ msg.textContent = '⚠️ Marca al menos un DeCA de la lista.'; msg.style.color='var(--bad)'; return; }
+  const matricula = `${t} / ${r}`;
+  const { error } = await sb.from('decas')
+    .update({matricula_pendiente: matricula, chofer_destino_id: choferId})
+    .in('id', decasSeleccionados);
+  if(error){ msg.textContent = '❌ Error: ' + error.message; msg.style.color='var(--bad)'; return; }
+  alert(`✅ Enviado. El chófer verá la propuesta de matrícula (${matricula}) en su app y podrá confirmarla o cambiarla antes de salir.`);
+  // Vuelve a la pregunta inicial, lista para elegir el siguiente cliente
+  decasSeleccionados = [];
+  document.getElementById('clienteDecasSel').value = '';
+  document.getElementById('decasClienteLista').innerHTML = '';
+  document.getElementById('envioMatriculaBox').style.display = 'none';
+  document.getElementById('choferDestinoSel').value = '';
+  document.getElementById('tractoraDestinoSel').value = '';
+  document.getElementById('remolqueDestinoSel').value = '';
+  cargarPropuestasPendientes();
+  cargarDecasEnRuta();
+};
+
+// ====== Estado de las propuestas de matrícula enviadas, y DeCAs en ruta por chófer ======
+async function cargarPropuestasPendientes(){
+  const box = document.getElementById('propuestasPendientes');
+  if(!sb) return;
+  const { data, error } = await sb.from('decas')
+    .select('*, personal:chofer_destino_id(nombre)')
+    .not('matricula_pendiente', 'is', null)
+    .order('fecha', {ascending:false});
+  if(error){ box.innerHTML = `<div class="empty">Error: ${error.message}</div>`; return; }
+  if(!data.length){ box.innerHTML = '<div class="empty">No hay propuestas pendientes de confirmar</div>'; return; }
+  box.innerHTML = data.map(r=>`<div class="item">
+      <span>${r.deca_id} — a <b>${r.personal?.nombre || '—'}</b><br><span class="pmeta">Propuesta: ${r.matricula_pendiente} (actual: ${r.matricula||'—'})</span></span>
+      <span class="badge">⏳ pendiente</span>
+    </div>`).join('');
+}
+async function cargarDecasEnRuta(){
+  const box = document.getElementById('decasEnRutaPorChofer');
+  if(!sb) return;
+  const { data, error } = await sb.from('decas')
+    .select('*').eq('entregado', false)
+    .order('conductor').order('fecha', {ascending:false});
+  if(error){ box.innerHTML = `<div class="empty">Error: ${error.message}</div>`; return; }
+  if(!data.length){ box.innerHTML = '<div class="empty">No hay DeCAs en ruta ahora mismo — todo entregado</div>'; return; }
+  const porConductor = {};
+  data.forEach(r=>{ (porConductor[r.conductor||'Sin especificar'] ||= []).push(r); });
+  box.innerHTML = Object.entries(porConductor).map(([nombre, decasDe])=>`
+    <div class="item" style="flex-direction:column;align-items:stretch;gap:6px">
+      <span><b>${nombre}</b> <span class="badge">${decasDe.length} en ruta</span></span>
+      <div class="pmeta">${decasDe.map(r=>`${r.deca_id} → ${r.destino||'—'} (${r.matricula||'—'})`).join('<br>')}</div>
+    </div>`).join('');
+}
+
+if(sb){
+  cargarSelect('clientes','clienteSel');
+  cargarSelect('transportistas','transSel');
+  cargarPersonal();
+  cargarDestinos();
+  cargarHistorial();
+  cargarClienteDecasSel();
+  cargarMatriculas();
+  cargarPropuestasPendientes();
+  cargarDecasEnRuta();
+  setInterval(cargarPropuestasPendientes, 8000);
+  setInterval(cargarDecasEnRuta, 8000);
+  let choferesDestinoCache = [];
+  sb.from('personal').select('*').eq('puesto','chofer').order('nombre').then(({data})=>{
+    if(data){
+      choferesDestinoCache = data;
+      document.getElementById('choferDestinoSel').innerHTML = '<option value="">Elige…</option>' + data.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+    }
+  });
+  document.getElementById('choferDestinoSel').addEventListener('change', ()=>{
+    const chofer = choferesDestinoCache.find(c=>c.id === document.getElementById('choferDestinoSel').value);
+    if(chofer && chofer.matricula_actual){
+      const [tHab, rHab] = chofer.matricula_actual.split('/').map(s=>s && s.trim());
+      const tSel = document.getElementById('tractoraDestinoSel');
+      const rSel = document.getElementById('remolqueDestinoSel');
+      if(tHab && Array.from(tSel.options).some(o=>o.value===tHab)) tSel.value = tHab;
+      if(rHab && Array.from(rSel.options).some(o=>o.value===rHab)) rSel.value = rHab;
+    }
+  });
+  setInterval(cargarHistorial, 8000);
+} else {
+  document.getElementById('enviarMsg').textContent = '⚠️ Configura Supabase arriba en el script para poder usar el panel.';
+  document.getElementById('historial').innerHTML = '<div class="empty">Conecta Supabase para ver el historial</div>';
+}
+}catch(e){
+  document.body.innerHTML = '<div style="padding:20px;font-family:sans-serif;color:#c00">Error cargando el panel: '+e.message+'</div>';
+}
+</script>
+</body>
+</html>
