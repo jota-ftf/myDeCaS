@@ -176,7 +176,7 @@
     <label>Mercancía *</label>
     <input type="text" id="ndMercancia" list="ndListaMercancias" placeholder="Ej.: frutas y hortalizas frescas" autocomplete="off">
     <div class="row" style="gap:8px;align-items:flex-end">
-      <div style="flex:1"><label>Peso bruto (kg) *</label><input type="text" id="ndPeso" inputmode="decimal" placeholder="Ej.: 12000" autocomplete="off"></div>
+      <div style="flex:1"><label>Peso bruto (kg)</label><input type="text" id="ndPeso" inputmode="decimal" placeholder="Vacío = se calcula con los palets" autocomplete="off"></div>
       <label class="toggle" style="margin-bottom:12px;white-space:nowrap"><input type="checkbox" id="ndPesoAprox" checked> Aproximado</label>
     </div>
     <label>Nº de pedido / referencia (opcional)</label>
@@ -270,6 +270,9 @@ const TYPES = [
   {id:'especial', name:'Bulto especial', meta:'tamaño variable, estimado', ldmUnit:0.5},
   {id:'cajas', name:'Cajas sueltas', meta:'estimado', ldmUnit:0.02},
 ];
+// Peso medio (alto) por bulto, igual que en el cartón: un camión lleno sale en unos 23-24 t, nunca por encima de lo legal
+const PESO_TIPO = {'europeo':700, 'grande (americano)':900, 'carro':250, 'box':400, 'especial':500, 'cajas':15};
+function pesoEstimado(){ return TYPES.reduce((s,t)=> s + (state[t.id].qty || 0) * (PESO_TIPO[t.id] || 0), 0); }
 const CAPACITY = 13.2;   // metros útiles del remolque (33 europalets × 0,40 m)
 let state = TYPES.reduce((a,t)=>(a[t.id]={qty:0, remontable:false}, a), {});
 let lastGeo = null;
@@ -339,6 +342,8 @@ function render(){
     resumen.style.color = 'var(--ok)';
     msg.style.color = 'var(--ok)'; confirmBtn.disabled = false;
   }
+  const vivo = document.getElementById('ndPesoVivo');
+  if(vivo && currentCarga && currentCarga.pesoAuto){ const kg = pesoEstimado(); vivo.textContent = kg ? `${kg.toLocaleString('es-ES')} kg (aprox., calculado con los palets)` : 'se calcula con los palets'; }
   if(typeof licenciaBloqueada === 'function' && licenciaBloqueada()){ confirmBtn.disabled = true; msg.textContent = '⛔ Servicio suspendido: no se pueden crear DeCAs nuevos.'; msg.style.color = 'var(--bad)'; }
 }
 
@@ -474,17 +479,18 @@ $e('ndTrans').addEventListener('input', ()=>{
 $e('ndSeguir').onclick = ()=>{
   const v = id => $e(id).value.trim();
   const faltan = [['ndCargador','cargador'],['ndCargadorNif','NIF del cargador'],['ndTrans','transportista'],['ndTransNif','NIF del transportista'],
-    ['ndOrigen','origen'],['ndDestino','destino'],['ndMercancia','mercancía'],['ndPeso','peso']].filter(([id]) => !v(id)).map(([,n]) => n);
+    ['ndOrigen','origen'],['ndDestino','destino'],['ndMercancia','mercancía']].filter(([id]) => !v(id)).map(([,n]) => n);
   if(faltan.length){ $e('ndMsg').textContent = 'Falta: ' + faltan.join(', ') + '.'; return; }
   const peso = v('ndPeso').replace(/\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',', '.');
-  if(!(+peso > 0)){ $e('ndMsg').textContent = 'El peso tiene que ser un número de kilos (ej.: 12000).'; return; }
+  const pesoAuto = peso === '';   // sin peso: se calcula con los palets al confirmar
+  if(!pesoAuto && !(+peso > 0)){ $e('ndMsg').textContent = 'El peso tiene que ser un número de kilos (ej.: 12000), o déjalo vacío y se calcula con los palets.'; return; }
   $e('ndMsg').textContent = '';
   currentCarga = {
     id: null, manual: true, detalle_planificado: '',
     clientes: {nombre: v('ndCargador'), nif: v('ndCargadorNif').toUpperCase(), domicilio: v('ndCargadorDom')},
     transportistas: {nombre: v('ndTrans'), nif: v('ndTransNif').toUpperCase()},
     origen: v('ndOrigen'), almacen: v('ndOrigen'), destino: v('ndDestino'), mercancia: v('ndMercancia'),
-    peso: String(Math.round(+peso)), peso_aproximado: $e('ndPesoAprox').checked,
+    peso: pesoAuto ? '' : String(Math.round(+peso)), peso_aproximado: pesoAuto || $e('ndPesoAprox').checked, pesoAuto,
     referencia: v('ndRef'), autorizacion_especial: v('ndAut')
   };
   const c = currentCarga;
@@ -497,7 +503,7 @@ $e('ndSeguir').onclick = ()=>{
     ${c.clientes.domicilio ? `<b>Domicilio cargador:</b> ${escH(c.clientes.domicilio)}<br>` : ''}
     <b>Transportista:</b> ${escH(c.transportistas.nombre)} (NIF ${escH(c.transportistas.nif)})<br>
     <b>Mercancía:</b> ${escH(c.mercancia)}<br>
-    <b>Peso:</b> ${escH(c.peso)} kg ${c.peso_aproximado ? '(aprox.)' : ''}` +
+    <b>Peso:</b> ${c.pesoAuto ? '<span id="ndPesoVivo">se calcula con los palets</span>' : escH(c.peso) + ' kg ' + (c.peso_aproximado ? '(aprox.)' : '')}` +
     (c.referencia ? `<br><b>Nº pedido:</b> ${escH(c.referencia)}` : '') +
     (c.autorizacion_especial ? `<br><b>Autorización especial:</b> ${escH(c.autorizacion_especial)}` : '') +
     `<div style="margin-top:8px"><span class="badge" id="ndEditar" style="cursor:pointer">✏️ Cambiar estos datos</span></div>`;
@@ -1626,6 +1632,7 @@ function buildPdf(r, qrDataUrl){
 document.getElementById('confirmBtn').onclick = async ()=>{
   if(licenciaBloqueada()){ alert('El servicio está suspendido: no se pueden crear DeCAs nuevos. Avisa a tu empresa.'); return; }
   if(!currentCarga){ alert('Selecciona primero una carga pendiente de la lista, o pulsa «Crear nuevo DeCA».'); return; }
+  if(currentCarga.manual && currentCarga.pesoAuto){ currentCarga.peso = String(pesoEstimado()); currentCarga.peso_aproximado = true; }   // peso medio alto según los palets
   if(!matConfirmada()){ revisarMatricula(true); document.getElementById('matCard').scrollIntoView({behavior:'smooth', block:'center'}); alert('Antes de generar el DeCA, confirma que las matrículas son las correctas (arriba).'); return; }
   const decaId = 'DECA-' + Date.now().toString(36).toUpperCase(); // etiqueta legible
   const publicId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (decaId + '-' + Math.random().toString(36).slice(2));
