@@ -1649,16 +1649,16 @@ const FICHEROS = {
   clientes: {titulo:'Clientes (cargador contractual)', aviso:'El NIF y el domicilio salen en el DeCA: complétalos siempre.', tablas:[
     {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax']]}]},
   transportistas: {titulo:'Transportistas efectivos', aviso:'Su nombre y NIF salen en el DeCA. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
-    {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
+    {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
   autonomos: {titulo:'Autónomos', aviso:'Camioneros autónomos que trabajan para vosotros. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
-    {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},
+    {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},
   personal: {titulo:'Personal (cargadores y chóferes)', aviso:'Puesto: cargador y chofer usan la app del conductor; trafico y direccion entran en este cartón. El PIN lo elige cada uno. Si lo olvida, pulsa «Enviar acceso»: le llega por WhatsApp un enlace para elegir uno nuevo, sin que nadie más lo vea.', tablas:[
     {tabla:'personal', orden:'nombre', campos:[['nombre','Nombre'],['puesto','Puesto',['cargador','chofer','trafico','direccion']],['telefono','Teléfono'],['matricula_actual','Matrícula actual (tractora / remolque)'],['transportista_id','De qué autónomo (vacío = propio)','autonomo'],['pin','PIN','pin']]}]},
   flota: {titulo:'Flota', aviso:'Al elegir una tractora en el cartón se pone sola su pareja habitual; luego se pueden combinar libremente.', tablas:[
     {tabla:'tractoras', subtitulo:'Tractoras', orden:'matricula', campos:[['matricula','Matrícula'],['remolque_habitual','Remolque habitual']]},
     {tabla:'remolques', subtitulo:'Remolques', orden:'matricula', campos:[['matricula','Matrícula']]}]},
   destinos: {titulo:'Destinos', aviso:'', tablas:[
-    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
+    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
   tarifas_cli: {titulo:'Tarifas de clientes', aviso:'Una fila por cliente y destino. Deja el destino vacío para la tarifa general de ese cliente (se usa cuando no hay una más concreta). «Cobro por»: palet (rellena el precio de cada tipo), viaje (precio por camión completo para ese cliente) o kilo.', tablas:[
     {tabla:'tarifas_cliente', orden:'created_at', ordenar:(a,b) => nombreCliente(a.cliente_id).localeCompare(nombreCliente(b.cliente_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['cliente_id','Cliente','cliente'],['destino','Destino (vacío = todos)','destino'],['tipo','Cobro por',['palet','viaje','kilo']],['precio_e','€ europalet','num'],['precio_m','€ palet grande','num'],['precio_c','€ carro','num'],['precio_b','€ box','num'],['precio_k','€ caja','num'],['precio_kilo','€ / kilo','num'],['precio_viaje','€ / viaje','num']]}]},
@@ -1666,7 +1666,7 @@ const FICHEROS = {
     {tabla:'tarifas_autonomo', orden:'created_at', ordenar:(a,b) => nombreTrans(a.transportista_id).localeCompare(nombreTrans(b.transportista_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['transportista_id','Autónomo','autonomo'],['destino','Destino (vacío = todos)','destino'],['tipo','Pago por',['viaje','porcentaje','palet']],['precio','Importe (€ viaje · % · € palet)','num']]}]},
   almacenes: {titulo:'Almacenes (puntos de recogida)', aviso:'Borra los que ya no trabajáis y añade los nuevos: esta es la lista del desplegable del cartón.', tablas:[
-    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
+    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
 };
 function cambiarVista(v){
   if(usuario && !puedeVer(v)){ toast('No tienes permiso para ver esta sección.', true); v = 'carton'; }
@@ -1739,7 +1739,7 @@ async function renderFicherosBase(){
       </tbody></table></div></div>`;
   }).join('');
   box.innerHTML = `<div class="fich-head"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2>${cfg.titulo}</h2></div>${cfg.aviso ? `<p class="hint">${cfg.aviso}</p>` : ''}</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="${cfg.tablas[0].tabla}" title="Para los que tienen ubicación guardada y la dirección vacía">📍 Rellenar direcciones con la ubicación</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
     <div class="${cfg.tablas.length > 1 ? 'fich-cols' : ''}">${bloques}</div>`;
 }
 // ====== IMPORTAR DESDE EXCEL (todas las fichas: clientes, transportistas, autónomos, personal, flota, destinos, almacenes y tarifas) ======
@@ -1905,7 +1905,7 @@ async function hacerImportar(){
     }
     for(const x of completar){ const { error } = await sb.from(imp.t.tabla).update(x.cambios).eq('id', x.id); if(!error) completados++; }
   }catch(e){
-    const falta = /column|columna|schema cache/i.test(e.message || '') ? ' (falta ejecutar la actualización 31 en Supabase)' : '';
+    const falta = /column|columna|schema cache/i.test(e.message || '') ? ' (falta ejecutar la última actualización en Supabase)' : '';
     toast(`Se han importado ${hechos}. Error con el resto: ${e.message}${falta}`, true); btn.disabled = false; btn.textContent = 'Importar'; await cargarMaestros(); renderFicheros(); return;
   }
   $('#impDlg').hidden = true; btn.disabled = false; imp = null;
@@ -1924,6 +1924,49 @@ document.addEventListener('change', e => {
   if(imp && e.target.dataset && e.target.dataset.impc != null){ imp.mapa[e.target.dataset.impc] = +e.target.value; pintarImportar(); }
   if(imp && e.target.dataset && e.target.dataset.impx != null){ imp.usarExtra[e.target.dataset.impx] = e.target.checked; pintarImportar(); }
 });
+// ====== DIRECCIÓN A PARTIR DE LA UBICACIÓN GPS (OpenStreetMap, gratis: como mucho una consulta por segundo) ======
+async function direccionDesdeGps(lat, lng){
+  try{
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=es`, {signal: ctl.signal});
+    clearTimeout(t); if(!r.ok) return null;
+    const j = await r.json(), a = j.address || {};
+    const calle = [a.road || a.pedestrian || a.industrial || a.hamlet || a.neighbourhood || '', a.house_number || ''].filter(Boolean).join(' ');
+    const pueblo = a.city || a.town || a.village || a.municipality || '';
+    const prov = a.province || a.state_district || a.state || '';
+    const txt = [calle, [a.postcode, pueblo].filter(Boolean).join(' ')].filter(Boolean).join(', ') + (prov && prov !== pueblo ? ` (${prov})` : '');
+    return txt.trim() || (j.display_name ? j.display_name.split(',').slice(0, 4).join(',').trim() : null);
+  }catch(e){ return null; }
+}
+async function rellenarDireccionesGps(tabla, boton){
+  const lngK = tabla === 'almacenes' ? 'lon' : 'lng';
+  if((await columnasQueFaltan(tabla)).includes('direccion')){ toast('Primero ejecuta la actualización 33 en Supabase.', true); return; }
+  const { data } = await sb.from(tabla).select('*').limit(5000);
+  const lista = (data || []).filter(x => x.lat != null && x[lngK] != null && !String(x.direccion || '').trim());
+  if(!lista.length){ toast('No hay ninguno con ubicación guardada y la dirección vacía.'); return; }
+  if(!confirm(`Voy a buscar la dirección de ${lista.length} a partir de su ubicación (tarda un segundo cada uno). Después revísalas: la dirección del mapa puede no ser exacta.`)) return;
+  boton.disabled = true; let hechos = 0;
+  for(const x of lista){
+    boton.textContent = `📍 Buscando… ${hechos + 1}/${lista.length}`;
+    const d = await direccionDesdeGps(x.lat, x[lngK]);
+    if(d){ const { error } = await sb.from(tabla).update({direccion: d}).eq('id', x.id); if(!error) hechos++; }
+    await new Promise(r => setTimeout(r, 1100));
+  }
+  toast(`✅ Rellenadas ${hechos} de ${lista.length} direcciones. Revísalas.`);
+  await cargarMaestros(); renderFicheros();
+}
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-dirgps]'); if(b) rellenarDireccionesGps(b.dataset.dirgps, b); });
+// Columnas nuevas que todavía no existen en Supabase (si falta ejecutar una actualización)
+const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax'], transportistas:['domicilio'], almacenes:['direccion']};
+const columnasCache = {};
+async function columnasQueFaltan(tabla){
+  if(!COLUMNAS_NUEVAS[tabla]) return [];
+  if(!columnasCache[tabla]){
+    const { data } = await sb.from(tabla).select('*').limit(1);
+    columnasCache[tabla] = data && data[0] ? COLUMNAS_NUEVAS[tabla].filter(k => !(k in data[0])) : [];
+  }
+  return columnasCache[tabla];
+}
 async function ficheroGuardar(tabla, id, tr){
   const cfg = ((FICHEROS[vista] || {}).tablas || []).find(t => t.tabla === tabla) || Object.values(FICHEROS).flatMap(f => f.tablas).find(t => t.tabla === tabla);
   const row = {};
@@ -1944,9 +1987,11 @@ async function ficheroGuardar(tabla, id, tr){
     row[k] = v;
   });
   if(tabla === 'personal' && personalTodos.length && !('transportista_id' in personalTodos[0])) delete row.transportista_id;   // aún sin la actualización 28
-  if(tabla === 'clientes' && clientesTodos.length && !('contacto' in clientesTodos[0])){   // aún sin la actualización 31: se guarda lo demás
-    if(row.contacto || row.email || row.fax) toast('Contacto, email y fax no se guardan hasta ejecutar la actualización 31 en Supabase.', true);
-    delete row.contacto; delete row.email; delete row.fax;
+  const faltan = (await columnasQueFaltan(tabla)).filter(k => k in row);   // columnas nuevas sin la actualización 31/33: se guarda lo demás
+  if(faltan.length){ if(faltan.some(k => row[k])) toast(`«${faltan.join('», «')}» no se guarda hasta ejecutar la última actualización en Supabase.`, true); faltan.forEach(k => delete row[k]); }
+  if(['destinos','almacenes'].includes(tabla) && 'direccion' in row && !row.direccion){
+    const lat = row.lat, lng = tabla === 'almacenes' ? row.lon : row.lng;
+    if(lat != null && lng != null){ const d = await direccionDesdeGps(lat, lng); if(d){ row.direccion = d; toast('📍 Dirección sacada de la ubicación: ' + d + ' — revísala.'); } }
   }
   const clave = cfg.campos[0][0];
   if(!row[clave]){ toast(`Rellena «${cfg.campos[0][1]}».`, true); return; }
@@ -2730,8 +2775,8 @@ function renderBuscar(box){
 }
 function exportarBusqueda(){
   if(typeof XLSX === 'undefined' || !busq.res) return;
-  const filas = busq.res.map(r => ({'Fecha': new Date(r.fecha).toLocaleString('es-ES'), 'Nº DeCA': r.deca_id, 'Cliente': r.cargador_nombre || '', 'NIF cliente': r.cargador_nif || '', 'Origen': r.origen || '', 'Destino': r.destino || '',
-    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
+  const filas = busq.res.map(r => ({'Fecha': new Date(r.fecha).toLocaleString('es-ES'), 'Nº DeCA': r.deca_id, 'Cliente': r.cargador_nombre || '', 'NIF cliente': r.cargador_nif || '', 'Origen': r.origen || '', 'Dirección origen': r.origen_direccion || '', 'Destino': r.destino || '', 'Dirección destino': r.destino_direccion || '',
+    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Domicilio transportista': r.transportista_domicilio || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
     'Estado': estadoDeca(r)[1], 'Cambios de matrícula': (r.matricula_historial || []).map(h => `${h.anterior || '—'} → ${h.nueva} (${h.fecha || ''})`).join(' | '), 'PDF': r.pdf_url || ''}));
   const libro = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas), 'DeCAs');
   XLSX.writeFile(libro, `decas_${busq.desde || 'todas'}_${busq.hasta || ''}.xlsx`);

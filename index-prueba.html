@@ -169,10 +169,18 @@
     <input type="text" id="ndTrans" list="ndListaTrans" placeholder="Nombre o empresa" autocomplete="off">
     <label>NIF transportista *</label>
     <input type="text" id="ndTransNif" placeholder="NIF" autocomplete="off">
+    <label>Domicilio transportista</label>
+    <input type="text" id="ndTransDom" placeholder="Calle, población" autocomplete="off">
     <label style="margin-top:10px;display:block">Origen (dónde se carga) *</label>
     <input type="text" id="ndOrigen" list="ndListaAlmacenes" placeholder="Almacén o población" autocomplete="off">
+    <div class="row" style="gap:8px;align-items:flex-end">
+      <div style="flex:1"><label>Dirección del origen</label><input type="text" id="ndOrigenDir" placeholder="Calle, población" autocomplete="off"></div>
+      <button class="btn btn-ghost" id="ndAqui" type="button" style="width:auto;margin:0 0 1px;padding:10px 12px;font-size:.85rem" title="Pone la dirección de donde estás ahora">📍 Estoy aquí</button>
+    </div>
     <label>Destino (dónde se entrega) *</label>
     <input type="text" id="ndDestino" list="ndListaDestinos" placeholder="Mercado, plataforma, población…" autocomplete="off">
+    <label>Dirección del destino</label>
+    <input type="text" id="ndDestinoDir" placeholder="Calle, población" autocomplete="off">
     <label>Mercancía *</label>
     <input type="text" id="ndMercancia" list="ndListaMercancias" placeholder="Ej.: frutas y hortalizas frescas" autocomplete="off">
     <div class="row" style="gap:8px;align-items:flex-end">
@@ -402,8 +410,8 @@ async function cargarLugares(){
   const [a, d, cl, tr] = await Promise.all([sb.from('almacenes').select('*').limit(5000), sb.from('destinos').select('*').limit(5000),
     sb.from('clientes').select('*').order('nombre').limit(5000), sb.from('transportistas').select('*').order('nombre').limit(5000)]);
   lugares = {};
-  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url});
-  (d.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url});
+  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || ''});
+  (d.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || ''});
   // Listas para rellenar rápido el «Nuevo DeCA»
   listaClientes = cl.data || []; listaTrans = tr.data || [];
   const opts = arr => [...new Set(arr.filter(Boolean).map(String))].map(v => `<option value="${escA(v)}">`).join('');
@@ -435,6 +443,19 @@ function licenciaBloqueada(){
   const d = new Date(), hoy = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   return licenciaApp.activa === false || (!!licenciaApp.hasta && String(licenciaApp.hasta).slice(0,10) < hoy);
 }
+async function direccionDesdeGps(lat, lng){
+  try{
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=es`, {signal: ctl.signal});
+    clearTimeout(t); if(!r.ok) return null;
+    const j = await r.json(), a = j.address || {};
+    const calle = [a.road || a.pedestrian || a.industrial || a.hamlet || a.neighbourhood || '', a.house_number || ''].filter(Boolean).join(' ');
+    const pueblo = a.city || a.town || a.village || a.municipality || '';
+    const prov = a.province || a.state_district || a.state || '';
+    const txt = [calle, [a.postcode, pueblo].filter(Boolean).join(' ')].filter(Boolean).join(', ') + (prov && prov !== pueblo ? ` (${prov})` : '');
+    return txt.trim() || (j.display_name ? j.display_name.split(',').slice(0, 4).join(',').trim() : null);
+  }catch(e){ return null; }
+}
 function mostrarBotonNuevo(){
   const b = $e('nuevoDecaBtn');
   const permitido = String(ajustesApp.app_crear_deca || '').toLowerCase() !== 'no' && !licenciaBloqueada();
@@ -459,10 +480,10 @@ $e('nuevoDecaBtn').onclick = ()=>{
   salirDeNuevo();
   currentCarga = null; $e('trabajandoCard').style.display = 'none'; $e('resultCard').style.display = 'none';
   document.querySelectorAll('.pend-item').forEach(el=> el.classList.remove('activa'));
-  ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndDestino','ndPeso','ndRef','ndAut'].forEach(id => $e(id).value = '');
+  ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndOrigenDir','ndDestino','ndDestinoDir','ndPeso','ndRef','ndAut'].forEach(id => $e(id).value = '');
   $e('ndMercancia').value = 'Frutas y hortalizas frescas'; $e('ndPesoAprox').checked = true; $e('ndMsg').textContent = '';
   const t = transportistaPorDefecto();
-  $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : '';
+  $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : ''; $e('ndTransDom').value = t ? (t.domicilio || '') : '';
   $e('nuevoDecaCard').style.display = 'block';
   $e('nuevoDecaCard').scrollIntoView({behavior:'smooth', block:'start'});
 };
@@ -474,8 +495,18 @@ $e('ndCargador').addEventListener('input', ()=>{
 });
 $e('ndTrans').addEventListener('input', ()=>{
   const t = listaTrans.find(x => String(x.nombre || '').toLowerCase() === $e('ndTrans').value.trim().toLowerCase());
-  if(t) $e('ndTransNif').value = t.nif || '';
+  if(t){ $e('ndTransNif').value = t.nif || ''; $e('ndTransDom').value = t.domicilio || ''; }
 });
+// Al elegir un almacén o destino conocido, se pone sola su dirección (si la tiene en la ficha)
+['ndOrigen','ndDestino'].forEach(id => $e(id).addEventListener('input', ()=>{ const d = dirLugar($e(id).value.trim()); if(d) $e(id + 'Dir').value = d; }));
+// «Estoy aquí»: la dirección del sitio donde está ahora mismo el móvil
+$e('ndAqui').onclick = async ()=>{
+  const b = $e('ndAqui'); b.disabled = true; b.textContent = '📍 Buscando…';
+  const g = await capturarUbicacion();
+  const d = g ? await direccionDesdeGps(g.lat, g.lng) : null;
+  b.disabled = false; b.textContent = '📍 Estoy aquí';
+  if(d) $e('ndOrigenDir').value = d; else alert(g ? 'No he encontrado la dirección de este sitio. Escríbela a mano.' : 'No se ha podido leer tu ubicación: activa el GPS del móvil.');
+};
 $e('ndSeguir').onclick = ()=>{
   const v = id => $e(id).value.trim();
   const faltan = [['ndCargador','cargador'],['ndCargadorNif','NIF del cargador'],['ndTrans','transportista'],['ndTransNif','NIF del transportista'],
@@ -488,8 +519,9 @@ $e('ndSeguir').onclick = ()=>{
   currentCarga = {
     id: null, manual: true, detalle_planificado: '',
     clientes: {nombre: v('ndCargador'), nif: v('ndCargadorNif').toUpperCase(), domicilio: v('ndCargadorDom')},
-    transportistas: {nombre: v('ndTrans'), nif: v('ndTransNif').toUpperCase()},
+    transportistas: {nombre: v('ndTrans'), nif: v('ndTransNif').toUpperCase(), domicilio: v('ndTransDom')},
     origen: v('ndOrigen'), almacen: v('ndOrigen'), destino: v('ndDestino'), mercancia: v('ndMercancia'),
+    origen_direccion: v('ndOrigenDir'), destino_direccion: v('ndDestinoDir'),
     peso: pesoAuto ? '' : String(Math.round(+peso)), peso_aproximado: pesoAuto || $e('ndPesoAprox').checked, pesoAuto,
     referencia: v('ndRef'), autorizacion_especial: v('ndAut')
   };
@@ -498,7 +530,7 @@ $e('ndSeguir').onclick = ()=>{
   $e('trabajandoCard').style.display = 'block';
   $e('ordenDatos').innerHTML = `
     <div class="cargaGrande"><div class="cg-l">➕ Nuevo DeCA sin orden</div>
-      <div class="cg-w"><b style="color:var(--text)">${escH(c.origen)}</b> → <b style="color:var(--text)">${escH(c.destino)}</b></div></div>
+      <div class="cg-w"><b style="color:var(--text)">${escH(c.origen)}</b> → <b style="color:var(--text)">${escH(c.destino)}</b></div>${c.origen_direccion || c.destino_direccion ? `<div class="pmeta">${escH(c.origen_direccion || '—')} → ${escH(c.destino_direccion || '—')}</div>` : ''}</div>
     <b>Cargador:</b> ${escH(c.clientes.nombre)} (NIF ${escH(c.clientes.nif)})<br>
     ${c.clientes.domicilio ? `<b>Domicilio cargador:</b> ${escH(c.clientes.domicilio)}<br>` : ''}
     <b>Transportista:</b> ${escH(c.transportistas.nombre)} (NIF ${escH(c.transportistas.nif)})<br>
@@ -1198,12 +1230,16 @@ document.getElementById('cambiarUsuarioBtn').onclick = ()=>{
 };
 
 // ====== Polling cada 8s (mismo patrón que el TPV) — todas las cargas pendientes asignadas a esta persona ======
+let sinDomicilioTrans = false;
+const dirLugar = n => (lugares[String(n || '').toLowerCase()] || {}).direccion || '';
 async function pollCargasPendientes(){
   if(!sb || !choferActual) return;
-  const { data, error } = await sb.from('cargas_planificadas')
-    .select('*, clientes(nombre,nif,domicilio), transportistas(nombre,nif)')
+  const consulta = campos => sb.from('cargas_planificadas')
+    .select('*, clientes(nombre,nif,domicilio), transportistas(' + campos + ')')
     .eq('estado','asignada').eq('asignado_id', choferActual.id)
     .order('orden', {ascending:true, nullsFirst:false}).order('created_at', {ascending:true});
+  let { data, error } = await consulta(sinDomicilioTrans ? 'nombre,nif' : 'nombre,nif,domicilio');
+  if(error && !sinDomicilioTrans && /domicilio/.test(error.message || '')){ sinDomicilioTrans = true; ({ data, error } = await consulta('nombre,nif')); }   // falta la actualización 33
   if(error){ document.getElementById('syncTag').textContent = 'Error de sincronización'; return; }
   document.getElementById('syncTag').textContent = 'Sincronizado · ' + new Date().toLocaleTimeString('es-ES');
   cargasPendientes = data || [];
@@ -1416,8 +1452,9 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
     id: row.deca_id, driver: row.conductor, plate: nuevaLimpia, detail: row.detalle,
     ldm: row.ldm, date: new Date(row.fecha).toLocaleString('es-ES'), geo: row.geo, url: row.pdf_url,
     cargadorNombre: row.cargador_nombre, cargadorNif: row.cargador_nif, cargadorDomicilio: row.cargador_domicilio,
-    transportistaNombre: row.transportista_nombre, transportistaNif: row.transportista_nif,
+    transportistaNombre: row.transportista_nombre, transportistaNif: row.transportista_nif, transportistaDomicilio: row.transportista_domicilio || '',
     origen: row.origen, destino: row.destino, mercancia: row.mercancia, peso: row.peso,
+    origenDireccion: row.origen_direccion || '', destinoDireccion: row.destino_direccion || '',
     autorizacionEspecial: row.autorizacion_especial || '',
     matriculaHistorial: nuevoHistorial
   };
@@ -1530,19 +1567,23 @@ function buildPdf(r, qrDataUrl){
   doc.text('NIF: ' + (r.cargadorNif||'—'), M+2, y+15);
   doc.text(String(r.cargadorDomicilio||'—'), M+2, y+21, {maxWidth:wA-4});
 
-  box(M+wA, y, wB, h1); label(M+wA, y, '16  TRANSPORTISTA EFECTIVO (nombre, NIF)');
+  box(M+wA, y, wB, h1); label(M+wA, y, '16  TRANSPORTISTA EFECTIVO (nombre, NIF, domicilio)');
   negrita(String(r.transportistaNombre||'—'), M+wA+2, y+9, {maxWidth:wB-4});
   doc.text('NIF: ' + (r.transportistaNif||'—'), M+wA+2, y+15);
+  if(r.transportistaDomicilio) doc.text(doc.splitTextToSize(String(r.transportistaDomicilio), wB-4).slice(0, 1), M+wA+2, y+21);
   y += h1;
 
   // Fila 2: Lugar y fecha de carga (4) | Lugar de entrega (3)
-  const h2 = 20;
-  box(M, y, wA, h2); label(M, y, '4  LUGAR Y FECHA DE CARGA (origen)');
+  const h2 = 27;
+  const dirPdf = (txt, x, yy, w)=>{ if(!txt) return; doc.setFontSize(8); doc.text(doc.splitTextToSize(String(txt), w).slice(0, 2), x, yy); doc.setFontSize(9); };
+  box(M, y, wA, h2); label(M, y, '4  LUGAR Y FECHA DE CARGA (origen, dirección)');
   negrita(String(r.origen||'—'), M+2, y+9, {maxWidth:wA-4});
-  doc.text('Fecha: ' + r.date, M+2, y+16);
+  dirPdf(r.origenDireccion, M+2, y+14, wA-4);
+  doc.text('Fecha: ' + r.date, M+2, y+24);
 
-  box(M+wA, y, wB, h2); label(M+wA, y, '3  LUGAR DE ENTREGA (destino)');
+  box(M+wA, y, wB, h2); label(M+wA, y, '3  LUGAR DE ENTREGA (destino, dirección)');
   negrita(String(r.destino||'—'), M+wA+2, y+9, {maxWidth:wB-4});
+  dirPdf(r.destinoDireccion, M+wA+2, y+14, wB-4);
   y += h2;
 
   // Fila 3: Naturaleza mercancía (9) | Nº bultos (7) | Peso bruto (11)
@@ -1655,8 +1696,10 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   const record = {
     id: decaId, driver, plate, detail, ldm: ldm.toFixed(1), date: now.toLocaleString('es-ES'), geo, url: publicUrl,
     cargadorNombre: c.nombre, cargadorNif: c.nif, cargadorDomicilio: c.domicilio,
-    transportistaNombre: t.nombre, transportistaNif: t.nif,
+    transportistaNombre: t.nombre, transportistaNif: t.nif, transportistaDomicilio: t.domicilio || '',
     origen: currentCarga.origen, destino: currentCarga.destino, mercancia: currentCarga.mercancia,
+    origenDireccion: currentCarga.origen_direccion || dirLugar(currentCarga.almacen) || dirLugar(currentCarga.origen),
+    destinoDireccion: currentCarga.destino_direccion || dirLugar(currentCarga.destino),
     peso: currentCarga.peso + (currentCarga.peso_aproximado ? ' (aprox.)' : ''),
     autorizacionEspecial: currentCarga.autorizacion_especial || ''
   };
@@ -1683,15 +1726,21 @@ document.getElementById('confirmBtn').onclick = async ()=>{
       .upload(`${publicId}.pdf`, blob, {contentType:'application/pdf', upsert:true, cacheControl:'0'});
     if(upErr){ alert('No se pudo subir el PDF al servidor: ' + upErr.message); return; }
 
-    const { error: insErr } = await sb.from('decas').insert({
+    const filaDeca = {
       deca_id: decaId, carga_id: currentCarga && !currentCarga.manual ? currentCarga.id : null,
       conductor: driver, matricula: plate, detalle: detail, ldm: ldm.toFixed(1), geo,
       fecha: now.toISOString(), pdf_url: publicUrl,
       cargador_nombre: record.cargadorNombre, cargador_nif: record.cargadorNif, cargador_domicilio: record.cargadorDomicilio,
       transportista_nombre: record.transportistaNombre, transportista_nif: record.transportistaNif,
       origen: record.origen, destino: record.destino, mercancia: record.mercancia, peso: record.peso,
-      autorizacion_especial: record.autorizacionEspecial || null
-    });
+      autorizacion_especial: record.autorizacionEspecial || null,
+      transportista_domicilio: record.transportistaDomicilio || null, origen_direccion: record.origenDireccion || null, destino_direccion: record.destinoDireccion || null
+    };
+    let { error: insErr } = await sb.from('decas').insert(filaDeca);
+    if(insErr && /direccion|domicilio/.test(insErr.message || '')){   // falta la actualización 33: se guarda sin las direcciones (el PDF sí las lleva)
+      delete filaDeca.transportista_domicilio; delete filaDeca.origen_direccion; delete filaDeca.destino_direccion;
+      ({ error: insErr } = await sb.from('decas').insert(filaDeca));
+    }
     if(insErr){ alert('No se pudo guardar en el servidor: ' + insErr.message); return; }
 
     if(currentCarga.manual) guardarDatosNuevos(currentCarga);
