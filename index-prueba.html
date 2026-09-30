@@ -96,6 +96,21 @@
 </head>
 <body>
 <div style="background:#ff9f43;color:#1a1000;text-align:center;font-weight:800;padding:6px 10px;font-size:.9rem">🧪 VERSIÓN DE PRUEBA — usa los mismos datos que la app de verdad</div>
+<div id="gpsAviso" style="position:fixed;inset:0;z-index:110;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;padding:18px">
+  <div style="background:var(--card);border:2px solid var(--accent);border-radius:16px;padding:20px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <div style="font-size:2.2rem;text-align:center">📍</div>
+    <h2 style="margin:6px 0 12px;font-size:1.2rem;text-align:center">Tu ubicación, solo mientras trabajas</h2>
+    <div style="line-height:1.5;font-size:.97rem">
+      <div style="margin-bottom:8px">✅ Solo se usa mientras tienes <b>cargas, viaje o descargas</b> en la app.</div>
+      <div style="margin-bottom:8px">🚛 Sirve para <b>calcular los costes del camión</b> y confirmar las entregas. Nada más.</div>
+      <div style="margin-bottom:8px">🔒 <b>Se apaga sola</b> al finalizar el viaje o cerrar sesión. Fuera del trabajo, nadie sabe dónde estás.</div>
+      <div>🔔 Mientras está activa verás un aviso fijo en el móvil, para que siempre sepas cuándo se usa.</div>
+    </div>
+    <button class="btn btn-primary" id="gpsAceptar" type="button" style="margin-top:16px">Entendido, activar</button>
+    <button class="btn btn-ghost" id="gpsAhoraNo" type="button">Ahora no</button>
+    <div class="pmeta" style="text-align:center;margin-top:6px">Con «Ahora no» la app funciona igual, pero la oficina no verá dónde está el camión.</div>
+  </div>
+</div>
 <div class="wrap">
   <h1>🚚 App del Conductor</h1>
   <div class="sub">Ajusta la carga real, confirma y genera el DeCA con QR</div>
@@ -1000,11 +1015,12 @@ function gpsDebeIr(){
 function revisarGpsFondo(){
   const debe = gpsDebeIr();
   if(debe && gpsVigilante == null && !gpsArrancando){
+    if(!gpsAceptado()){ preguntarGps(); return; }
     gpsArrancando = true;
     try{
       gpsVigilante = CAPN.BackgroundGeolocation.addWatcher({
         backgroundTitle: 'MyDeCaS · trabajo en curso',
-        backgroundMessage: 'Compartiendo tu ubicación con Tráfico mientras tienes cargas o viaje. Se apaga solo al terminar.',
+        backgroundMessage: 'Solo durante tu trabajo. Se apaga al finalizar el viaje o cerrar sesión.',
         requestPermissions: true, stale: false, distanceFilter: 100
       }, (pos, err)=>{
         if(err){
@@ -1029,6 +1045,21 @@ function revisarGpsFondo(){
     try{ CAPN.BackgroundGeolocation.removeWatcher({id}).catch(()=>{}); }catch(e){}
   }
 }
+// Aviso al conductor ANTES de encender el GPS (una vez por móvil; queda constancia de cuándo lo aceptó)
+let gpsAhoraNo = false;
+const claveGps = ()=> choferActual ? 'gps_ok_' + choferActual.id : '';
+function gpsAceptado(){ try{ return !!localStorage.getItem(claveGps()); }catch(e){ return false; } }
+function preguntarGps(){
+  if(gpsAhoraNo || !choferActual) return;
+  document.getElementById('gpsAviso').style.display = 'flex';
+}
+document.getElementById('gpsAceptar').onclick = ()=>{
+  document.getElementById('gpsAviso').style.display = 'none';
+  try{ localStorage.setItem(claveGps(), new Date().toISOString()); }catch(e){}
+  if(sb && choferActual) sb.from('personal').update({gps_informado: new Date().toISOString()}).eq('id', choferActual.id).then(()=>{});   // sin la actualización 31 no pasa nada
+  revisarGpsFondo();
+};
+document.getElementById('gpsAhoraNo').onclick = ()=>{ document.getElementById('gpsAviso').style.display = 'none'; gpsAhoraNo = true; };   // se vuelve a preguntar la próxima vez que entre
 function pedirPermisoAvisos(){
   if(notifPedido || !CAPN.LocalNotifications) return;
   notifPedido = true;
@@ -1130,6 +1161,7 @@ function limpiarPantalla(){
   $i('igualQueOrdenBtn').style.display = ''; $i('avisoCambiarSolo').style.display = ''; $i('ndPaletsAyuda').style.display = 'none';
   $i('cambiarPinBtn').style.display = 'none';
   setTimeout(revisarGpsFondo, 0);   // sin sesión, el GPS en segundo plano se apaga
+  gpsAhoraNo = false; $i('gpsAviso').style.display = 'none';
   $i('plate').value = ''; $i('plateSel').value = ''; $i('plateRemolqueSel').innerHTML = '';
   $i('viajeObs').innerHTML = ''; $i('pendientesMatricula').innerHTML = '';
   $i('descargasLista').innerHTML = ''; $i('descargasBadge').textContent = '0';

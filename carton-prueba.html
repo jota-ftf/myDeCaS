@@ -1647,7 +1647,7 @@ async function escribirComprobado(query, okMsg){
 }
 const FICHEROS = {
   clientes: {titulo:'Clientes (cargador contractual)', aviso:'El NIF y el domicilio salen en el DeCA: complétalos siempre.', tablas:[
-    {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono']]}]},
+    {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax']]}]},
   transportistas: {titulo:'Transportistas efectivos', aviso:'Su nombre y NIF salen en el DeCA. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
   autonomos: {titulo:'Autónomos', aviso:'Camioneros autónomos que trabajan para vosotros. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
@@ -1729,7 +1729,7 @@ async function renderFicherosBase(){
     const filas = (datos[i].data || []).filter(t.filtro || (() => true));
     if(t.ordenar) filas.sort(t.ordenar);
     const err = datos[i].error ? `<p class="why">No se pudo leer: ${esc(datos[i].error.message)}</p>` : '';
-    return `<div data-ftabla="${t.tabla}">${t.subtitulo ? `<h3 style="margin:0 0 6px">${t.subtitulo} · ${filas.length}</h3>` : ''}${err}
+    return `<div data-ftabla="${t.tabla}">${t.subtitulo ? `<h3 style="margin:0 0 6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">${t.subtitulo} · ${filas.length} ${cfg.tablas.length > 1 ? botonImportar(t.tabla, 'Importar ' + t.subtitulo.toLowerCase()) : ''}</h3>` : ''}${err}
       <div class="tabla-wrap"><table class="fichero"><thead><tr>${t.campos.map(c => `<th>${c[1]}</th>`).join('')}<th></th></tr></thead><tbody>
       <tr class="nuevo">${t.campos.map(c => `<td>${celda(c, c[2] && Array.isArray(c[2]) ? c[2][0] : '', t.tabla, null, {}).replace('class="field"', `class="field" placeholder="${c[1]}${c[0] === t.campos[0][0] ? ' (nuevo)' : ''}"${t.tabla === 'tarifas_cliente' && /^precio_(e|m|c|b|k|kilo)$/.test(c[0]) ? ' list="listaPrecios"' : ''}`)}</td>`).join('')}
         <td class="acc"><button type="button" class="btn small primary" data-fadd="${t.tabla}">Añadir</button></td></tr>
@@ -1739,28 +1739,44 @@ async function renderFicherosBase(){
       </tbody></table></div></div>`;
   }).join('');
   box.innerHTML = `<div class="fich-head"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2>${cfg.titulo}</h2></div>${cfg.aviso ? `<p class="hint">${cfg.aviso}</p>` : ''}</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? `<button type="button" class="btn small" id="importarBtn" title="Sube una hoja de cálculo (Excel, CSV…) con la lista">📥 Importar desde Excel</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
     <div class="${cfg.tablas.length > 1 ? 'fich-cols' : ''}">${bloques}</div>`;
 }
-// ====== IMPORTAR DESDE EXCEL (clientes, transportistas, destinos, almacenes, flota, personal…) ======
-// Lee la primera hoja, reconoce las columnas por su título, enseña cómo quedará y no repite los que ya existen.
+// ====== IMPORTAR DESDE EXCEL (todas las fichas: clientes, transportistas, autónomos, personal, flota, destinos, almacenes y tarifas) ======
+// Lee la primera hoja, reconoce las columnas por su título, enseña cómo quedará y no repite lo que ya existe.
 const SINONIMOS = {
-  nombre: ['nombre','razon social','nombre fiscal','denominacion','cliente','empresa','nombre comercial','proveedor','transportista','destino','almacen','name'],
-  nif: ['nif','cif','dni','nif/cif','cif/nif','nif cif','nie','vat','nº identificacion fiscal','identificacion fiscal'],
+  nombre: ['nombre','razon social','nombre fiscal','denominacion','cliente','empresa','nombre comercial','proveedor','transportista','destino','almacen','nombre y apellidos','trabajador','name'],
+  nif: ['nif','cif','dni','nif/cif','cif/nif','nif cif','nie','vat','n identificacion fiscal','identificacion fiscal'],
   domicilio: ['domicilio','direccion','direccion fiscal','domicilio fiscal','calle','address','direccion completa'],
   direccion: ['direccion','domicilio','calle','address'],
   telefono: ['telefono','tel','tlf','telf','movil','telefono movil','telefono 1','phone','whatsapp'],
-  matricula: ['matricula','matriculas','placa'],
-  remolque_habitual: ['remolque','remolque habitual'],
+  contacto: ['contacto','persona de contacto','persona contacto','atencion','a la atencion de','responsable'],
+  email: ['email','e-mail','correo','correo electronico','mail','e mail'],
+  fax: ['fax','telefax'],
+  matricula: ['matricula','matriculas','placa','tractora'],
+  remolque_habitual: ['remolque','remolque habitual','semirremolque'],
   puesto: ['puesto','cargo','categoria'],
   matricula_actual: ['matricula','matricula actual'],
+  maps_url: ['ubicacion','mapa','google maps','enlace google maps','enlace mapa','maps','coordenadas','localizacion'],
+  cliente_id: ['cliente','nombre cliente','razon social','empresa','cargador'],
+  transportista_id: ['autonomo','nombre autonomo','transportista','de que autonomo'],
+  destino: ['destino','plaza','mercado','destino (vacio = todos)'],
+  tipo: ['tipo','cobro por','pago por','modalidad','forma de cobro','forma de pago'],
+  precio_e: ['europalet','europalets','euro','palet europeo','precio europalet','€ europalet','eur'],
+  precio_m: ['palet grande','palets grandes','grande','americano','palet americano','industrial','metro','€ palet grande'],
+  precio_c: ['carro','carros','€ carro'],
+  precio_b: ['box','€ box'],
+  precio_k: ['caja','cajas','caja suelta','€ caja'],
+  precio_kilo: ['kilo','precio kilo','€/kg','€ kg','€ / kilo','kg'],
+  precio_viaje: ['viaje','precio viaje','camion completo','porte','€ / viaje','€ viaje'],
+  precio: ['precio','importe','tarifa','€','importe (€ viaje · % · € palet)'],
 };
-const EXTRA_DOMICILIO = [['cp',['cp','c.p.','codigo postal','cod postal','c postal','postal']],['poblacion',['poblacion','localidad','municipio','ciudad','city']],['provincia',['provincia','province']]];
-const normT = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\./g, '').replace(/[_:]/g, ' ').replace(/\s+/g, ' ').trim();   // «C.I.F.» → «cif»
-function camposImportables(cfg){
-  if(!cfg || !cfg.tablas || cfg.tablas.length !== 1 || /^tarifas/.test(cfg.tablas[0].tabla)) return [];
-  return cfg.tablas[0].campos.filter(c => !c[2] || Array.isArray(c[2]));
-}
+const EXTRA_DOMICILIO = [['cp',['cp','codigo postal','cod postal','c postal','postal']],['poblacion',['poblacion','localidad','municipio','ciudad','city']],['provincia',['provincia','province']]];
+const SIN_LAT = ['lat','latitud','latitude'], SIN_LNG = ['lng','lon','long','longitud','longitude'];
+const normT = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\./g, '').replace(/[_:º°ª]/g, ' ').replace(/\s+/g, ' ').trim();   // «C.I.F.» → «cif»
+function camposImportablesT(t){ return (t && t.campos || []).filter(c => c[2] !== 'pin' && c[0] !== 'propia'); }
+function camposImportables(cfg){ return cfg && cfg.tablas && cfg.tablas.length === 1 ? camposImportablesT(cfg.tablas[0]) : []; }
+function botonImportar(tabla, texto){ return `<button type="button" class="btn small" data-imptabla="${tabla}" title="Sube una hoja de cálculo (Excel, CSV…) con la lista">📥 ${texto || 'Importar desde Excel'}</button>`; }
 let imp = null;
 function columnaPara(cab, campo){
   const lista = [...(SINONIMOS[campo[0]] || []), normT(campo[1]), normT(campo[0])].map(normT);
@@ -1768,8 +1784,15 @@ function columnaPara(cab, campo){
   if(i < 0) i = cab.findIndex(h => h && lista.some(x => x.length > 3 && (h.startsWith(x + ' ') || h.endsWith(' ' + x))));
   return i;
 }
-async function abrirImportar(archivo){
-  const cfg = FICHEROS[vista], t = cfg.tablas[0], campos = camposImportables(cfg);
+function numeroES(v){
+  let t = String(v).replace(/[€%\s]/g, '');
+  if(t.includes(',') && t.includes('.')) t = t.replace(/\./g, '').replace(',', '.'); else t = t.replace(',', '.');
+  const n = parseFloat(t); return isNaN(n) ? null : n;
+}
+function buscarPor(lista, v){ const n = normT(v), nif = n.replace(/[^a-z0-9]/g, ''); return lista.find(x => normT(x.nombre) === n) || (nif.length > 5 ? lista.find(x => x.nif && normT(x.nif).replace(/[^a-z0-9]/g, '') === nif) : null) || null; }
+async function abrirImportar(archivo, tabla){
+  const cfg = Object.values(FICHEROS).find(f => f.tablas.some(t => t.tabla === tabla) && f === FICHEROS[vista]) || Object.values(FICHEROS).find(f => f.tablas.some(t => t.tabla === tabla));
+  const t = cfg.tablas.find(x => x.tabla === tabla), campos = camposImportablesT(t);
   let filas;
   try{
     const libro = XLSX.read(await archivo.arrayBuffer(), {type:'array'});
@@ -1784,58 +1807,94 @@ async function abrirImportar(archivo){
   const conTitulos = mejor > 0;
   const titulos = conTitulos ? filas[fTit].map((h, i) => String(h).trim() || `Columna ${i+1}`) : filas[0].map((_, i) => `Columna ${i+1}`);
   const datos = conTitulos ? filas.slice(fTit + 1) : filas;
-  const mapa = {}; campos.forEach((c, k) => { const i = conTitulos ? columnaPara(cab, c) : (k < titulos.length ? k : -1); mapa[c[0]] = i; });
+  const mapa = {}, usadas = new Set();
+  campos.forEach((c, k) => { let i = conTitulos ? columnaPara(cab, c) : (k < titulos.length ? k : -1); if(usadas.has(i)) i = -1; mapa[c[0]] = i; if(i >= 0) usadas.add(i); });
   const extras = {}; if(campos.some(c => c[0] === 'domicilio') && conTitulos) EXTRA_DOMICILIO.forEach(([k, syn]) => { const i = cab.findIndex(h => syn.map(normT).includes(h)); if(i >= 0 && i !== mapa.domicilio) extras[k] = i; });
+  const latlng = conTitulos && campos.some(c => c[2] === 'mapa') ? {lat: cab.findIndex(h => SIN_LAT.includes(h)), lng: cab.findIndex(h => SIN_LNG.includes(h))} : null;
   const { data: existentes } = await sb.from(t.tabla).select('*').limit(5000);
-  imp = {cfg, t, campos, titulos, datos, mapa, extras, usarExtra: Object.fromEntries(Object.keys(extras).map(k => [k, true])), existentes: (existentes || []).filter(t.filtro || (() => true))};
-  $('#impTit').textContent = `Importar ${cfg.titulo.split('(')[0].trim().toLowerCase()} desde «${archivo.name}»`;
-  $('#impAyuda').textContent = conTitulos ? 'He reconocido las columnas por su título. Revisa que cada dato sale de la columna correcta y pulsa «Importar». No se guarda nada hasta entonces.' : 'No he encontrado títulos en la hoja: elige de qué columna sale cada dato.';
+  imp = {cfg, t, campos, titulos, datos, mapa, extras, latlng: latlng && latlng.lat >= 0 && latlng.lng >= 0 ? latlng : null, usarExtra: Object.fromEntries(Object.keys(extras).map(k => [k, true])), existentes: (existentes || []).filter(t.filtro || (() => true))};
+  const que = (t.subtitulo || cfg.titulo).split('(')[0].trim().toLowerCase();
+  $('#impTit').textContent = `Importar ${que} desde «${archivo.name}»`;
+  $('#impAyuda').textContent = (conTitulos ? 'He reconocido las columnas por su título. Revisa que cada dato sale de la columna correcta y pulsa «Importar». No se guarda nada hasta entonces.' : 'No he encontrado títulos en la hoja: elige de qué columna sale cada dato.') + (campos.some(c => c[2] === 'cliente' || c[2] === 'autonomo') ? ' Los clientes y autónomos se buscan por su nombre o NIF: tienen que estar dados de alta antes.' : '');
   $('#impMapa').innerHTML = campos.map(c => `<label>${esc(c[1])}${c[0] === t.campos[0][0] ? ' *' : ''}<select class="field" data-impc="${c[0]}"><option value="-1">— No importar —</option>${titulos.map((h, i) => `<option value="${i}" ${mapa[c[0]] === i ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`).join('');
-  $('#impExtra').innerHTML = Object.keys(extras).length ? `<div class="hint">Añadir al domicilio: ${Object.entries(extras).map(([k, i]) => `<label style="margin-right:12px"><input type="checkbox" data-impx="${k}" checked> ${esc(titulos[i])}</label>`).join('')}</div>` : '';
-  $('#impCompletar').parentElement.hidden = false;
+  $('#impExtra').innerHTML = (Object.keys(extras).length ? `<div class="hint">Añadir al domicilio: ${Object.entries(extras).map(([k, i]) => `<label style="margin-right:12px"><input type="checkbox" data-impx="${k}" checked> ${esc(titulos[i])}</label>`).join('')}</div>` : '') +
+    (imp.latlng ? `<div class="hint">📍 La ubicación se toma de las columnas «${esc(titulos[imp.latlng.lat])}» y «${esc(titulos[imp.latlng.lng])}» cuando no haya enlace de Google Maps.</div>` : '');
   pintarImportar();
   $('#impDlg').hidden = false;
 }
+function convertir(c, v, r, f){
+  const [k, , tipo, extra] = c;
+  if(tipo === 'mapa'){
+    if(!v && imp.latlng) v = `${String(f[imp.latlng.lat] ?? '').trim()}, ${String(f[imp.latlng.lng] ?? '').trim()}`;
+    const co = coordsDe(v); if(co){ r[extra.lat] = co.lat; r[extra.lng] = co.lng; }
+    if(/^https?:/i.test(v)) r[k] = v;
+    if(co || /^https?:/i.test(v)) r._ver[k] = co ? `${co.lat.toFixed(5)}, ${co.lng.toFixed(5)}` : 'enlace';
+    return;
+  }
+  if(v === '') return;
+  if(Array.isArray(tipo)){
+    const n = normT(v);
+    const o = (/%/.test(v) && tipo.includes('porcentaje')) ? 'porcentaje' : tipo.find(o => { const x = normT(o); return n === x || n.startsWith(x) || n.split(' ').includes(x); });
+    if(o){ r[k] = o; r._ver[k] = o; } else r._mal.push(`«${v}» no vale para ${c[1]}`);
+    return;
+  }
+  if(tipo === 'num'){ const n = numeroES(v); if(n != null){ r[k] = n; r._ver[k] = String(n).replace('.', ','); } return; }
+  if(tipo === 'bool'){ const n = normT(v); if(['si','s','x','1','true','verdadero','yes'].includes(n)){ r[k] = true; r._ver[k] = 'Sí'; } else if(['no','n','0','false','falso'].includes(n)){ r[k] = false; r._ver[k] = 'No'; } return; }
+  if(tipo === 'cliente' || tipo === 'autonomo'){
+    const x = buscarPor(tipo === 'cliente' ? clientesTodos : transportistasTodos.filter(t => t.autonomo), v);
+    if(x){ r[k] = x.id; r._ver[k] = x.nombre; } else { r._ver[k] = `¿${v}?`; r._mal.push(`${tipo === 'cliente' ? 'Cliente' : 'Autónomo'} «${v}» no encontrado`); }
+    return;
+  }
+  if(k === 'nif') v = v.toUpperCase().replace(/[\s.\-]/g, '');          // «b-12.345.678» → «B12345678»
+  if(/matricula|remolque/.test(k)) v = v.toUpperCase();
+  if(k === 'email') v = v.toLowerCase().replace(/\s/g, '');
+  r[k] = v; r._ver[k] = v;
+}
 function filasImportar(){
-  const {campos, datos, mapa, extras, usarExtra, t} = imp;
-  const clave0 = t.campos[0][0];
+  const {campos, datos, mapa, extras, usarExtra} = imp;
   return datos.map(f => {
-    const r = {};
+    const r = {_ver:{}, _mal:[]};
     campos.forEach(c => {
       const i = mapa[c[0]]; let v = i >= 0 ? String(f[i] ?? '').trim() : '';
       if(c[0] === 'domicilio'){ const partes = [v, ...['cp','poblacion','provincia'].filter(k => extras[k] != null && usarExtra[k]).map(k => String(f[extras[k]] ?? '').trim())].filter(Boolean); v = partes.join(', ').replace(/,\s*(\d{5}),\s*/, ', $1 '); }
-      if(Array.isArray(c[2]) && v){ const n = normT(v); v = c[2].find(o => normT(o) === n || n.startsWith(normT(o))) || ''; }
-      if(c[0] === 'nif') v = v.toUpperCase().replace(/[\s.\-]/g, '');          // «b-12.345.678» → «B12345678»
-      if(/matricula|remolque/.test(c[0])) v = v.toUpperCase();
-      if(v !== '') r[c[0]] = v;
+      convertir(c, v, r, f);
     });
     return r;
-  }).filter(r => r[clave0]);
+  });
 }
-function claveDup(r){ return r.nif ? 'nif:' + normT(r.nif).replace(/[^a-z0-9]/g, '') : 'n:' + normT(r[imp.t.campos[0][0]]); }
+function claveDup(r){
+  const tb = imp.t.tabla;
+  if(tb === 'tarifas_cliente') return 'tc:' + r.cliente_id + '|' + normT(r.destino);
+  if(tb === 'tarifas_autonomo') return 'ta:' + r.transportista_id + '|' + normT(r.destino);
+  return r.nif ? 'nif:' + normT(r.nif).replace(/[^a-z0-9]/g, '') : 'n:' + normT(r[imp.t.campos[0][0]]);
+}
 function pintarImportar(){
+  const clave0 = imp.t.campos[0][0], porNombre = !['cliente','autonomo'].includes(imp.t.campos[0][2]);
   const filas = filasImportar();
-  const ya = new Map(); imp.existentes.forEach(x => { ya.set(claveDup(x), x); ya.set('n:' + normT(x[imp.t.campos[0][0]]), x); });
-  const vistos = new Set(); let nuevos = 0, repetidos = 0, enArchivo = 0;
+  const ya = new Map(); imp.existentes.forEach(x => { ya.set(claveDup(x), x); if(porNombre) ya.set('n:' + normT(x[clave0]), x); });
+  const vistos = new Set(); let nuevos = 0, repetidos = 0, enArchivo = 0, sinClave = 0, conFallos = 0;
   imp.plan = filas.map(r => {
-    const k = claveDup(r), kn = 'n:' + normT(r[imp.t.campos[0][0]]);
+    if(r[clave0] == null || r[clave0] === ''){ sinClave++; return {r, estado:'sin'}; }
+    if(r._mal.length) conFallos++;
+    const k = claveDup(r), kn = porNombre ? 'n:' + normT(r[clave0]) : k;
     if(vistos.has(k) || vistos.has(kn)){ enArchivo++; return {r, estado:'dup'}; }
     vistos.add(k); vistos.add(kn);
     const ex = ya.get(k) || ya.get(kn);
     if(ex){ repetidos++; return {r, estado:'existe', ex}; }
     nuevos++; return {r, estado:'nuevo'};
   });
-  const sinNombre = imp.datos.length - filas.length;
-  $('#impResumen').innerHTML = `${nuevos} nuevo${nuevos === 1 ? '' : 's'} · ${repetidos} ya estaba${repetidos === 1 ? '' : 'n'}${enArchivo ? ` · ${enArchivo} repetido${enArchivo === 1 ? '' : 's'} en la hoja` : ''}${sinNombre ? ` · ${sinNombre} fila${sinNombre === 1 ? '' : 's'} sin ${esc(imp.t.campos[0][1].toLowerCase())} (se saltan)` : ''}`;
-  const cs = imp.campos.filter(c => imp.mapa[c[0]] >= 0);
-  const etiqueta = {nuevo:'<span style="color:var(--ok)">Nuevo</span>', existe:'<span style="color:var(--muted)">Ya existe</span>', dup:'<span style="color:var(--warn)">Repetido</span>'};
-  $('#impTabla').innerHTML = `<thead><tr><th></th>${cs.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${imp.plan.slice(0, 200).map(p => `<tr><td>${etiqueta[p.estado]}</td>${cs.map(c => `<td>${esc(p.r[c[0]] || '')}</td>`).join('')}</tr>`).join('')}${imp.plan.length > 200 ? `<tr><td colspan="${cs.length + 1}" class="hint">… y ${imp.plan.length - 200} más</td></tr>` : ''}</tbody>`;
+  const nombreClave = imp.t.campos[0][1].toLowerCase().replace(/ \(.*\)/, '');
+  $('#impResumen').innerHTML = `${nuevos} nuevo${nuevos === 1 ? '' : 's'} · ${repetidos} ya estaba${repetidos === 1 ? '' : 'n'}${enArchivo ? ` · ${enArchivo} repetido${enArchivo === 1 ? '' : 's'} en la hoja` : ''}${sinClave ? ` · ${sinClave} fila${sinClave === 1 ? '' : 's'} sin ${esc(nombreClave)} válido (se saltan)` : ''}${conFallos ? ` · <span style="color:var(--warn)">${conFallos} con algún dato que no se entiende (se importa el resto)</span>` : ''}`;
+  const cs = imp.campos.filter(c => imp.mapa[c[0]] >= 0 || (c[2] === 'mapa' && imp.latlng) || (c[0] === 'domicilio' && Object.keys(imp.extras).length));
+  const etiqueta = {nuevo:'<span style="color:var(--ok)">Nuevo</span>', existe:'<span style="color:var(--muted)">Ya existe</span>', dup:'<span style="color:var(--warn)">Repetido</span>', sin:'<span style="color:var(--bad)">Se salta</span>'};
+  $('#impTabla').innerHTML = `<thead><tr><th></th>${cs.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${imp.plan.slice(0, 200).map(p => `<tr title="${esc(p.r._mal.join(' · '))}"><td>${etiqueta[p.estado]}${p.r._mal.length ? ' ⚠️' : ''}</td>${cs.map(c => `<td>${esc(p.r._ver[c[0]] || '')}</td>`).join('')}</tr>`).join('')}${imp.plan.length > 200 ? `<tr><td colspan="${cs.length + 1}" class="hint">… y ${imp.plan.length - 200} más</td></tr>` : ''}</tbody>`;
   $('#impOk').textContent = nuevos ? `Importar ${nuevos}` : 'Importar';
 }
+const limpiarFila = r => Object.fromEntries(Object.entries(r).filter(([k]) => !k.startsWith('_')));
 async function hacerImportar(){
   const btn = $('#impOk'); if(btn.disabled) return;
-  const nuevos = imp.plan.filter(p => p.estado === 'nuevo').map(p => ({...(imp.t.fijo || {}), ...p.r}));
-  const completar = $('#impCompletar').checked ? imp.plan.filter(p => p.estado === 'existe').map(p => { const cambios = {}; Object.entries(p.r).forEach(([k, v]) => { if(p.ex[k] == null || String(p.ex[k]).trim() === '') cambios[k] = v; }); return {id: p.ex.id, cambios}; }).filter(x => Object.keys(x.cambios).length) : [];
+  const nuevos = imp.plan.filter(p => p.estado === 'nuevo').map(p => ({...(imp.t.fijo || {}), ...limpiarFila(p.r)}));
+  const completar = $('#impCompletar').checked ? imp.plan.filter(p => p.estado === 'existe').map(p => { const cambios = {}; Object.entries(limpiarFila(p.r)).forEach(([k, v]) => { if(p.ex[k] == null || String(p.ex[k]).trim() === '') cambios[k] = v; }); return {id: p.ex.id, cambios}; }).filter(x => Object.keys(x.cambios).length) : [];
   if(!nuevos.length && !completar.length){ toast('No hay nada nuevo que importar.'); return; }
   btn.disabled = true; btn.textContent = 'Importando…';
   let hechos = 0, completados = 0;
@@ -1845,18 +1904,23 @@ async function hacerImportar(){
       if(error) throw error; hechos += (data || []).length;
     }
     for(const x of completar){ const { error } = await sb.from(imp.t.tabla).update(x.cambios).eq('id', x.id); if(!error) completados++; }
-  }catch(e){ toast(`Se han importado ${hechos}. Error con el resto: ${e.message}`, true); btn.disabled = false; btn.textContent = 'Importar'; await cargarMaestros(); renderFicheros(); return; }
+  }catch(e){
+    const falta = /column|columna|schema cache/i.test(e.message || '') ? ' (falta ejecutar la actualización 31 en Supabase)' : '';
+    toast(`Se han importado ${hechos}. Error con el resto: ${e.message}${falta}`, true); btn.disabled = false; btn.textContent = 'Importar'; await cargarMaestros(); renderFicheros(); return;
+  }
   $('#impDlg').hidden = true; btn.disabled = false; imp = null;
   toast(`✅ Importados ${hechos}${completados ? ` · completados ${completados} que ya estaban` : ''}.`);
   await cargarMaestros(); renderFicheros();
 }
+let impTabla = null;
 document.addEventListener('click', e => {
-  if(e.target.id === 'importarBtn'){ const f = $('#importarArchivo'); f.value = ''; f.click(); }
+  const b = e.target.closest && e.target.closest('[data-imptabla]');
+  if(b){ impTabla = b.dataset.imptabla; const f = $('#importarArchivo'); f.value = ''; f.click(); }
   if(e.target.id === 'impCerrar'){ $('#impDlg').hidden = true; imp = null; }
   if(e.target.id === 'impOk') hacerImportar();
 });
 document.addEventListener('change', e => {
-  if(e.target.id === 'importarArchivo' && e.target.files[0]) abrirImportar(e.target.files[0]);
+  if(e.target.id === 'importarArchivo' && e.target.files[0] && impTabla) abrirImportar(e.target.files[0], impTabla);
   if(imp && e.target.dataset && e.target.dataset.impc != null){ imp.mapa[e.target.dataset.impc] = +e.target.value; pintarImportar(); }
   if(imp && e.target.dataset && e.target.dataset.impx != null){ imp.usarExtra[e.target.dataset.impx] = e.target.checked; pintarImportar(); }
 });
@@ -1880,6 +1944,10 @@ async function ficheroGuardar(tabla, id, tr){
     row[k] = v;
   });
   if(tabla === 'personal' && personalTodos.length && !('transportista_id' in personalTodos[0])) delete row.transportista_id;   // aún sin la actualización 28
+  if(tabla === 'clientes' && clientesTodos.length && !('contacto' in clientesTodos[0])){   // aún sin la actualización 31: se guarda lo demás
+    if(row.contacto || row.email || row.fax) toast('Contacto, email y fax no se guardan hasta ejecutar la actualización 31 en Supabase.', true);
+    delete row.contacto; delete row.email; delete row.fax;
+  }
   const clave = cfg.campos[0][0];
   if(!row[clave]){ toast(`Rellena «${cfg.campos[0][1]}».`, true); return; }
   try{
