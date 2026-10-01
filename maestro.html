@@ -133,6 +133,7 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
       <label>Precio especial por camión y mes (€)<input class="field" id="mePrecio" inputmode="decimal" placeholder="Vacío = el del plan"></label>
       <label class="full">Mensaje si se suspende (opcional)<input class="field" id="meMensaje" placeholder="Ej.: Pago pendiente. Llama al 600 000 000."></label>
       <label class="full">Notas internas<textarea class="field" id="meNotas" rows="2"></textarea></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="meAutonomos"> Cuentan también los camiones de los autónomos que trabajan para esta empresa (para el precio). Las órdenes de carga les llegan igual en los dos casos.</label>
       <label class="full" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="mePrincipal"> Es mi empresa (la que usa ahora el cartón y la app de myDeCaS)</label>
     </div>
     <p class="hint" id="meMsg" style="color:var(--bad)"></p>
@@ -414,6 +415,7 @@ function abrirEmpresa(e){
   v('mePrueba', e ? e.prueba_hasta : sumarDias(hoy(), +ajustes.dias_prueba || 30)); v('mePagado', e && e.pagado_hasta);
   v('mePrecio', e && e.precio_camion != null ? String(e.precio_camion).replace('.', ',') : ''); v('meMensaje', e && e.mensaje); v('meNotas', e && e.notas);
   $('#mePrincipal').checked = !!(e && e.principal);
+  $('#meAutonomos').checked = !e || e.contar_autonomos !== false;
   $('#meDiasL').hidden = !!e; $('#meMsg').textContent = '';
   $('#mEmpresa').hidden = false; $('#meNombre').focus();
 }
@@ -429,6 +431,7 @@ $('#meGuardar').onclick = async () => {
     precio_camion: num($('#mePrecio').value), mensaje: $('#meMensaje').value.trim() || null, notas: $('#meNotas').value.trim() || null,
     principal: $('#mePrincipal').checked
   };
+  if(empresas.length && 'contar_autonomos' in empresas[0]) row.contar_autonomos = $('#meAutonomos').checked;   // (con la actualización 37)
   if(row.estado === 'prueba' && !row.prueba_hasta){ $('#meMsg').textContent = 'Pon hasta qué día dura la prueba.'; return; }
   if(row.principal){ const otra = empresas.find(x => x.principal && (!editando || x.id !== editando.id)); if(otra){ if(!confirm(`Ahora la empresa principal es «${otra.nombre}». ¿Cambiarla por esta?`)) return; await sb.from('maestro_empresas').update({principal:false}).eq('id', otra.id); } }
   if(editando && editando.principal && (row.estado === 'suspendida' || row.estado === 'baja') && !confirm('Es TU empresa: si la suspendes, se bloquea tu propio cartón. ¿Seguir?')) return;
