@@ -1753,7 +1753,7 @@ async function renderFicherosBase(){
       </tbody></table></div></div>`;
   }).join('');
   box.innerHTML = `<div class="fich-head"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2>${cfg.titulo}</h2></div>${cfg.aviso ? `<p class="hint">${cfg.aviso}</p>` : ''}</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Destinos y almacenes que tienen ubicación guardada y la dirección vacía">📍 Rellenar direcciones con la ubicación (destinos y almacenes)</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Busca la dirección de los destinos y almacenes que no la tienen: la copia del otro listado si es el mismo sitio, o la saca de su ubicación GPS">📍 Rellenar direcciones</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
     <div class="${cfg.tablas.length > 1 ? 'fich-cols' : ''}">${bloques}</div>`;
 }
 // ====== IMPORTAR DESDE EXCEL (todas las fichas: clientes, transportistas, autónomos, personal, flota, destinos, almacenes y tarifas) ======
@@ -1953,25 +1953,64 @@ async function direccionDesdeGps(lat, lng){
   }catch(e){ return null; }
 }
 async function rellenarDireccionesGps(_, boton){
-  // busca en las DOS fichas a la vez: destinos y almacenes
-  const tablas = [];
-  for(const tabla of ['destinos','almacenes']){
+  // 1) Lee las dos fichas. La ubicación sale de sus coordenadas o, si no las tiene, del enlace de Google Maps (cuando lo lleva dentro)
+  const FICH = {destinos:{lng:'lng', txt:'destino'}, almacenes:{lng:'lon', txt:'almacén'}};
+  const filas = [];
+  for(const tabla of Object.keys(FICH)){
     if((await columnasQueFaltan(tabla)).includes('direccion')){ toast('Primero ejecuta la actualización 33 en Supabase.', true); return; }
-    const lngK = tabla === 'almacenes' ? 'lon' : 'lng';
-    const { data } = await sb.from(tabla).select('*').limit(5000);
-    (data || []).filter(x => x.lat != null && x[lngK] != null && !String(x.direccion || '').trim()).forEach(x => tablas.push({tabla, x, lat: x.lat, lng: x[lngK]}));
+    const { data, error } = await sb.from(tabla).select('*').limit(5000);
+    if(error){ toast('No se pudo leer ' + tabla + ': ' + error.message, true); return; }
+    (data || []).forEach(x => {
+      const lngK = FICH[tabla].lng;
+      let lat = x.lat != null && x.lat !== '' ? +x.lat : null, lng = x[lngK] != null && x[lngK] !== '' ? +x[lngK] : null;
+      if((lat == null || lng == null) && x.maps_url){ const c = coordsDe(x.maps_url); if(c){ lat = c.lat; lng = c.lng; } }
+      filas.push({tabla, x, lat, lng, dir: String(x.direccion || '').trim(), clave: normTxt(x.nombre)});
+    });
   }
-  if(!tablas.length){ toast('No hay ningún destino ni almacén con ubicación guardada y la dirección vacía.'); return; }
-  const nD = tablas.filter(t => t.tabla === 'destinos').length, nA = tablas.length - nD;
-  if(!confirm(`Voy a buscar la dirección de ${nD} destino${nD === 1 ? '' : 's'} y ${nA} almacén${nA === 1 ? '' : 'es'} a partir de su ubicación (tarda un segundo cada uno). Después revísalas: la dirección del mapa puede no ser exacta.`)) return;
-  boton.disabled = true; let hechos = 0;
-  for(const [i, t] of tablas.entries()){
-    boton.textContent = `📍 Buscando… ${i + 1}/${tablas.length}`;
-    const d = await direccionDesdeGps(t.lat, t.lng);
-    if(d){ const { error } = await sb.from(t.tabla).update({direccion: d}).eq('id', t.x.id); if(!error) hechos++; }
-    await new Promise(r => setTimeout(r, 1100));
+  const cambios = new Map();   // «tabla|id» → lo que hay que guardar
+  const poner = (f, campos) => { const k = f.tabla + '|' + f.x.id; cambios.set(k, Object.assign(cambios.get(k) || {_f: f}, campos)); };
+  // 2) Si el mismo sitio (mismo nombre) está en las dos fichas, lo que tenga uno se copia al otro
+  let copiadas = 0;
+  for(const f of filas){
+    const otro = filas.find(g => g.tabla !== f.tabla && g.clave && g.clave === f.clave);
+    if(!otro) continue;
+    const c = {};
+    if(!f.dir && otro.dir){ c.direccion = otro.dir; f.dir = otro.dir; }
+    if((f.lat == null || f.lng == null) && otro.lat != null && otro.lng != null){
+      c.lat = otro.lat; c[FICH[f.tabla].lng] = otro.lng; f.lat = otro.lat; f.lng = otro.lng;
+      if(!f.x.maps_url && otro.x.maps_url) c.maps_url = otro.x.maps_url;
+    }
+    if(Object.keys(c).length){ poner(f, c); copiadas++; }
   }
-  toast(`✅ Rellenadas ${hechos} de ${tablas.length} direcciones (destinos y almacenes). Revísalas.`);
+  // 3) Los que tienen ubicación pero no dirección: se busca la dirección a partir del GPS
+  const porGps = filas.filter(f => !f.dir && f.lat != null && f.lng != null);
+  const sinNada = filas.filter(f => !f.dir && (f.lat == null || f.lng == null));
+  // las coordenadas que estaban solo dentro del enlace se guardan también (así el mapa y la app las usan)
+  filas.forEach(f => { const lngK = FICH[f.tabla].lng; if(f.lat != null && f.lng != null && (f.x.lat == null || f.x[lngK] == null) && !(cambios.get(f.tabla + '|' + f.x.id) || {}).lat) poner(f, {lat: f.lat, [lngK]: f.lng}); });
+  if(!cambios.size && !porGps.length){
+    const lista = sinNada.slice(0, 12).map(f => `• ${f.x.nombre} (${FICH[f.tabla].txt})`).join('\n');
+    alert(sinNada.length ? `No hay de dónde sacar la dirección de estos (no tienen ubicación GPS ni están en la otra ficha con dirección):\n\n${lista}${sinNada.length > 12 ? `\n… y ${sinNada.length - 12} más` : ''}\n\nPega en su columna «Ubicación» el enlace largo de Google Maps (el que se ve en la barra del navegador, con números) o «latitud, longitud». Los enlaces cortos tipo maps.app.goo.gl no llevan la ubicación dentro.`
+                         : 'Todos los destinos y almacenes ya tienen su dirección.');
+    return;
+  }
+  if(porGps.length && !confirm(`${copiadas ? `Copio ${copiadas} dato${copiadas === 1 ? '' : 's'} entre Destinos y Almacenes (mismo sitio en las dos fichas).\n` : ''}Busco la dirección de ${porGps.length} a partir de su ubicación GPS (tarda un segundo cada uno).\n\nDespués revísalas: la dirección del mapa puede no ser exacta.`)) return;
+  boton.disabled = true; let gps = 0;
+  for(const [i, f] of porGps.entries()){
+    if(f.dir) continue;   // ya se la puso su «gemelo» de la otra ficha
+    boton.textContent = `📍 Buscando… ${i + 1}/${porGps.length}`;
+    const d = await direccionDesdeGps(f.lat, f.lng);
+    if(d){ poner(f, {direccion: d}); gps++;
+      // y al mismo sitio de la otra ficha, si tampoco tenía
+      const otro = filas.find(g => g.tabla !== f.tabla && g.clave && g.clave === f.clave && !g.dir);
+      if(otro){ poner(otro, {direccion: d}); otro.dir = d; }
+    }
+    if(i < porGps.length - 1) await new Promise(r => setTimeout(r, 1100));
+  }
+  let guardados = 0, fallos = 0;
+  for(const c of cambios.values()){ const f = c._f; delete c._f; const { error } = await sb.from(f.tabla).update(c).eq('id', f.x.id); if(error) fallos++; else guardados++; }
+  boton.disabled = false; boton.textContent = '📍 Rellenar direcciones';
+  const quedan = sinNada.filter(f => !(cambios.get(f.tabla + '|' + f.x.id) || {}).direccion && !f.dir).length;
+  toast(`✅ Actualizados ${guardados}: ${copiadas} copiados entre fichas, ${gps} sacados del GPS.${quedan ? ` ${quedan} sin ubicación para buscar.` : ''}${fallos ? ` ${fallos} no se pudieron guardar.` : ''} Revísalos.`, !!fallos);
   await cargarMaestros(); renderFicheros();
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-dirgps]'); if(b) rellenarDireccionesGps(b.dataset.dirgps, b); });
