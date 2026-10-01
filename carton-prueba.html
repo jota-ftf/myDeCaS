@@ -280,6 +280,10 @@ table.adm input.field{width:90px;padding:3px 6px}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .legend .st{width:18px;height:18px;font-size:10px;cursor:default}
 .estados-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px;color:var(--text,inherit);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 0 10px;position:sticky;top:var(--alto-cab,0px);z-index:29;box-shadow:0 4px 8px -6px rgba(0,0,0,.3)}
+/* Día cerrado: no se puede añadir ni cambiar nada, salvo los camiones que aún no han terminado el viaje */
+body[data-cerrado="1"] #addLinea, body[data-cerrado="1"] #addCamion, body[data-cerrado="1"] #tray .lines.empty::after{display:none!important}
+body[data-cerrado="1"] #board aside .panel, body[data-cerrado="1"] #tray, body[data-cerrado="1"] .truck.terminado{opacity:.72}
+body[data-cerrado="1"] .truck:not(.terminado){outline:2px solid var(--accent);outline-offset:2px}
 .estados-bar span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .estados-bar small{color:var(--muted)}
 .estados-bar .st{width:20px;height:20px;font-size:11px;cursor:default}
@@ -552,7 +556,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
     <span><i class="st pend"></i>Sin enviar</span>
     <span><i class="st avis">•</i>Orden enviada</span>
     <span><i class="st reco">✓</i>DeCA hecho</span>
-    <span><i class="st hub">⌂</i>En el hub</span>
+    <span><i class="st hub">⌂</i>En la nave</span>
     <span><i class="st carg">✓</i>En el camión</span>
     <span><i class="st desc">⚑</i>Descargado</span>
     <span><i class="st lejos">!</i>Descargado lejos</span>
@@ -690,7 +694,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
         </div></label>
       <label class="chk full" style="flex-direction:row;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);font-weight:500"><input type="checkbox" id="edRem"> Va a dos alturas (remonta)</label>
       <label>Camión (chófer)<select class="field" id="edCam"></select></label>
-      <label>Quién lo recoge<select class="field" id="edModo"><option value="hub">Cargador → hub</option><option value="ruta">El chófer en ruta</option></select></label>
+      <label>Quién lo recoge<select class="field" id="edModo"><option value="hub">Cargador → nave</option><option value="ruta">El chófer en ruta</option></select></label>
       <label>Cargador<select class="field" id="edCg"></select></label>
       <label id="edContrL" hidden>Transportista contractual<select class="field" id="edContr"></select></label>
       <label>Transportista efectivo<select class="field" id="edTrans"></select></label>
@@ -858,7 +862,7 @@ function estadoLinea(l){
   return c.estado === 'cerrada' ? 'reco' : 'avis';
 }
 const ST_TXT = {pend:'', avis:'•', reco:'✓', hub:'⌂', carg:'✓', desc:'⚑', lejos:'!', prob:'✗'};
-const ST_NAME = {pend:'Sin enviar', avis:'Orden enviada, esperando carga', reco:'DeCA generado (el cargador aún no lo ha dejado en el hub)', hub:'Entregado en el hub', carg:'Cargado en el camión', desc:'Descargado en destino', lejos:'Descargado LEJOS del destino (revisar)', prob:'Problema'};
+const ST_NAME = {pend:'Sin enviar', avis:'Orden enviada, esperando carga', reco:'DeCA generado (el cargador aún no lo ha dejado en la nave)', hub:'Entregado en la nave', carg:'Cargado en el camión', desc:'Descargado en destino', lejos:'Descargado LEJOS del destino (revisar)', prob:'Problema'};
 const HECHA = e => ['reco','hub','carg','desc','lejos'].includes(e);
 function ordenar(ls){ return ls.slice().sort((a,b) => ((a.orden ?? 1e9) - (b.orden ?? 1e9)) || String(a.created_at).localeCompare(String(b.created_at))); }
 function enviada(l){ const c = l.carga_id && cargas[l.carga_id]; return !!(c && c.estado !== 'cancelada'); }
@@ -1007,8 +1011,11 @@ async function proponerDeca(l, cam){
 // ====== ACCIONES ======
 async function enviarLinea(l, silencioso){
   const cam = camion(l.camion_id);
-  const trans = l.transportista_id || (l.modo === 'ruta' && cam && cam.tipo === 'autonomo' && cam.transportista_id) || (transPropia() || {}).id;
   const asignado = l.modo === 'hub' ? l.cargador_id : (cam && cam.chofer_id);
+  // Transportista efectivo = para quien trabaja el conductor que hace este tramo (cargador hasta la nave, chófer hasta el destino):
+  // si está vinculado a un autónomo, ese autónomo; si no, tu empresa. Al salir de la nave, la app del chófer lo cambia por el suyo.
+  const conductor = persona(asignado);
+  const trans = l.transportista_id || (conductor && conductor.transportista_id) || (l.modo === 'ruta' && cam && cam.tipo === 'autonomo' && cam.transportista_id) || (transPropia() || {}).id;
   if(!trans){ toast('Falta el transportista efectivo: marca tu empresa como «propia» en la pestaña Transportista Contractual.', true); return false; }
   if(!l.cliente_id){ toast(`«${l.almacen}»: el cliente no está en la lista de clientes.`, true); return false; }
   if(!l.destino){ toast(`«${l.almacen}»: falta el destino.`, true); return false; }
@@ -1016,7 +1023,7 @@ async function enviarLinea(l, silencioso){
   const payload = {
     almacen: l.almacen, detalle_planificado: detalleDe(l), estado: 'asignada',
     cliente_id: l.cliente_id, transportista_id: trans, asignado_id: asignado,
-    ...(hayExtraContractual() && l.transportista_contractual_id && String(l.transportista_contractual_id) !== String(trans) ? {transportista_contractual_id: l.transportista_contractual_id} : {}),
+    ...(hayExtraContractual() && l.transportista_contractual_id ? {transportista_contractual_id: l.transportista_contractual_id} : {}),   // con el extra, el contractual sale siempre (encima del efectivo)
     origen: l.almacen, destino: l.destino, mercancia: l.mercancia || 'fruta y verdura',
     autorizacion_especial: l.autorizacion_especial || null, orden: l.orden ?? null,
     peso: String(pesoDe(l) || ''), peso_aproximado: true,
@@ -1053,7 +1060,7 @@ async function enviarCamion(cam){
   await run(sb.from('carton_camiones').update({estado:'enviado'}).eq('id', cam.id));
   await refrescar(true);
   if(fallos) return;
-  toast(`Enviado a ${cam.nombre}.` + (sinDeca ? ` ${sinDeca} recogida(s) aún no están en el hub: le llegarán solas cuando el cargador las entregue allí.` : ''));
+  toast(`Enviado a ${cam.nombre}.` + (sinDeca ? ` ${sinDeca} recogida(s) aún no están en la nave: le llegarán solas cuando el cargador las entregue allí.` : ''));
 }
 
 function telefonoWa(t){
@@ -1080,7 +1087,7 @@ function textoCamion(cam){
   const ls = lineas.filter(l => l.camion_id === cam.id);
   const ida = ls.filter(l => !l.retorno), vuelta = ls.filter(l => l.retorno);
   let t = `Carga ${fechaBonita(fecha)} — ${cam.nombre}\nDestino: ${cam.destino || '—'}\nMatrícula: ${cam.matricula || '—'}\n\n`;
-  t += ida.map(l => `• ${l.almacen} → ${l.cliente_nombre}: ${qtyLargo(l)}${l.modo === 'ruta' ? ' (recoges tú)' : ' (en el hub)'}`).join('\n');
+  t += ida.map(l => `• ${l.almacen} → ${l.cliente_nombre}: ${qtyLargo(l)}${l.modo === 'ruta' ? ' (recoges tú)' : ' (en la nave)'}`).join('\n');
   if(vuelta.length) t += `\n\nRetorno (termina en ${cam.fin_retorno || 'Nave'}):\n` + vuelta.map(l => `• ${l.almacen} → ${l.cliente_nombre}: ${qtyLargo(l)}`).join('\n');
   const rp = reglaPunta(cam.id);
   if(rp && rp.hayRuta) t += `\n\n⚠️ Al cargar el camión: ${TXT_PUNTA(rp)}`;
@@ -1155,7 +1162,7 @@ function reglaPunta(camId){
   const ida = ordenar(lineas.filter(l => l.camion_id === camId && !l.retorno));
   const h = huecoCamion(ida);
   if(!h.obs) return null;
-  // Quién coloca los palets en el camión: el chófer si recoge por los almacenes; en el hub, el cargador (o cargadores) de ese camión
+  // Quién coloca los palets en el camión: el chófer si recoge por los almacenes; en la nave, el cargador (o cargadores) de ese camión
   const primeraRuta = ida.find(l => l.modo === 'ruta') || null;
   const primeraPorCargador = {};
   ida.filter(l => l.modo !== 'ruta' && l.cargador_id).forEach(l => { if(!primeraPorCargador[l.cargador_id]) primeraPorCargador[l.cargador_id] = l.id; });
@@ -1174,7 +1181,7 @@ async function sincronizarAvisos(){
     const tareas = [];
     camiones.forEach(cam => {
       const r = reglaPunta(cam.id);
-      const avisoCam = r && r.hayRuta ? TXT_PUNTA(r) : null;   // al chófer solo si carga él por los almacenes (si le llega cargado del hub, le sobra)
+      const avisoCam = r && r.hayRuta ? TXT_PUNTA(r) : null;   // al chófer solo si carga él por los almacenes (si le llega cargado de la nave, le sobra)
       if((cam.aviso_carga || null) !== avisoCam && 'aviso_carga' in cam){ cam.aviso_carga = avisoCam; tareas.push(sb.from('carton_camiones').update({aviso_carga: avisoCam}).eq('id', cam.id)); }
       lineas.filter(l => l.camion_id === cam.id && l.carga_id && cargas[l.carga_id] && cargas[l.carga_id].estado === 'asignada').forEach(l => {
         const c = cargas[l.carga_id];
@@ -1213,18 +1220,18 @@ function opcionesCargador(sel){
   return `<option value="">¿Cargador?</option>` + g('Cargadores', personal.filter(p => p.puesto === 'cargador')) + g('Chóferes', personal.filter(p => p.puesto === 'chofer'));
 }
 
-const BLOQUEADA = e => ['hub','carg','desc','lejos'].includes(e);   // ya en el hub (o más allá): la orden no se toca
+const BLOQUEADA = e => ['hub','carg','desc','lejos'].includes(e);   // ya en la nave (o más allá): la orden no se toca
 function lineHTML(l, idx, total){
   const est = estadoLinea(l), sent = enviada(l), bloq = BLOQUEADA(est);
   const enCamion = !!l.camion_id && typeof idx === 'number';
   const cam = camion(l.camion_id);
   const camOpts = `<option value="">→ Sin asignar</option>` + camiones.map(t => `<option value="${t.id}" ${t.id === l.camion_id ? 'selected' : ''}>→ ${esc(t.nombre)}</option>`).join('');
   const modoSel = l.retorno ? '' : `<select data-act="modo" aria-label="Quién lo recoge" ${sent ? 'disabled' : ''}>
-      <option value="hub" ${l.modo === 'hub' ? 'selected' : ''}>Cargador → hub</option>
+      <option value="hub" ${l.modo === 'hub' ? 'selected' : ''}>Cargador → nave</option>
       <option value="ruta" ${l.modo === 'ruta' ? 'selected' : ''}>Chófer en ruta</option></select>`;
   const cgSel = (l.modo === 'hub' && !l.retorno) ? `<select data-act="cargador" aria-label="Cargador" class="${!l.cargador_id ? 'bad' : ''}" ${HECHA(est) ? 'disabled' : ''}>${opcionesCargador(l.cargador_id)}</select>` : '';
   let envio = '';
-  if(sent) envio = `<span class="sent" title="${ST_NAME[est]}">${est === 'avis' ? 'Enviada' : est === 'hub' ? 'En hub' : 'DeCA ✓'}</span>`;
+  if(sent) envio = `<span class="sent" title="${ST_NAME[est]}">${est === 'avis' ? 'Enviada' : est === 'hub' ? 'En la nave' : 'DeCA ✓'}</span>`;
   else if(l.modo === 'hub' && !l.retorno) envio = `<button type="button" class="btn small primary" data-act="enviar" ${l.cargador_id ? '' : 'disabled'}>Enviar</button>`;
   else if(cam && cam.estado === 'enviado') envio = `<button type="button" class="btn small primary" data-act="enviar">Enviar</button>`;
   const d = decas[l.carga_id];
@@ -1270,7 +1277,7 @@ function truckHTML(t){
         ${motivo ? `<span class="why">${motivo}</span>` : ''}
       </div>`;
   }
-  return `<article class="truck" data-truck="${t.id}">
+  return `<article class="truck${t.finalizado ? ' terminado' : ''}" data-truck="${t.id}">
     <div class="truck-top">
       <span class="nametag" title="${esc(t.nombre)}">${esc(t.nombre)}</span>${(() => {
         const ds = ida.concat(vuelta).map(l => decas[l.carga_id]).filter(d => d && !d.anulado);
@@ -1279,7 +1286,7 @@ function truckHTML(t){
         return `<details class="decas-cam"><summary title="DeCAs de este camión">📄 ${ds.length} DeCA${ds.length === 1 ? '' : 's'}${suyos ? ` · ${suyos} hecho${suyos === 1 ? '' : 's'} por él` : ''}</summary><ul>${ds.map(d => `<li>${d.pdf_url ? `<a href="${esc(d.pdf_url)}" target="_blank" rel="noopener">${esc(d.deca_id)}</a>` : esc(d.deca_id)} · ${esc(d.origen || '')}${d.entregado ? ' · ⚑ descargado' : ''}</li>`).join('')}</ul></details>`;
       })()}
       <div class="truck-meta"><select class="dir-sel" data-cam="${t.id}" data-f="direccion" aria-label="Dirección del camión">${['X','V','S'].map(d => `<option value="${d}" ${(t.direccion || 'X') === d ? 'selected' : ''}>${d === 'X' ? 'Sin dirección aún' : d + ' · ' + (d === 'V' ? 'Levante' : 'Sur')}</option>`).join('')}</select>${gps}
-        <span class="pill ${t.estado}">${estTxt}</span>${t.tipo === 'autonomo' ? '<span class="pill preparando">Autónomo</span>' : ''}</div>
+        <span class="pill ${t.estado}">${estTxt}</span>${t.finalizado ? '<span class="pill enviado" title="El chófer ha dejado el camión en la nave">🏁 Terminado</span>' : ''}${t.tipo === 'autonomo' ? '<span class="pill preparando">Autónomo</span>' : ''}</div>
     </div>
     <div class="veh">${chofSel}
       <select data-cam="${t.id}" data-f="tractora" aria-label="Tractora">${opt(tractoras, tSel, 'Tractora')}</select>
@@ -1289,7 +1296,7 @@ function truckHTML(t){
       if(!kg) return '';
       return kg > maxKg ? `<div class="aviso-punta" style="background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">⚖️ Unos ${kg.toLocaleString('es-ES')} kg: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg)</div>`
                         : `<div class="hint" style="margin:2px 0" title="Kilos apuntados, o calculados con el peso medio de cada palet">⚖️ ~${kg.toLocaleString('es-ES')} kg de ${maxKg.toLocaleString('es-ES')}</div>`; })()}
-    ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en el hub)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
+    ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en la nave)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
     <div class="section-label"><span>Ida · ${ida.length} recogidas</span></div>
     <ul class="lines ${ida.length ? '' : 'empty'}" data-zone="${t.id}" data-ret="0">${ida.map((l,i) => lineHTML(l, i, ida.length)).join('')}</ul>
     <div class="retorno">
@@ -1348,7 +1355,8 @@ function render(){
   renderDispo();
   const cierre = ajustes['cierre_' + fecha];
   $('#diaCerrado').hidden = !cierre;
-  if(cierre) $('#diaCerrado').textContent = '🔒 Día cerrado' + (cierre.split('|')[0] ? ' por ' + cierre.split('|')[0] : '') + ' · solo para consultar';
+  document.body.dataset.cerrado = cierre ? '1' : '';
+  if(cierre) $('#diaCerrado').textContent = '🔒 Día cerrado' + (cierre.split('|')[0] ? ' por ' + cierre.split('|')[0] : '') + ' · solo se pueden tocar los viajes sin terminar';
   const asignadas = lineas.filter(l => l.camion_id && !l.retorno);
   const tray = lineas.filter(l => !l.camion_id);
   const sinCg = lineas.filter(l => l.camion_id && l.modo === 'hub' && !l.cargador_id && !l.retorno).length;
@@ -1615,7 +1623,7 @@ function renderOrders(){
     const rows = ls.map(l => {
       const est = estadoLinea(l);
       const cam = camion(l.camion_id), rp = l.camion_id && reglaPunta(l.camion_id);
-      return `<tr class="${BLOQUEADA(est) ? 'orden-bloq' : ''}" title="${BLOQUEADA(est) ? 'Ya está en el hub: esta orden está cerrada y no se puede modificar' : ''}"><td>${BLOQUEADA(est) ? '🔒 ' : ''}<b>${esc(l.almacen)}</b> – ${esc(l.cliente_nombre)}${l.referencia ? ` <span class="ref num">${esc(l.referencia)}</span>` : ''}<span class="to">→ ${esc(l.destino || '—')} · ${cam ? 'camión de ' + esc(cam.nombre) + (cam.matricula ? ' (' + esc(cam.matricula) + ')' : '') : 'sin camión aún'} · ${ST_NAME[est]}</span></td><td class="n">${qtyHTML(l)}</td></tr>`;
+      return `<tr class="${BLOQUEADA(est) ? 'orden-bloq' : ''}" title="${BLOQUEADA(est) ? 'Ya está en la nave: esta orden está cerrada y no se puede modificar' : ''}"><td>${BLOQUEADA(est) ? '🔒 ' : ''}<b>${esc(l.almacen)}</b> – ${esc(l.cliente_nombre)}${l.referencia ? ` <span class="ref num">${esc(l.referencia)}</span>` : ''}<span class="to">→ ${esc(l.destino || '—')} · ${cam ? 'camión de ' + esc(cam.nombre) + (cam.matricula ? ' (' + esc(cam.matricula) + ')' : '') : 'sin camión aún'} · ${ST_NAME[est]}</span></td><td class="n">${qtyHTML(l)}</td></tr>`;
     }).join('');
     return `<div class="order">
       <h3>${esc(p.nombre)} <small>${ls.length} recogidas · ${nuevas.length ? nuevas.length + ' sin enviar' : 'todo enviado'}</small></h3>
@@ -2391,6 +2399,11 @@ async function finDeJornada(){
     if(r.trim().toUpperCase() !== 'CERRAR'){ alert('No has escrito CERRAR. El día sigue abierto.'); return; }
     if(!(await guardarAjuste('cierre_' + fecha, `${usuario ? usuario.nombre : ''}|${new Date().toISOString()}`))) return;
     if(!ajustes.ultimo_dia_cerrado || fecha > ajustes.ultimo_dia_cerrado){ if(!(await guardarAjuste('ultimo_dia_cerrado', fecha))) return; }
+    // al cerrar: se imprime el cartón completo del día (todas las direcciones) y se descarga la copia de seguridad en Excel
+    const filtroAntes = filter; filter = 'all'; if(vista !== 'carton') cambiarVista('carton'); render();
+    try{ imprimir(); }catch(_){}
+    filter = filtroAntes; render();
+    try{ await copiaSeguridad(); }catch(_){}
   }
   await copiaAutomatica('fin de jornada', true);
   // cartón en blanco: día siguiente y formularios vacíos
@@ -2454,7 +2467,7 @@ async function renderEnRuta(box){
     sb.from('decas').select('*').eq('entregado', false).order('fecha', {ascending:false}).limit(500),
     sb.from('decas').select('*').not('matricula_pendiente', 'is', null).order('fecha', {ascending:false}).limit(200),
   ]);
-  const cams = (camsR.data || []).filter(c => !c.finalizado);   // hasta que el chófer confirma que el camión está en el hub
+  const cams = (camsR.data || []).filter(c => !c.finalizado);   // hasta que el chófer confirma que el camión está en la nave
   const { data: lins } = cams.length ? await sb.from('carton_lineas').select('camion_id,carga_id,destino').in('camion_id', cams.map(c => c.id)).limit(3000) : {data: []};
   const cargaIds = [...new Set((lins || []).map(l => l.carga_id).filter(Boolean))];
   const { data: dsCam } = cargaIds.length ? await sb.from('decas').select('*').in('carga_id', cargaIds).limit(3000) : {data: []};
@@ -2471,13 +2484,13 @@ async function renderEnRuta(box){
     const hechos = ds.filter(d => d.entregado).length;
     return `<div class="ruta-grupo"><h3>🚚 ${esc(c.nombre)} · ${fechaBonita(c.fecha)} · ${esc(c.matricula || '')} <small style="font-weight:500">${hechos}/${ds.length} descargados</small></h3>
       <ul>${ds.map(li).join('') || '<li class="hint">Aún no lleva DeCAs.</li>'}</ul>
-      <button type="button" class="btn small" data-finviaje="${c.id}" title="Si el chófer se olvida de marcarlo en su app">🏁 Marcar viaje finalizado (camión en el hub)</button></div>`;
+      <button type="button" class="btn small" data-finviaje="${c.id}" title="Si el chófer se olvida de marcarlo en su app">🏁 Marcar viaje finalizado (camión en la nave)</button></div>`;
   };
-  box.innerHTML = `<div class="fich-head"><div><h2>DeCAs en ruta</h2><p class="hint">Cada camión sale aquí hasta que su chófer marca «Viaje finalizado» (camión de vuelta en el hub). Se actualiza solo.</p></div></div>
+  box.innerHTML = `<div class="fich-head"><div><h2>DeCAs en ruta</h2><p class="hint">Cada camión sale aquí hasta que su chófer marca «Viaje finalizado» (camión de vuelta en la nave). Se actualiza solo.</p></div></div>
     ${pend.length ? `<div class="ruta-grupo" style="border-color:var(--warn)"><h3>Esperando matrícula del chófer · ${pend.length}</h3><ul>${pend.map(r => `<li>${esc(r.deca_id)} → <b>${esc((persona(r.chofer_destino_id)||{}).nombre || '—')}</b> · ${esc(r.matricula_pendiente)}</li>`).join('')}</ul></div>` : ''}
     <div class="fich-cols">${cams.map(grupoCam).join('')}</div>
-    ${conCargador.length ? `<div class="ruta-grupo"><h3>Con el cargador, camino del hub · ${conCargador.length}</h3><ul>${conCargador.map(li).join('')}</ul></div>` : ''}
-    ${enHub.length ? `<div class="ruta-grupo"><h3>⌂ En el hub, esperando camión · ${enHub.length}</h3><ul>${enHub.map(li).join('')}</ul></div>` : ''}
+    ${conCargador.length ? `<div class="ruta-grupo"><h3>Con el cargador, camino de la nave · ${conCargador.length}</h3><ul>${conCargador.map(li).join('')}</ul></div>` : ''}
+    ${enHub.length ? `<div class="ruta-grupo"><h3>⌂ En la nave, esperando camión · ${enHub.length}</h3><ul>${enHub.map(li).join('')}</ul></div>` : ''}
     ${!cams.length && !vivos.length ? '<p class="hint">No hay nada en ruta ahora mismo.</p>' : ''}
     <p class="hint">${enPruebas() ? '«Anular» solo existe mientras estáis de pruebas: los DeCAs no se borran, pero dejan de salir aquí y en las apps.' : 'Uso real: los DeCAs ya no se pueden anular desde aquí. Si dirección decide que alguno no vale, avisa al administrador.'}</p>`;
 }
@@ -2817,7 +2830,7 @@ const busq = {num:'', desde:'', hasta:'', mat:'', cond:'', cli:'', trans:'', ori
 function estadoDeca(r){
   if(r.anulado) return ['anulado', 'Anulado'];
   if(r.entregado) return r.fuera_zona ? ['lejos', 'Descargado lejos'] : ['desc', 'Descargado'];
-  if(r.entregado_hub) return ['hub', 'En el hub / en ruta'];
+  if(r.entregado_hub) return ['hub', 'En la nave / en ruta'];
   return ['ruta', 'Con el cargador'];
 }
 function qrDe(url){ try{ const q = qrcode(0, 'M'); q.addData(url); q.make(); return `<img src="${q.createDataURL(4, 6)}" width="140" height="140" alt="QR del DeCA" style="background:#fff;padding:4px;border-radius:6px">`; }catch(_){ return '<span class="hint">(no se pudo dibujar el QR)</span>'; } }
@@ -2868,7 +2881,7 @@ function pintarResultadosBusqueda(){
           <div>${r.pdf_url ? qrDe(r.pdf_url) : ''}</div>
           <div style="flex:1;min-width:260px"><b>Detalle:</b> ${esc(r.detalle || '—')} · ${esc(r.peso || '—')} kg · ${esc(r.mercancia || '')}<br>
             <b>Cliente:</b> ${esc(r.cargador_nombre || '—')} (NIF ${esc(r.cargador_nif || '—')}) · <b>Transportista:</b> ${esc(r.transportista_nombre || '—')} (NIF ${esc(r.transportista_nif || '—')})<br>
-            <b>GPS al generarlo:</b> ${esc(r.geo || '—')}${r.fecha_entrega_hub ? ` · <b>En el hub:</b> ${new Date(r.fecha_entrega_hub).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}` : ''}${r.fecha_entrega ? ` · <b>Descargado:</b> ${new Date(r.fecha_entrega).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${r.distancia_entrega_m != null ? ` (a ${Math.round(r.distancia_entrega_m)} m del destino)` : ''}` : ''}<br>
+            <b>GPS al generarlo:</b> ${esc(r.geo || '—')}${r.fecha_entrega_hub ? ` · <b>En la nave:</b> ${new Date(r.fecha_entrega_hub).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}` : ''}${r.fecha_entrega ? ` · <b>Descargado:</b> ${new Date(r.fecha_entrega).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${r.distancia_entrega_m != null ? ` (a ${Math.round(r.distancia_entrega_m)} m del destino)` : ''}` : ''}<br>
             <b>Historial de matrícula:</b> ${(r.matricula_historial || []).length ? `<ul style="margin:4px 0">${r.matricula_historial.map(h => `<li>${esc(h.fecha || '')}: ${esc(h.anterior || '—')} → <b>${esc(h.nueva || '')}</b> · ${esc(h.cambiado_por || '')}</li>`).join('')}</ul>` : 'sin cambios.'}
             <div id="bqv-${r.id}" class="hint">Buscando versiones anteriores del PDF…</div></div></div></td></tr>` : ''}`; }).join('')}
     </tbody></table></div>${res.length > 500 ? '<p class="hint">Se enseñan los 500 primeros; el Excel lleva todos.</p>' : ''}`;
@@ -2893,7 +2906,7 @@ function renderBuscar(box){
       <label class="ctl">Transportista<input class="field" id="bq_trans" list="bqNombres" value="${esc(busq.trans)}"></label>
       <label class="ctl">Origen<input class="field" id="bq_orig" list="almacenesList" value="${esc(busq.orig)}"></label>
       <label class="ctl">Destino<input class="field" id="bq_dest" list="destinosList" value="${esc(busq.dest)}"></label>
-      <label class="ctl">Estado<select class="field" id="bq_estado">${[['', 'Todos'], ['ruta', 'Con el cargador'], ['hub', 'En el hub / en ruta'], ['desc', 'Descargado'], ['lejos', 'Descargado lejos'], ['anulado', 'Anulado']].map(([v, t]) => `<option value="${v}" ${busq.estado === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="ctl">Estado<select class="field" id="bq_estado">${[['', 'Todos'], ['ruta', 'Con el cargador'], ['hub', 'En la nave / en ruta'], ['desc', 'Descargado'], ['lejos', 'Descargado lejos'], ['anulado', 'Anulado']].map(([v, t]) => `<option value="${v}" ${busq.estado === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <div class="bq-btns"><button type="submit" class="btn primary" data-bqbuscar="1">🔎 Buscar</button><button type="button" class="btn" data-bqlimpiar="1">Limpiar</button></div>
     </form>
     <datalist id="bqNombres">${nombres.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
@@ -2938,7 +2951,7 @@ function prCabecera(cams){
     <span class="pr-meta">${trans ? 'Transportista: ' + esc(trans.nombre) + ' · ' : ''}Impreso ${new Date().toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</span>
     <span class="pr-date">${fechaBonita(fecha)}</span></div>`;
 }
-const PR_LEYENDA = `<div class="pr-legend">• orden enviada · ✓ DeCA hecho · ⌂ en el hub · ✓✓ cargado en el camión · ✗ problema · número solo = palet grande · E europalet · C carros · B box · K cajas · ×2 remonta</div>`;
+const PR_LEYENDA = `<div class="pr-legend">• orden enviada · ✓ DeCA hecho · ⌂ en la nave · ✓✓ cargado en el camión · ✗ problema · número solo = palet grande · E europalet · C carros · B box · K cajas · ×2 remonta</div>`;
 // Imprimir tal como se ve la vista Hoja: pedidos por destino a la izquierda, «Salen hoy» a la derecha
 function imprimirHoja(){
   const dirOk = l => !l.camion_id || filter === 'all' || ((camion(l.camion_id) || {}).direccion || 'X') === filter;
@@ -3041,7 +3054,7 @@ document.addEventListener('click', async e => {
       const gs = gruposWa(); gs.push({nombre, url}); if(await guardarAjuste('grupos_whatsapp', JSON.stringify(gs))) renderFicheros(); return; }
     if(b.dataset.waborrar !== undefined){ const gs = gruposWa(); gs.splice(+b.dataset.waborrar, 1); if(await guardarAjuste('grupos_whatsapp', JSON.stringify(gs))) renderFicheros(); return; }
     if(b.dataset.decaanular){ if(!confirm(`¿Anular el DeCA ${b.dataset.decaid}?\n\nNo se borra (se conserva por la norma), pero queda marcado como ANULADO y deja de salir en ruta y en las apps.`)) return; await anularDeca(b.dataset.decaanular, 'Anulado desde DeCAs en ruta'); toast('DeCA anulado'); return renderFicheros(); }
-    if(b.dataset.finviaje){ if(!confirm('¿Marcar este viaje como finalizado (camión de vuelta en el hub)? Dejará de salir en «DeCAs en ruta».')) return;
+    if(b.dataset.finviaje){ if(!confirm('¿Marcar este viaje como finalizado (camión de vuelta en la nave)? Dejará de salir en «DeCAs en ruta».')) return;
       try{ await escribirComprobado(sb.from('carton_camiones').update({finalizado:true, fecha_fin:new Date().toISOString()}).eq('id', b.dataset.finviaje), 'Viaje finalizado'); }catch(_){ }
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
@@ -3386,6 +3399,21 @@ document.body.dataset.sesion = 'no';
   const u = ses.persona && Object.assign(persona(ses.persona.id) || {}, ses.persona);
   if(u && ['trafico','direccion'].includes(u.puesto) && !u.baja && !u.pin_temporal) iniciarSesion(u);
   else { if(tk && ses.error) guardarToken(''); mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
+})();
+// ====== DÍA CERRADO: solo se pueden tocar los camiones que aún no han terminado el viaje ======
+(function(){
+  const cerrado = () => !!ajustes['cierre_' + fecha];
+  let ultimoAviso = 0;
+  const bloquear = e => {
+    if(!cerrado()) return;
+    const t = e.target; if(!t || !t.closest || !t.closest('#board')) return;
+    if(t.closest('.truck:not(.terminado)')) return;   // viaje sin terminar: se puede seguir trabajando
+    if(t.closest('a, summary, details.decas-cam, #finDiaBtn, [data-camact="ret"]')) return;   // mirar sí se puede
+    if(e.type === 'keydown' && !t.closest('input, select, textarea')) return;
+    e.preventDefault(); e.stopPropagation();
+    if((e.type === 'click' || e.type === 'dragstart') && Date.now() - ultimoAviso > 1500){ ultimoAviso = Date.now(); toast('Día cerrado: solo se pueden tocar los viajes que aún no han terminado.', true); }
+  };
+  ['mousedown','click','change','input','dragstart','drop','submit','keydown','focusin'].forEach(ev => document.addEventListener(ev, e => { if(ev === 'focusin'){ if(cerrado() && e.target.closest && e.target.closest('#board') && !e.target.closest('.truck:not(.terminado)') && e.target.matches('input, textarea')) e.target.blur(); return; } bloquear(e); }, true));
 })();
 })();
 
