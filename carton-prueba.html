@@ -284,6 +284,8 @@ table.adm input.field{width:90px;padding:3px 6px}
 body[data-cerrado="1"] #addLinea, body[data-cerrado="1"] #addCamion, body[data-cerrado="1"] #tray .lines.empty::after{display:none!important}
 body[data-cerrado="1"] #board aside .panel, body[data-cerrado="1"] #tray, body[data-cerrado="1"] .truck.terminado{opacity:.72}
 body[data-cerrado="1"] .truck:not(.terminado){outline:2px solid var(--accent);outline-offset:2px}
+.tray-zona-t{font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 2px;text-transform:uppercase;letter-spacing:.04em}
+.dirblock h3 .nec{font-weight:600;color:var(--muted)}.dirblock h3 .nec.falta{color:var(--bad)}
 .estados-bar span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .estados-bar small{color:var(--muted)}
 .estados-bar .st{width:20px;height:20px;font-size:11px;cursor:default}
@@ -401,11 +403,11 @@ body:not([data-vista="carton"]) #board, body:not([data-vista="carton"]) #orders,
 body[data-vista="carton"] #ficheros{display:none!important}
 .fich{gap:14px}
 .fich h2{font-size:18px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:800}
-.fich-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.fich-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;position:sticky;top:var(--alto-cab,0px);z-index:20;background:var(--surface);padding:8px 0;margin-top:-8px}
 .fich-head .field{max-width:320px}
-.tabla-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
+.tabla-wrap{overflow:auto;max-height:calc(100vh - var(--alto-cab,0px) - 150px);border:1px solid var(--line);border-radius:var(--radius)}   /* la tabla se desplaza por dentro: título, botones y nombres de columna siempre a la vista */
 table.fichero{width:100%;border-collapse:collapse;font-size:13px}
-table.fichero th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 6px;background:var(--kraft-2);position:sticky;top:0}
+table.fichero th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 6px;background:var(--kraft-2);position:sticky;top:0;z-index:2}
 table.fichero td{padding:4px 6px;border-top:1px solid var(--line);vertical-align:middle}
 table.fichero td .field{padding:4px 6px}
 table.fichero tr.nuevo td{background:var(--pen-soft)}
@@ -625,7 +627,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       <div class="carton-head"><h2>Cartón del día</h2><span class="dia-cerrado" id="diaCerrado" hidden></span><span class="date" id="fechaTxt"></span></div>
       <section class="tray" id="tray">
         <div class="section-label"><span>Pedidos sin asignar</span><span class="load" id="trayLoad"></span></div>
-        <ul class="lines" data-zone="tray"></ul>
+        <div id="trayZonas"><ul class="lines empty" data-zone="tray"></ul></div>
       </section>
       <div id="dirBlocks"></div>
       <div id="hoja" class="hoja"></div>
@@ -720,7 +722,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Metros de carga por unidad: los mismos valores que usa la app del conductor
-const LDM = {e_pal:0.4, m_pal:0.5, carros:0.4, box:0.5, cajas:0.02};
+const LDM = {e_pal:0.4, m_pal:0.5, carros:13.2/38, box:0.5, cajas:0.02};   // carros: en un frigo normal caben 38 (9 filas de 4 de punta + las 2 últimas de estampa)
 const CAP = 13.2;   // metros útiles del remolque: 33 europalets × 0,40 m
 // Cómo se escribe cada tipo en el "detalle planificado" (lo que la app del conductor sabe leer)
 const DETALLE_TIPO = {e_pal:'europeo', m_pal:'grande (americano)', carros:'carro', box:'box', cajas:'cajas'};
@@ -729,6 +731,22 @@ const SLOT_EURO = CAP / 33;   // un remolque coge como máximo 33 europalets
 const MERCANCIAS = ['fruta y verdura','productos perecederos','plantas vivas','congelado','secos'];
 const DIRS = ['V','S','X'];
 const DIR_TXT = {V:'Dirección Levante', S:'Dirección Sur', X:'Sin dirección aún'};
+// Zona de cada destino (ficha Destinos): Levante (V) o Sur (S). Si el destino no la tiene, el pedido queda «sin zona»
+let zonasDestino = {};
+// Se saca de su ubicación GPS (lat/lng o el enlace de Google Maps): al este de la nave = Levante; al oeste = Sur
+const LNG_NAVE = -2.7;   // entre Berja y Almería
+function zonaPorUbicacion(x){
+  let lng = x.lng != null && x.lng !== '' ? parseFloat(String(x.lng).replace(',', '.')) : NaN;
+  if(isNaN(lng)){ const c = coordsDe(x.maps_url); if(c) lng = c.lng; }
+  if(isNaN(lng)) return '';
+  return lng > LNG_NAVE ? 'V' : 'S';
+}
+const zonaDestino = d => zonasDestino[normTxt(d || '')] || '';
+// Zona de un pedido: la del camión si ya va en uno con dirección; si no, la de su destino
+function zonaLinea(l){ const cam = l.camion_id && camion(l.camion_id); if(cam && ['V','S'].includes(cam.direccion)) return cam.direccion; return zonaDestino(l.destino) || 'X'; }
+// Camiones que hacen falta para un grupo de pedidos (metros de carga / 13,2 m, redondeando hacia arriba)
+const sumaBultos = list => list.reduce((t, l) => { ['e_pal','m_pal','carros','box','cajas'].forEach(k => t[k] += +l[k] || 0); return t; }, {e_pal:0, m_pal:0, carros:0, box:0, cajas:0});
+const camionesPara = list => { const m = ldmDe(list); return m > 0 ? Math.ceil(m / CAP - 1e-9) : 0; };
 let posicionesPor = {};
 let almacenesNombres = [], destinosNombres = [], lugares = {};
 function transPropia(){ return transportistas.find(x => x.propia) || null; }
@@ -878,6 +896,7 @@ async function cargarMaestros(){
     sb.from('destinos').select('*').order('nombre'),
   ]);
   destinosNombres = (de.data || []).map(x => x.nombre);
+  zonasDestino = {}; (de.data || []).forEach(x => { const z = zonaPorUbicacion(x); if(z) zonasDestino[normTxt(x.nombre)] = z; });
   (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url});
   personalTodos = p.data || []; clientesTodos = c.data || []; transportistasTodos = t.data || [];
   // en los desplegables solo salen los que no están de baja
@@ -1359,6 +1378,10 @@ function render(){
   if(cierre) $('#diaCerrado').textContent = '🔒 Día cerrado' + (cierre.split('|')[0] ? ' por ' + cierre.split('|')[0] : '') + ' · solo se pueden tocar los viajes sin terminar';
   const asignadas = lineas.filter(l => l.camion_id && !l.retorno);
   const tray = lineas.filter(l => !l.camion_id);
+  const ida = lineas.filter(l => !l.retorno);
+  const nec = {V: camionesPara(ida.filter(l => zonaLinea(l) === 'V')), S: camionesPara(ida.filter(l => zonaLinea(l) === 'S')), X: camionesPara(ida.filter(l => zonaLinea(l) === 'X'))};
+  nec.total = nec.V + nec.S + nec.X;
+  $('#h-salen').textContent = `Salen hoy · ${camiones.length} ${camiones.length === 1 ? 'camión' : 'camiones'}`;
   const sinCg = lineas.filter(l => l.camion_id && l.modo === 'hub' && !l.cargador_id && !l.retorno).length;
   const sinEnviar = lineas.filter(l => l.modo === 'hub' && l.cargador_id && !enviada(l)).length;
   const cuadrados = camiones.filter(t => { const h = huecoCamion(lineas.filter(l => l.camion_id === t.id && !l.retorno)); return !h.over && h.libresE === 0 && h.libresG === 0; }).length;
@@ -1368,7 +1391,8 @@ function render(){
     <div class="stat ${tray.length ? 'alert' : ''}"><b>${fmt(paletsDe(tray))}</b><span>Sin asignar</span></div>
     <div class="stat"><b>${cuadrados}/${camiones.length}</b><span>Cuadrados</span></div>
     <div class="stat ${sinCg ? 'alert' : ''}"><b>${sinCg}</b><span>Sin cargador</span></div>
-    <div class="stat ${sinEnviar ? 'alert' : ''}"><b>${sinEnviar}</b><span>Órdenes sin enviar</span></div>`;
+    <div class="stat ${sinEnviar ? 'alert' : ''}"><b>${sinEnviar}</b><span>Órdenes sin enviar</span></div>
+    <div class="stat ${nec.total > camiones.length ? 'alert' : ''}" title="Con todos los pedidos del día (en camiones y sin asignar): metros de carga ÷ 13,2 m por camión. Carros: 38 por camión."><b>${nec.total}</b><span>Camiones necesarios · L ${nec.V} · S ${nec.S}${nec.X ? ' · sin zona ' + nec.X : ''}</span></div>`;
 
   $('#roster').innerHTML = camiones.length ? camiones.map(t => {
     const pct = Math.round(ldmDe(lineas.filter(l => l.camion_id === t.id && !l.retorno))/CAP*100);
@@ -1379,18 +1403,21 @@ function render(){
   }).join('') : '<li class="hint">Aún no has apuntado a nadie.</li>';
 
   // palets por dirección en los botones de arriba (lo que va en los camiones, sin contar el retorno)
-  const palDir = d => fmt(paletsDe(lineas.filter(l => l.camion_id && !l.retorno && (d === 'all' || ((camion(l.camion_id) || {}).direccion || 'X') === d))));
+  const palDir = d => fmt(paletsDe(ida.filter(l => d === 'all' || zonaLinea(l) === d)));   // todos los pedidos del día, por su zona
   ['all','V','S'].forEach(d => { const el = document.getElementById('cnt-' + d); if(el) el.textContent = palDir(d); });
-  const trayUl = $('#tray .lines');
-  trayUl.innerHTML = tray.map(l => lineHTML(l)).join('');
-  trayUl.classList.toggle('empty', !tray.length);
+  // Pedidos sin asignar, ya separados por la zona de su destino (Levante, Sur o sin zona si el destino no la tiene)
+  const ZT = {V:'Levante', S:'Sur', X:'Sin zona (el destino no tiene ubicación en su ficha)'};
+  const zonasVer = filter === 'all' ? ['V','S','X'] : [filter, 'X'];
+  $('#trayZonas').innerHTML = zonasVer.map(z => { const ls = tray.filter(l => zonaLinea(l) === z);
+    if(!ls.length && !(z === 'X' && !tray.length)) return '';
+    return `<div class="tray-zona">${tray.length ? `<div class="tray-zona-t">${ZT[z]} · ${ls.length} pedido${ls.length === 1 ? '' : 's'} · ${qtyHTML(sumaBultos(ls))} · ${camionesPara(ls)} ${camionesPara(ls) === 1 ? 'camión' : 'camiones'}</div>` : ''}<ul class="lines ${ls.length ? '' : 'empty'}" data-zone="tray">${ls.map(l => lineHTML(l)).join('')}</ul></div>`; }).join('');
   $('#trayLoad').textContent = tray.length ? `${tray.length} líneas · ${fmt(ldmDe(tray))} m de carga` : '';
 
   const dirs = filter === 'all' ? DIRS : [filter];
   $('#dirBlocks').innerHTML = dirs.map(d => {
     const ts = camiones.filter(t => (t.direccion || 'X') === d);
     if(d === 'X' && !ts.length) return '';
-    return `<section class="dirblock"><h3>${DIR_TXT[d]} · ${ts.length} camiones</h3>
+    return `<section class="dirblock"><h3>${DIR_TXT[d]} · ${ts.length} camiones${d !== 'X' && nec[d] ? ` <span class="nec ${nec[d] > ts.length ? 'falta' : ''}">· hacen falta ${nec[d]}${nec[d] > ts.length ? ` (faltan ${nec[d] - ts.length})` : ''}</span>` : ''}</h3>
       <div class="trucks">${ts.map(truckHTML).join('') || '<p class="hint">Nadie sale en esta dirección.</p>'}</div></section>`;
   }).join('');
   if(modoVista === 'hoja') renderHoja();
@@ -2263,6 +2290,13 @@ function renderAjustes(box){
         <button type="button" class="btn small" id="guardarAlertas">Guardar</button>
       </div>
       <div class="baja-card">
+        <b>Alarma por tiempo de espera</b>
+        <span class="hint">Si un chófer lleva en su destino más tiempo del máximo sin poder descargar, salta una alerta aquí (y se puede avisar por WhatsApp al responsable de alertas). Funciona con la app del chófer abierta y el GPS encendido. El destino tiene que tener su ubicación en la ficha Destinos (la zona Levante/Sur se saca de ahí).</span>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="esperaActiva" ${ajustes.espera_activa === 'si' ? 'checked' : ''}> Activada</label>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Máximo Levante <input class="field" id="esperaV" type="number" min="10" step="5" value="${+ajustes.espera_max_V || 120}" style="width:80px"> min · Sur <input class="field" id="esperaS" type="number" min="10" step="5" value="${+ajustes.espera_max_S || 120}" style="width:80px"> min</span>
+        <button type="button" class="btn small" id="guardarEspera">Guardar</button>
+      </div>
+      <div class="baja-card">
         <b>Carga máxima del camión</b>
         <span class="hint">Si los kilos de un camión pasan de aquí, sale un aviso rojo en su caja del cartón, y en la app el conductor tiene que confirmarlo antes de generar el DeCA.</span>
         <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input class="field" id="cargaMax" type="number" min="1000" step="500" value="${+ajustes.carga_maxima_kg || 24000}" style="width:110px"> kg <button type="button" class="btn small" id="guardarCargaMax">Guardar</button></span>
@@ -3059,6 +3093,8 @@ document.addEventListener('click', async e => {
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
+    if(b.id === 'guardarEspera'){ const v = Math.max(10, parseInt($('#esperaV').value, 10) || 120), sv = Math.max(10, parseInt($('#esperaS').value, 10) || 120);
+      if(await guardarAjuste('espera_activa', $('#esperaActiva').checked ? 'si' : 'no') && await guardarAjuste('espera_max_V', String(v)) && await guardarAjuste('espera_max_S', String(sv))) toast($('#esperaActiva').checked ? 'Alarma de espera activada' : 'Guardado (alarma desactivada)'); return; }
     if(b.id === 'guardarCargaMax'){ const v = Math.max(1000, parseInt($('#cargaMax').value, 10) || 24000); if(await guardarAjuste('carga_maxima_kg', String(v))){ toast('Guardado'); render(); } return; }
     if(b.id === 'guardarAlertas'){ const r = Math.max(100, parseInt($('#radioDesc').value, 10) || 1000); if(await guardarAjuste('radio_descarga_m', String(r)) && await guardarAjuste('tel_alertas', $('#telAlertas').value.trim())) toast('Guardado'); return; }
     if(b.dataset.opertodos || b.dataset.operninguno){

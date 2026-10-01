@@ -295,7 +295,7 @@ const sb = (SUPABASE_URL.includes('TU-PROYECTO') || !window.supabase) ? null :
 const TYPES = [
   {id:'europeo', name:'Palet Europeo', meta:'1,20 × 0,80 m', ldmUnit:0.4},
   {id:'grande (americano)', name:'Palet Americano', meta:'1,20 × 1,00 m', ldmUnit:0.5},
-  {id:'carro', name:'Carro de plantas', meta:'estimado', ldmUnit:0.4},
+  {id:'carro', name:'Carro de plantas', meta:'estimado', ldmUnit:13.2/38},   // frigo normal: 38 carros
   {id:'box', name:'Box de Plástico', meta:'1,20 × 1,00 m', ldmUnit:0.5},
   {id:'especial', name:'Bulto especial', meta:'tamaño variable, estimado', ldmUnit:0.5},
   {id:'cajas', name:'Cajas sueltas', meta:'estimado', ldmUnit:0.02},
@@ -851,6 +851,7 @@ async function pollDescargas(){
   const box = document.getElementById('descargasLista');
   document.getElementById('descargasBadge').textContent = String(data.length);
   if(!data.length){ box.innerHTML = '<div class="empty">No llevas ninguna descarga pendiente ahora mismo</div>'; return; }
+  if(choferActual && choferActual.puesto !== 'cargador') vigilarEspera(data);
   box.innerHTML = data.map(r=>`<div class="hist-item" style="flex-direction:column;align-items:stretch;gap:6px">
       <span><b>${r.destino||'—'}</b> ${enlaceMapa(r.destino, 'Cómo llegar')}<br><span class="pmeta">${r.deca_id} · ${r.matricula||'—'} · ${r.mercancia||''}</span></span>
       ${lineaHorario('Horario de descarga', horarioDescarga(r.destino))}
@@ -882,6 +883,32 @@ async function pollDescargas(){
       pollDescargas();
     };
   });
+}
+// ====== ALARMA POR TIEMPO DE ESPERA (se activa en Ajustes del cartón): si el chófer lleva en el destino más del máximo sin descargar ======
+let ultimaRevisionEspera = 0;
+async function vigilarEspera(data){
+  if(ajustesApp.espera_activa !== 'si' || !sb || !choferActual || !data.length) return;
+  if(Date.now() - ultimaRevisionEspera < 120000) return;   // se mira cada 2 minutos
+  ultimaRevisionEspera = Date.now();
+  const g = await capturarUbicacion(); if(!g) return;
+  const radio = +ajustesApp.radio_descarga_m || 1000;
+  for(const r of data){
+    const l = lugares[String(r.destino || '').toLowerCase()];
+    if(!l || l.lat == null || l.lng == null || l.lat === '' || l.lng === '') continue;
+    const k = 'espera_' + r.id; let info = null;
+    try{ info = JSON.parse(localStorage.getItem(k) || 'null'); }catch(e){}
+    const dentro = distanciaM(g.lat, g.lng, +l.lat, +l.lng) <= radio;
+    if(!dentro){ if(info && !info.avisado) try{ localStorage.removeItem(k); }catch(e){} continue; }   // se ha ido: vuelve a contar si regresa
+    if(!info){ try{ localStorage.setItem(k, JSON.stringify({desde: Date.now()})); }catch(e){} continue; }   // acaba de llegar
+    if(info.avisado) continue;
+    const zona = +l.lng > -2.7 ? 'V' : 'S';   // al este de la nave = Levante; al oeste = Sur (igual que en el cartón)
+    const max = +(zona ? ajustesApp['espera_max_' + zona] : (ajustesApp.espera_max_V || ajustesApp.espera_max_S)) || 120;
+    const min = Math.round((Date.now() - info.desde) / 60000);
+    if(min < max) continue;
+    info.avisado = true; try{ localStorage.setItem(k, JSON.stringify(info)); }catch(e){}
+    await sb.from('alertas').insert({tipo:'espera', persona_id:String(choferActual.id), persona_nombre:choferActual.nombre, deca_id:r.deca_id,
+      mensaje:`⏱ ${choferActual.nombre} lleva ${min} min esperando para descargar en ${r.destino || 'destino'} (${r.deca_id}). Máximo${zona ? (zona === 'V' ? ' Levante' : ' Sur') : ''}: ${max} min.`, lat:g.lat, lng:g.lng});
+  }
 }
 function pintarLejos(lista){
   let box = document.getElementById('lejosLista');
