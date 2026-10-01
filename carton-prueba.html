@@ -41,6 +41,7 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+body:not([data-rol="direccion"]) .solo-dir{display:none!important}
 html,body{margin:0}
 body{background:var(--ground);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.4;padding-inline:16px;padding-block:16px 60px}
 .wrap{max-width:none;margin:0 auto;display:flex;flex-direction:column;gap:14px}
@@ -534,6 +535,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       </div>
       <button type="button" class="btn small" id="actualizarBtn" title="Vuelve a leer todo del servidor">⟳ Actualizar</button>
       <button type="button" class="btn small" id="copiaBtn" title="Descarga una copia de todos los datos en Excel">💾 Copia</button>
+      <button type="button" class="btn small solo-dir" id="accesoBtn" title="Pone el cartón como una aplicación más en el escritorio de este ordenador">📌 Acceso directo</button>
       <button type="button" class="btn small solo-carton" id="panelBtn" title="Oculta o muestra la columna de la izquierda para dar más sitio al cartón">Ocultar panel</button>
       <button type="button" class="btn small solo-carton" id="imprimir" title="Imprime lo que estás viendo (Todos, Levante o Sur)">🖨 Imprimir</button>
       <button type="button" class="btn small primary solo-carton" id="verOrdenes">Órdenes de carga</button>
@@ -745,6 +747,8 @@ let camiones = [], lineas = [], cargas = {}, decas = {}, ausencias = [];
 const ausente = id => ausencias.find(a => String(a.persona_id) === String(id)) || null;
 let operativos = null;   // quién ha marcado Tráfico como operativo hoy (null = todavía nadie marcado: todos)
 const esOperativo = id => !ausente(id) && (operativos === null || operativos.includes(String(id)));
+// autónomos: van en la misma lista con «a:»; «a:-» indica que la lista ya los tiene en cuenta (si no, todos disponibles)
+const autOperativo = id => operativos === null || !operativos.includes('a:-') || operativos.includes('a:' + id);
 const MOTIVOS = {baja:'Baja', vacaciones:'Vacaciones', descanso:'Descanso', otro:'No disponible'};
 let personal = [], clientes = [], transportistas = [], tractoras = [], remolques = [];
 let ordersOpen = false;
@@ -770,13 +774,13 @@ function aplicarLicencia(){
     document.getElementById('licIcono').textContent = enRegla ? '📱' : '⛔';
     document.getElementById('licTitulo').textContent = enRegla ? 'Tu plan no incluye el cartón' : 'Servicio suspendido';
     document.getElementById('licTexto').textContent = (licencia && licencia.mensaje) || (enRegla
-      ? 'Tu plan Estándar incluye solo la app MyDeCaS para los conductores. Para usar el cartón de Tráfico, pasa al plan Básico o Pro.'
-      : 'El acceso a MyDeCaS está suspendido. Ponte en contacto con MyDeCaS para reactivarlo.');
+      ? 'Tu plan Estándar incluye solo la app myDeCaS para los conductores. Para usar el cartón de Tráfico, pasa al plan Básico o Pro.'
+      : 'El acceso a myDeCaS está suspendido. Ponte en contacto con myDeCaS para reactivarlo.');
     caja.hidden = false;
   } else caja.hidden = true;
   // Aviso 7 días antes de que venza
   const dias = licencia && licencia.hasta ? Math.round((new Date(String(licencia.hasta).slice(0,10)) - new Date(hoyISO())) / 864e5) : null;
-  if(enRegla && dias != null && dias <= 7){ aviso.textContent = dias === 0 ? '⚠️ Tu suscripción a MyDeCaS vence hoy.' : `⚠️ Tu suscripción a MyDeCaS vence en ${dias} día${dias === 1 ? '' : 's'} (${new Date(String(licencia.hasta).slice(0,10)).toLocaleDateString('es-ES')}).`; aviso.hidden = false; }
+  if(enRegla && dias != null && dias <= 7){ aviso.textContent = dias === 0 ? '⚠️ Tu suscripción a myDeCaS vence hoy.' : `⚠️ Tu suscripción a myDeCaS vence en ${dias} día${dias === 1 ? '' : 's'} (${new Date(String(licencia.hasta).slice(0,10)).toLocaleDateString('es-ES')}).`; aviso.hidden = false; }
   else aviso.hidden = true;
 }
 setTimeout(leerLicencia, 0); setInterval(()=>{ if(!usuario) leerLicencia(); }, 60000);   // también en la pantalla de entrada
@@ -881,15 +885,19 @@ async function cargarMaestros(){
   $('#lnTrans').innerHTML = (pr ? '' : '<option value="">Transportista efectivo — marca tu empresa como «propia» en Transportistas</option>') +
     transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
   $('#lnTrans').value = tv || (pr ? pr.id : '');
-  const autos = transportistas.filter(x => x.autonomo);
-  const av = $('#camAuto').value;
-  $('#camAuto').innerHTML = autos.length ? '<option value="">…o autónomo de la lista</option>' + autos.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.matricula_actual ? ' · ' + esc(x.matricula_actual) : ''}</option>`).join('')
-    : '<option value="">No hay autónomos: añádelos en la pestaña Autónomos</option>';
-  if(av) $('#camAuto').value = av;
+  pintarCamAuto();
   actualizarCondAut();
   if(!$('#lnMerc').options.length) $('#lnMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join('');
   const ch = personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id));   // los de los autónomos van en su lista; los que no están hoy, fuera
   $('#camChofer').innerHTML = '<option value="">Chófer propio de la lista…</option>' + ch.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+}
+// Desplegable de autónomos de «Salen hoy»: solo los que trabajan hoy
+function pintarCamAuto(){
+  const autos = transportistas.filter(x => x.autonomo && autOperativo(x.id));
+  const av = $('#camAuto').value;
+  $('#camAuto').innerHTML = autos.length ? '<option value="">…o autónomo de la lista</option>' + autos.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.matricula_actual ? ' · ' + esc(x.matricula_actual) : ''}</option>`).join('')
+    : '<option value="">No hay autónomos: añádelos en la pestaña Autónomos</option>';
+  if(av && [...$('#camAuto').options].some(o => o.value === av)) $('#camAuto').value = av;
 }
 
 // Al elegir un autónomo: si tiene conductores dados de alta, se elige cuál lleva el camión
@@ -1293,13 +1301,16 @@ function renderDispo(){
       ${a ? (esDir ? `<span class="dispo-m">${MOTIVOS[a.motivo] || a.motivo} · hasta ${fechaBonita(a.hasta)}</span><button type="button" class="linkbtn" data-dispook="${a.id}">Ya está</button>` : '<span class="dispo-m">no disponible</span>')
           : (esDir ? `<button type="button" class="linkbtn" data-dispono="${p.id}" title="Solo dirección: baja, vacaciones, descanso…">Ausencia…</button>` : '')}</label>`; };
   const n = l => l.filter(p => esOperativo(p.id)).length;
-  $('#dispoResumen').textContent = `· ${n(cgs)} cargador${n(cgs) === 1 ? '' : 'es'} · ${n(chs)} chófer${n(chs) === 1 ? '' : 'es'}`;
-  box.innerHTML = (cgs.length || chs.length) ? `<div class="send-row" style="margin:4px 0 6px"><button type="button" class="btn small" data-opertodos="1">Todos</button><button type="button" class="btn small" data-operninguno="1">Ninguno</button></div>
-    ${cgs.length ? `<div class="dispo-g"><b>Cargadores</b>${cgs.map(fila).join('')}</div>` : ''}${chs.length ? `<div class="dispo-g"><b>Chóferes</b>${chs.map(fila).join('')}</div>` : ''}` : '<p class="hint">No hay personal dado de alta.</p>';
+  const auts = transportistas.filter(x => x.autonomo), nAut = auts.filter(a => autOperativo(a.id)).length;
+  const filaAut = a => `<label class="dispo-p ${autOperativo(a.id) ? '' : 'fuera'}"><input type="checkbox" data-oper="a:${a.id}" ${autOperativo(a.id) ? 'checked' : ''}><span>${esc(a.nombre)}</span></label>`;
+  $('#dispoResumen').textContent = `· ${n(cgs)} cargador${n(cgs) === 1 ? '' : 'es'} · ${n(chs)} chófer${n(chs) === 1 ? '' : 'es'}${auts.length ? ` · ${nAut} autónomo${nAut === 1 ? '' : 's'}` : ''}`;
+  box.innerHTML = (cgs.length || chs.length || auts.length) ? `<div class="send-row" style="margin:4px 0 6px"><button type="button" class="btn small" data-opertodos="1">Todos</button><button type="button" class="btn small" data-operninguno="1">Ninguno</button></div>
+    ${cgs.length ? `<div class="dispo-g"><b>Cargadores</b>${cgs.map(fila).join('')}</div>` : ''}${chs.length ? `<div class="dispo-g"><b>Chóferes</b>${chs.map(fila).join('')}</div>` : ''}${auts.length ? `<div class="dispo-g"><b>Autónomos</b>${auts.map(filaAut).join('')}</div>` : ''}` : '<p class="hint">No hay personal dado de alta.</p>';
   // la lista de «Salen hoy» también se actualiza con quién está hoy
   const sel = $('#camChofer'), v = sel.value;
   sel.innerHTML = '<option value="">Chófer propio de la lista…</option>' + personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
   if(v && [...sel.options].some(o => o.value === v)) sel.value = v;
+  pintarCamAuto();
   actualizarCondAut();
 }
 function pedirAusencia(p){
@@ -1742,7 +1753,7 @@ async function renderFicherosBase(){
       </tbody></table></div></div>`;
   }).join('');
   box.innerHTML = `<div class="fich-head"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2>${cfg.titulo}</h2></div>${cfg.aviso ? `<p class="hint">${cfg.aviso}</p>` : ''}</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="${cfg.tablas[0].tabla}" title="Para los que tienen ubicación guardada y la dirección vacía">📍 Rellenar direcciones con la ubicación</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Destinos y almacenes que tienen ubicación guardada y la dirección vacía">📍 Rellenar direcciones con la ubicación (destinos y almacenes)</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
     <div class="${cfg.tablas.length > 1 ? 'fich-cols' : ''}">${bloques}</div>`;
 }
 // ====== IMPORTAR DESDE EXCEL (todas las fichas: clientes, transportistas, autónomos, personal, flota, destinos, almacenes y tarifas) ======
@@ -1941,21 +1952,26 @@ async function direccionDesdeGps(lat, lng){
     return txt.trim() || (j.display_name ? j.display_name.split(',').slice(0, 4).join(',').trim() : null);
   }catch(e){ return null; }
 }
-async function rellenarDireccionesGps(tabla, boton){
-  const lngK = tabla === 'almacenes' ? 'lon' : 'lng';
-  if((await columnasQueFaltan(tabla)).includes('direccion')){ toast('Primero ejecuta la actualización 33 en Supabase.', true); return; }
-  const { data } = await sb.from(tabla).select('*').limit(5000);
-  const lista = (data || []).filter(x => x.lat != null && x[lngK] != null && !String(x.direccion || '').trim());
-  if(!lista.length){ toast('No hay ninguno con ubicación guardada y la dirección vacía.'); return; }
-  if(!confirm(`Voy a buscar la dirección de ${lista.length} a partir de su ubicación (tarda un segundo cada uno). Después revísalas: la dirección del mapa puede no ser exacta.`)) return;
+async function rellenarDireccionesGps(_, boton){
+  // busca en las DOS fichas a la vez: destinos y almacenes
+  const tablas = [];
+  for(const tabla of ['destinos','almacenes']){
+    if((await columnasQueFaltan(tabla)).includes('direccion')){ toast('Primero ejecuta la actualización 33 en Supabase.', true); return; }
+    const lngK = tabla === 'almacenes' ? 'lon' : 'lng';
+    const { data } = await sb.from(tabla).select('*').limit(5000);
+    (data || []).filter(x => x.lat != null && x[lngK] != null && !String(x.direccion || '').trim()).forEach(x => tablas.push({tabla, x, lat: x.lat, lng: x[lngK]}));
+  }
+  if(!tablas.length){ toast('No hay ningún destino ni almacén con ubicación guardada y la dirección vacía.'); return; }
+  const nD = tablas.filter(t => t.tabla === 'destinos').length, nA = tablas.length - nD;
+  if(!confirm(`Voy a buscar la dirección de ${nD} destino${nD === 1 ? '' : 's'} y ${nA} almacén${nA === 1 ? '' : 'es'} a partir de su ubicación (tarda un segundo cada uno). Después revísalas: la dirección del mapa puede no ser exacta.`)) return;
   boton.disabled = true; let hechos = 0;
-  for(const x of lista){
-    boton.textContent = `📍 Buscando… ${hechos + 1}/${lista.length}`;
-    const d = await direccionDesdeGps(x.lat, x[lngK]);
-    if(d){ const { error } = await sb.from(tabla).update({direccion: d}).eq('id', x.id); if(!error) hechos++; }
+  for(const [i, t] of tablas.entries()){
+    boton.textContent = `📍 Buscando… ${i + 1}/${tablas.length}`;
+    const d = await direccionDesdeGps(t.lat, t.lng);
+    if(d){ const { error } = await sb.from(t.tabla).update({direccion: d}).eq('id', t.x.id); if(!error) hechos++; }
     await new Promise(r => setTimeout(r, 1100));
   }
-  toast(`✅ Rellenadas ${hechos} de ${lista.length} direcciones. Revísalas.`);
+  toast(`✅ Rellenadas ${hechos} de ${tablas.length} direcciones (destinos y almacenes). Revísalas.`);
   await cargarMaestros(); renderFicheros();
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-dirgps]'); if(b) rellenarDireccionesGps(b.dataset.dirgps, b); });
@@ -2936,7 +2952,7 @@ document.addEventListener('click', async e => {
     if(b.id === 'guardarCargaMax'){ const v = Math.max(1000, parseInt($('#cargaMax').value, 10) || 24000); if(await guardarAjuste('carga_maxima_kg', String(v))){ toast('Guardado'); render(); } return; }
     if(b.id === 'guardarAlertas'){ const r = Math.max(100, parseInt($('#radioDesc').value, 10) || 1000); if(await guardarAjuste('radio_descarga_m', String(r)) && await guardarAjuste('tel_alertas', $('#telAlertas').value.trim())) toast('Guardado'); return; }
     if(b.dataset.opertodos || b.dataset.operninguno){
-      const ids = b.dataset.opertodos ? personal.filter(p => ['cargador','chofer'].includes(p.puesto) && !ausente(p.id)).map(p => String(p.id)) : [];
+      const ids = b.dataset.opertodos ? [...personal.filter(p => ['cargador','chofer'].includes(p.puesto) && !ausente(p.id)).map(p => String(p.id)), ...transportistas.filter(x => x.autonomo).map(x => 'a:' + x.id), 'a:-'] : ['a:-'];
       if(await guardarAjuste('operativos_' + fecha, JSON.stringify(ids))){ operativos = ids; render(); }
       return;
     }
@@ -3049,7 +3065,7 @@ document.addEventListener('change', async e => {
   try{
     if(s.id === 'fecha'){ fecha = s.value || hoyISO(); fechaManual = true; await refrescar(true); if(['ordenes','admin'].includes(vista)) renderFicheros(); return; }
     if(s.dataset.oper){
-      const ids = [...document.querySelectorAll('[data-oper]')].filter(x => x.checked).map(x => x.dataset.oper);
+      const ids = [...[...document.querySelectorAll('[data-oper]')].filter(x => x.checked).map(x => x.dataset.oper), 'a:-'];
       if(await guardarAjuste('operativos_' + fecha, JSON.stringify(ids))){ operativos = ids; render(); } else s.checked = !s.checked;
       return;
     }

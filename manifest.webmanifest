@@ -1,6 +1,6 @@
 {
-  "name": "DeCA · App del Conductor",
-  "short_name": "DeCA",
+  "name": "myDeCaS · Conductor",
+  "short_name": "myDeCaS",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

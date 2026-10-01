@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>PRUEBA · Conductor — DeCA</title>
+<title>PRUEBA · myDeCaS · Conductor</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0f1420">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="DeCA">
+<meta name="apple-mobile-web-app-title" content="myDeCaS">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -112,7 +112,7 @@
   </div>
 </div>
 <div class="wrap">
-  <h1>🚚 App del Conductor</h1>
+  <h1>🚚 myDeCaS <span style="font-weight:500;color:var(--muted);font-size:.8em">· conductor</span></h1>
   <div class="sub">Ajusta la carga real, confirma y genera el DeCA con QR</div>
   <div id="licenciaAviso" style="display:none;background:rgba(255,92,92,.15);border:2px solid var(--bad);border-radius:12px;padding:12px;margin-bottom:12px;font-weight:700"></div>
   <div class="synctag" style="display:flex;justify-content:flex-end;align-items:center;gap:8px"><span id="syncTag">Conectando con el servidor…</span><span class="badge" id="actualizarBtn" style="cursor:pointer" title="Vuelve a leer todo del servidor">⟳ Actualizar</span></div>
@@ -1066,7 +1066,7 @@ function avisoSonoro(){
     });
   }catch(e){}
   try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){}
-  if(document.hidden) avisoNativo('MyDeCaS', 'Tienes cargas o avisos nuevos. Toca para abrir la app.');
+  if(document.hidden) avisoNativo('myDeCaS', 'Tienes cargas o avisos nuevos. Toca para abrir la app.');
 }
 
 // ====== APP NATIVA (Android) — todo esto solo funciona dentro de la app instalada; en el navegador no hace nada ======
@@ -1088,7 +1088,7 @@ function revisarGpsFondo(){
     gpsArrancando = true;
     try{
       gpsVigilante = CAPN.BackgroundGeolocation.addWatcher({
-        backgroundTitle: 'MyDeCaS · trabajo en curso',
+        backgroundTitle: 'myDeCaS · trabajo en curso',
         backgroundMessage: 'Solo durante tu trabajo. Se apaga al finalizar el viaje o cerrar sesión.',
         requestPermissions: true, stale: false, distanceFilter: 100
       }, (pos, err)=>{

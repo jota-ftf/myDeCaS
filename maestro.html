@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>myDeCaS · Programa maestro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --bg:#f3f4f8; --surface:#ffffff; --surface-2:#f7f8fb; --ink:#1b2030; --muted:#5f6880; --line:#dfe3ec;
+  --pen:#2a3aa8; --pen-soft:#e6e9fb; --ok:#21835a; --ok-soft:#e0f3ea; --warn:#a86a06; --warn-soft:#fbefd9;
+  --bad:#b8352a; --bad-soft:#f9e1de; --info:#2a6fb8; --info-soft:#e1edf9; --gris:#7a8194; --gris-soft:#eceef3;
+  --r:10px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12151d; --surface:#1b1f2a; --surface-2:#222736; --ink:#e9ecf4; --muted:#a0a8bc; --line:#323849;
+    --pen:#8c9cff; --pen-soft:#262d52; --ok:#5fd19b; --ok-soft:#173528; --warn:#f0b452; --warn-soft:#3a2d14;
+    --bad:#ff8577; --bad-soft:#3d1d1a; --info:#7db7f5; --info-soft:#17283d; --gris:#9aa1b3; --gris-soft:#262a35; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px}
+.wrap{max-width:1180px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:1.3rem;margin:0} h1 small{font-weight:500;color:var(--muted);font-size:.85rem;margin-left:6px}
+h2{font-size:1.05rem;margin:0 0 10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:8px 12px;font-size:.92rem;cursor:pointer;font-weight:600}
+.btn:hover{border-color:var(--pen)}
+.btn.primary{background:var(--pen);border-color:var(--pen);color:#fff}
+.btn.small{padding:5px 9px;font-size:.82rem}
+.btn.peligro{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:default}
+.field{width:100%;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:9px 10px;font-size:.95rem}
+label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);font-weight:600}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:20px;padding:7px 14px;font-weight:600;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--pen);border-color:var(--pen);color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.kpi b{display:block;font-size:1.6rem;margin-top:2px}
+.kpi span{font-size:.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.tabla-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th{text-align:left;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.acc{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.chip{display:inline-block;border-radius:20px;padding:3px 10px;font-size:.78rem;font-weight:700;white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.info{background:var(--info-soft);color:var(--info)}
+.chip.gris{background:var(--gris-soft);color:var(--gris)} .chip.pen{background:var(--pen-soft);color:var(--pen)}
+.hint{color:var(--muted);font-size:.85rem;margin:0}
+.fila{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.full{grid-column:1/-1}
+.modal{position:fixed;inset:0;background:rgba(10,12,20,.5);display:grid;place-items:center;padding:16px;z-index:50}
+.modal[hidden]{display:none}
+.modal-card{background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:620px;max-height:calc(100vh - 32px);overflow:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.lista li{margin:4px 0}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-weight:600;z-index:60;max-width:90vw}
+.toast.error{background:var(--bad);color:#fff}
+.login{max-width:400px;margin:8vh auto}
+code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:2px 6px;font-size:.85rem;word-break:break-all}
+.vacio{color:var(--muted);text-align:center;padding:18px}
+[hidden]{display:none!important}
+@media (max-width:640px){ .grid2{grid-template-columns:1fr} .wrap{padding:12px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ENTRADA -->
+  <div id="vLogin" class="login card" hidden>
+    <h1>🔑 Programa maestro</h1>
+    <p class="hint" style="margin:6px 0 14px">Solo para el administrador de myDeCaS. Entra con el correo y la contraseña de tu usuario de Supabase.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <label>Correo<input class="field" id="lEmail" type="email" autocomplete="username"></label>
+      <label>Contraseña<input class="field" id="lPass" type="password" autocomplete="current-password"></label>
+      <button class="btn primary" id="lEntrar" type="button">Entrar</button>
+      <p class="hint" id="lMsg" style="color:var(--bad)"></p>
+    </div>
+  </div>
+
+  <!-- SIN PERMISO -->
+  <div id="vNoAdmin" class="login card" hidden>
+    <h1>⛔ Aún no eres administrador</h1>
+    <p class="hint" style="margin:8px 0">Has entrado como <b id="naEmail"></b>, pero ese correo todavía no está en la lista de administradores del maestro.</p>
+    <p class="hint">Para darte permiso, entra en Supabase → <b>SQL Editor</b>, pega esta línea y pulsa <b>Run</b>:</p>
+    <p><code id="naSql"></code></p>
+    <div class="fila"><button class="btn" id="naCopiar" type="button">Copiar la línea</button><button class="btn" id="naReintentar" type="button">Ya lo he hecho</button><button class="btn" id="naSalir" type="button">Salir</button></div>
+  </div>
+
+  <!-- APP -->
+  <div id="vApp" hidden>
+    <header>
+      <h1>🚚 myDeCaS <small>Programa maestro</small></h1>
+      <div class="fila"><span class="hint" id="quien"></span><button class="btn small" id="salir" type="button">Salir</button></div>
+    </header>
+    <nav class="tabs" id="tabs">
+      <button data-t="resumen" aria-pressed="true">📊 Resumen</button>
+      <button data-t="empresas" aria-pressed="false">🏢 Empresas</button>
+      <button data-t="pagos" aria-pressed="false">💶 Cobros</button>
+      <button data-t="ajustes" aria-pressed="false">⚙️ Ajustes</button>
+    </nav>
+    <section id="tResumen"></section>
+    <section id="tEmpresas" hidden></section>
+    <section id="tPagos" hidden></section>
+    <section id="tAjustes" hidden></section>
+  </div>
+</div>
+
+<!-- Ficha de empresa -->
+<div class="modal" id="mEmpresa" hidden>
+  <div class="modal-card">
+    <h2 id="meTit">Nueva empresa</h2>
+    <div class="grid2">
+      <label class="full">Nombre de la empresa *<input class="field" id="meNombre"></label>
+      <label>NIF / CIF<input class="field" id="meNif"></label>
+      <label>Persona de contacto<input class="field" id="meContacto"></label>
+      <label>Email<input class="field" id="meEmail" type="email"></label>
+      <label>Teléfono<input class="field" id="meTel"></label>
+      <label class="full">Dirección<input class="field" id="meDir"></label>
+      <label>Plan<select class="field" id="mePlan"><option value="estandar">Estándar (solo la app)</option><option value="basico">Básico (cartón + app)</option><option value="pro">Pro (cartón + app + administración)</option></select></label>
+      <label>Camiones contratados<input class="field" id="meCamiones" type="number" min="1" step="1"></label>
+      <label>Situación<select class="field" id="meEstado"><option value="prueba">En prueba gratis</option><option value="activa">Activa (de pago)</option><option value="suspendida">Suspendida</option><option value="baja">Baja</option></select></label>
+      <label id="meDiasL">Días de prueba<input class="field" id="meDias" type="number" min="1" step="1"></label>
+      <label>Prueba hasta<input class="field" id="mePrueba" type="date"></label>
+      <label>Pagado hasta<input class="field" id="mePagado" type="date"></label>
+      <label>Precio especial por camión y mes (€)<input class="field" id="mePrecio" inputmode="decimal" placeholder="Vacío = el del plan"></label>
+      <label class="full">Mensaje si se suspende (opcional)<input class="field" id="meMensaje" placeholder="Ej.: Pago pendiente. Llama al 600 000 000."></label>
+      <label class="full">Notas internas<textarea class="field" id="meNotas" rows="2"></textarea></label>
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="mePrincipal"> Es mi empresa (la que usa ahora el cartón y la app de myDeCaS)</label>
+    </div>
+    <p class="hint" id="meMsg" style="color:var(--bad)"></p>
+    <div class="fila" style="justify-content:flex-end"><button class="btn" id="meCancelar" type="button">Cancelar</button><button class="btn primary" id="meGuardar" type="button">Guardar</button></div>
+  </div>
+</div>
+
+<!-- Cobrar -->
+<div class="modal" id="mCobro" hidden>
+  <div class="modal-card" style="max-width:460px">
+    <h2 id="mcTit">Apuntar cobro</h2>
+    <div class="grid2">
+      <label>Meses que paga<select class="field" id="mcMeses"><option>1</option><option>3</option><option>6</option><option>12</option></select></label>
+      <label>Importe (€)<input class="field" id="mcImporte" inputmode="decimal"></label>
+      <label>Fecha del cobro<input class="field" id="mcFecha" type="date"></label>
+      <label>Queda pagado hasta<input class="field" id="mcHasta" type="date"></label>
+      <label class="full">Nota<input class="field" id="mcNota" placeholder="Transferencia, recibo nº…"></label>
+    </div>
+    <p class="hint" id="mcAyuda"></p>
+    <div class="fila" style="justify-content:flex-end"><button class="btn" id="mcCancelar" type="button">Cancelar</button><button class="btn primary" id="mcGuardar" type="button">Apuntar cobro</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+// ====== CONFIGURACIÓN (el mismo proyecto de Supabase que el cartón) ======
+const SUPABASE_URL = 'https://abeutxnyyyaxrmhoeemv.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiZXV0eG55eXlheHJtaG9lZW12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyODIyNTAsImV4cCI6MjEwNTg1ODI1MH0.qQ0q0H3HbR6Dcno35uCWFYRPhKYHbSEIZAXf-_HtTfY';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const PLAN = {estandar:'Estándar', basico:'Básico', pro:'Pro'};
+let empresas = [], pagos = [], ajustes = {}, admins = [], miEmail = '', editando = null, cobrando = null, filtro = '';
+
+// ---- fechas (siempre día local, sin horas) ----
+function hoy(){ const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,10); }
+function sumarDias(iso, n){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); }
+function sumarMeses(iso, n){ const d = new Date(iso + 'T12:00:00'); const dia = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); const ult = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); d.setDate(Math.min(dia, ult)); return d.toISOString().slice(0,10); }
+function diasHasta(iso){ return Math.round((new Date(iso + 'T12:00:00') - new Date(hoy() + 'T12:00:00')) / 864e5); }
+const fmtF = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('es-ES') : '—';
+const eur = n => (n == null || isNaN(n)) ? '—' : (+n).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
+const num = v => { if(v == null || v === '') return null; const n = parseFloat(String(v).replace(/\./g, m => String(v).includes(',') ? '' : m).replace(',', '.')); return isNaN(n) ? null : n; };
+
+function toast(t, error){ const el = $('#toast'); el.textContent = t; el.className = 'toast' + (error ? ' error' : ''); el.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => el.hidden = true, error ? 6000 : 3000); }
+
+// ---- cuentas ----
+const gracia = () => +ajustes.dias_gracia || 0;
+function precioCamion(e){ return e.precio_camion != null && e.precio_camion !== '' ? +e.precio_camion : num(ajustes['precio_' + e.plan]); }
+function mensual(e){ const p = precioCamion(e); return p == null ? null : p * (+e.camiones || 0); }
+// Situación real (lo que verá el cliente), según el estado y las fechas
+function situacion(e){
+  if(e.estado === 'baja') return {txt:'Baja', c:'gris', bloq:true};
+  if(e.estado === 'suspendida') return {txt:'Suspendida', c:'bad', bloq:true};
+  if(e.estado === 'prueba'){
+    if(!e.prueba_hasta) return {txt:'En prueba', c:'info'};
+    const d = diasHasta(e.prueba_hasta);
+    if(d < 0) return {txt:'Prueba terminada · bloqueada', c:'bad', bloq:true, aviso:'prueba'};
+    return {txt: d === 0 ? 'Prueba · último día' : `Prueba · quedan ${d} día${d === 1 ? '' : 's'}`, c: d <= 7 ? 'warn' : 'info', aviso: d <= 7 ? 'prueba' : null};
+  }
+  if(!e.pagado_hasta) return {txt:'Activa', c:'ok'};
+  const d = diasHasta(e.pagado_hasta);
+  if(d >= 0) return {txt:`Activa · pagado hasta ${fmtF(e.pagado_hasta)}`, c: d <= 7 ? 'warn' : 'ok', aviso: d <= 7 ? 'renovar' : null};
+  if(-d <= gracia()) return {txt:`Pago vencido · margen ${gracia() + d} día${gracia() + d === 1 ? '' : 's'}`, c:'warn', aviso:'vencido'};
+  return {txt:'Bloqueada por impago', c:'bad', bloq:true, aviso:'vencido'};
+}
+
+// ====== ENTRADA ======
+function ver(id){ ['vLogin','vNoAdmin','vApp'].forEach(v => $('#' + v).hidden = v !== id); }
+async function comprobar(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(!session){ ver('vLogin'); return; }
+  miEmail = session.user.email || '';
+  const { data: ok, error } = await sb.rpc('es_maestro');
+  if(error){ ver('vNoAdmin'); $('#naEmail').textContent = miEmail; $('#naSql').textContent = /function|schema cache/i.test(error.message || '') ? 'Primero ejecuta la actualización 36 en Supabase.' : error.message; return; }
+  if(!ok){ ver('vNoAdmin'); $('#naEmail').textContent = miEmail; $('#naSql').textContent = `insert into maestro_admins (email) values ('${miEmail.replace(/'/g, "''")}');`; return; }
+  ver('vApp'); $('#quien').textContent = miEmail;
+  await cargar();
+}
+$('#lEntrar').onclick = async () => {
+  const email = $('#lEmail').value.trim(), password = $('#lPass').value;
+  if(!email || !password){ $('#lMsg').textContent = 'Escribe el correo y la contraseña.'; return; }
+  $('#lEntrar').disabled = true; $('#lMsg').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({email, password});
+  $('#lEntrar').disabled = false; $('#lPass').value = '';
+  if(error){ $('#lMsg').textContent = /invalid/i.test(error.message) ? 'Correo o contraseña incorrectos.' : error.message; return; }
+  comprobar();
+};
+$('#lPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('#lEntrar').click(); });
+const salir = async () => { await sb.auth.signOut(); location.reload(); };
+$('#salir').onclick = salir; $('#naSalir').onclick = salir; $('#naReintentar').onclick = comprobar;
+$('#naCopiar').onclick = () => { navigator.clipboard && navigator.clipboard.writeText($('#naSql').textContent).then(() => toast('Copiada')); };
+
+// ====== DATOS ======
+async function cargar(){
+  const [e, p, a, ad] = await Promise.all([
+    sb.from('maestro_empresas').select('*').order('nombre'),
+    sb.from('maestro_pagos').select('*').order('fecha', {ascending:false}).limit(2000),
+    sb.from('maestro_ajustes').select('*'),
+    sb.from('maestro_admins').select('*').order('email')
+  ]);
+  const err = [e, p, a, ad].find(x => x.error);
+  if(err){ toast('No se pudo leer: ' + err.error.message, true); }
+  empresas = e.data || []; pagos = p.data || []; admins = ad.data || [];
+  ajustes = {}; (a.data || []).forEach(x => ajustes[x.clave] = x.valor);
+  pintar();
+}
+async function guardar(q, ok){
+  const { error } = await q;
+  if(error){ toast('No se pudo guardar: ' + error.message, true); return false; }
+  if(ok) toast(ok);
+  await cargar(); return true;
+}
+
+// ====== PANTALLAS ======
+let pestaña = 'resumen';
+$('#tabs').onclick = e => { const b = e.target.closest('[data-t]'); if(!b) return; pestaña = b.dataset.t; pintar(); };
+function pintar(){
+  document.querySelectorAll('#tabs [data-t]').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === pestaña));
+  ['resumen','empresas','pagos','ajustes'].forEach(t => $('#t' + t[0].toUpperCase() + t.slice(1)).hidden = t !== pestaña);
+  ({resumen:pResumen, empresas:pEmpresas, pagos:pPagos, ajustes:pAjustes})[pestaña]();
+}
+
+function pResumen(){
+  const vivas = empresas.filter(e => e.estado !== 'baja' && !e.principal);   // tu propia empresa no cuenta como cliente
+  const sit = vivas.map(e => [e, situacion(e)]);
+  const dePago = sit.filter(([e, s]) => e.estado === 'activa' && !s.bloq);
+  const enPrueba = sit.filter(([e, s]) => e.estado === 'prueba' && !s.bloq);
+  const bloqueadas = sit.filter(([, s]) => s.bloq);
+  const ingreso = dePago.reduce((t, [e]) => t + (mensual(e) || 0), 0);
+  const camiones = dePago.reduce((t, [e]) => t + (+e.camiones || 0), 0);
+  const sinPrecio = dePago.filter(([e]) => mensual(e) == null).length;
+  const mes = hoy().slice(0,7), cobradoMes = pagos.filter(p => String(p.fecha).slice(0,7) === mes).reduce((t, p) => t + (+p.importe || 0), 0);
+  const avisos = sit.filter(([, s]) => s.aviso).sort((a, b) => (a[0].prueba_hasta || a[0].pagado_hasta || '').localeCompare(b[0].prueba_hasta || b[0].pagado_hasta || ''));
+  $('#tResumen').innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><span>Empresas de pago</span><b>${dePago.length}</b></div>
+      <div class="kpi"><span>En prueba</span><b>${enPrueba.length}</b></div>
+      <div class="kpi"><span>Bloqueadas</span><b style="color:${bloqueadas.length ? 'var(--bad)' : 'inherit'}">${bloqueadas.length}</b></div>
+      <div class="kpi"><span>Camiones de pago</span><b>${camiones}</b></div>
+      <div class="kpi"><span>Ingreso mensual previsto</span><b>${eur(ingreso)}</b>${sinPrecio ? `<span style="text-transform:none;color:var(--warn)">${sinPrecio} sin precio: ponlo en Ajustes</span>` : ''}</div>
+      <div class="kpi"><span>Cobrado este mes</span><b>${eur(cobradoMes)}</b></div>
+    </div>
+    <div class="card">
+      <h2>⏰ Necesitan atención</h2>
+      ${avisos.length ? `<div class="tabla-wrap"><table><thead><tr><th>Empresa</th><th>Situación</th><th>Plan</th><th class="num">Al mes</th><th></th></tr></thead><tbody>
+        ${avisos.map(([e, s]) => `<tr><td><b>${esc(e.nombre)}</b>${e.principal ? ' <span class="chip pen">tu empresa</span>' : ''}</td><td><span class="chip ${s.c}">${esc(s.txt)}</span></td><td>${PLAN[e.plan]}</td><td class="num">${eur(mensual(e))}</td>
+          <td><div class="acc">${s.aviso === 'prueba' ? `<button class="btn small" data-alargar="${e.id}">+ días de prueba</button>` : ''}<button class="btn small primary" data-cobrar="${e.id}">💶 Apuntar cobro</button></div></td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="vacio">Todo en orden: ninguna prueba ni pago a punto de vencer.</p>'}
+    </div>`;
+}
+
+function pEmpresas(){
+  const f = filtro.toLowerCase();
+  const lista = empresas.filter(e => !f || [e.nombre, e.nif, e.contacto, e.email, e.telefono].some(x => String(x || '').toLowerCase().includes(f)));
+  $('#tEmpresas').innerHTML = `
+    <div class="card">
+      <div class="fila" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Empresas · ${empresas.filter(e => e.estado !== 'baja').length}</h2>
+        <div class="fila"><input class="field" id="buscar" placeholder="Buscar…" value="${esc(filtro)}" style="width:200px"><button class="btn primary" id="nueva" type="button">➕ Nueva empresa</button></div>
+      </div>
+      ${lista.length ? `<div class="tabla-wrap"><table><thead><tr><th>Empresa</th><th>Plan</th><th class="num">Camiones</th><th>Situación</th><th class="num">Al mes</th><th>Contacto</th><th></th></tr></thead><tbody>
+        ${lista.map(e => { const s = situacion(e); return `<tr>
+          <td><b>${esc(e.nombre)}</b>${e.principal ? ' <span class="chip pen">tu empresa</span>' : ''}<div class="hint">${esc(e.nif || '')}</div></td>
+          <td>${PLAN[e.plan]}</td><td class="num">${e.camiones}</td>
+          <td><span class="chip ${s.c}">${esc(s.txt)}</span></td>
+          <td class="num">${e.principal ? '<span class="hint">no se cobra</span>' : eur(mensual(e))}${e.precio_camion != null && !e.principal ? '<div class="hint">precio especial</div>' : ''}</td>
+          <td>${esc(e.contacto || '')}<div class="hint">${esc(e.telefono || e.email || '')}</div></td>
+          <td><div class="acc">
+            <button class="btn small" data-editar="${e.id}">Editar</button>
+            ${e.estado !== 'baja' ? `<button class="btn small" data-cobrar="${e.id}">💶 Cobro</button>` : ''}
+            ${e.estado === 'prueba' ? `<button class="btn small" data-alargar="${e.id}">+ prueba</button>` : ''}
+            ${e.estado === 'suspendida' || e.estado === 'baja' ? `<button class="btn small" data-reactivar="${e.id}">▶ Reactivar</button>` : `<button class="btn small peligro" data-suspender="${e.id}">⏸ Suspender</button>`}
+          </div></td></tr>`; }).join('')}
+      </tbody></table></div>` : '<p class="vacio">No hay empresas. Pulsa «Nueva empresa» para dar de alta la primera.</p>'}
+    </div>`;
+  $('#buscar').oninput = ev => { filtro = ev.target.value; const pos = ev.target.selectionStart; pEmpresas(); const b = $('#buscar'); b.focus(); b.setSelectionRange(pos, pos); };
+  $('#nueva').onclick = () => abrirEmpresa(null);
+}
+
+function pPagos(){
+  const meses = [...new Set(pagos.map(p => String(p.fecha).slice(0,7)))].sort().reverse();
+  const sel = pPagos.mes || '';
+  const lista = pagos.filter(p => !sel || String(p.fecha).slice(0,7) === sel);
+  const total = lista.reduce((t, p) => t + (+p.importe || 0), 0);
+  const nombre = id => (empresas.find(e => e.id === id) || {}).nombre || '—';
+  $('#tPagos').innerHTML = `
+    <div class="card">
+      <div class="fila" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Cobros apuntados</h2>
+        <div class="fila"><select class="field" id="mesPagos" style="width:auto"><option value="">Todos los meses</option>${meses.map(m => `<option value="${m}" ${m === sel ? 'selected' : ''}>${new Date(m + '-15').toLocaleDateString('es-ES', {month:'long', year:'numeric'})}</option>`).join('')}</select>
+        <button class="btn" id="csvPagos" type="button">⬇️ Descargar (Excel/CSV)</button></div>
+      </div>
+      ${lista.length ? `<div class="tabla-wrap"><table><thead><tr><th>Fecha</th><th>Empresa</th><th class="num">Meses</th><th class="num">Importe</th><th>Pagado hasta</th><th>Nota</th><th></th></tr></thead><tbody>
+        ${lista.map(p => `<tr><td>${fmtF(p.fecha)}</td><td>${esc(nombre(p.empresa_id))}</td><td class="num">${p.meses || ''}</td><td class="num">${eur(p.importe)}</td><td>${fmtF(p.hasta)}</td><td>${esc(p.nota || '')}</td><td><div class="acc"><button class="btn small peligro" data-borrarpago="${p.id}" title="Borrar este apunte">×</button></div></td></tr>`).join('')}
+        <tr><td colspan="3"><b>Total</b></td><td class="num"><b>${eur(total)}</b></td><td colspan="3"></td></tr>
+      </tbody></table></div>` : '<p class="vacio">Todavía no hay cobros apuntados.</p>'}
+      <p class="hint" style="margin-top:10px">Al borrar un apunte no cambia la fecha «pagado hasta» de la empresa: corrígela a mano en su ficha si hace falta.</p>
+    </div>`;
+  $('#mesPagos').onchange = ev => { pPagos.mes = ev.target.value; pPagos(); };
+  $('#csvPagos').onclick = () => {
+    const filas = [['Fecha','Empresa','NIF','Meses','Importe','Pagado hasta','Nota'], ...lista.map(p => { const e = empresas.find(x => x.id === p.empresa_id) || {}; return [fmtF(p.fecha), e.nombre || '', e.nif || '', p.meses || '', String(p.importe || '').replace('.', ','), fmtF(p.hasta), p.nota || '']; })];
+    const csv = '﻿' + filas.map(f => f.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = `cobros-${sel || 'todos'}.csv`; a.click();
+  };
+}
+
+function pAjustes(){
+  $('#tAjustes').innerHTML = `
+    <div class="card">
+      <h2>Prueba gratis y margen de pago</h2>
+      <div class="grid2" style="max-width:520px">
+        <label>Días de prueba para las empresas nuevas<input class="field" id="ajPrueba" type="number" min="0" step="1" value="${esc(ajustes.dias_prueba || '30')}"></label>
+        <label>Días de margen si no pagan<input class="field" id="ajGracia" type="number" min="0" step="1" value="${esc(ajustes.dias_gracia || '0')}"></label>
+      </div>
+      <p class="hint" style="margin-top:8px">Los días de prueba se pueden cambiar también en cada empresa. Con el margen, si una empresa no paga, sigue funcionando esos días antes de bloquearse.</p>
+    </div>
+    <div class="card">
+      <h2>Precio por camión y mes</h2>
+      <div class="grid2" style="max-width:520px;grid-template-columns:repeat(3,1fr)">
+        <label>Estándar (€)<input class="field" id="ajPE" inputmode="decimal" value="${esc(ajustes.precio_estandar || '')}"></label>
+        <label>Básico (€)<input class="field" id="ajPB" inputmode="decimal" value="${esc(ajustes.precio_basico || '')}"></label>
+        <label>Pro (€)<input class="field" id="ajPP" inputmode="decimal" value="${esc(ajustes.precio_pro || '')}"></label>
+      </div>
+      <p class="hint" style="margin-top:8px">A una empresa concreta (por ejemplo, una de las primeras) le puedes poner un precio especial en su ficha.</p>
+      <div style="margin-top:12px"><button class="btn primary" id="ajGuardar" type="button">Guardar ajustes</button></div>
+    </div>
+    <div class="card">
+      <h2>Administradores del maestro</h2>
+      <p class="hint" style="margin-bottom:8px">Solo estos correos pueden entrar aquí. Cada uno tiene que tener además su usuario en Supabase → Authentication → Users.</p>
+      <ul class="lista">${admins.map(a => `<li>${esc(a.email)} ${a.email.toLowerCase() === miEmail.toLowerCase() ? '<span class="chip pen">tú</span>' : `<button class="btn small peligro" data-quitaradmin="${esc(a.email)}">Quitar</button>`}</li>`).join('')}</ul>
+      <div class="fila" style="margin-top:8px"><input class="field" id="nuevoAdmin" type="email" placeholder="correo@ejemplo.com" style="max-width:280px"><button class="btn" id="anadirAdmin" type="button">Añadir</button></div>
+    </div>`;
+  $('#ajGuardar').onclick = async () => {
+    const filas = [['dias_prueba', String(Math.max(0, parseInt($('#ajPrueba').value, 10) || 0))], ['dias_gracia', String(Math.max(0, parseInt($('#ajGracia').value, 10) || 0))],
+      ['precio_estandar', $('#ajPE').value.trim()], ['precio_basico', $('#ajPB').value.trim()], ['precio_pro', $('#ajPP').value.trim()]].map(([clave, valor]) => ({clave, valor}));
+    if(await guardar(sb.from('maestro_ajustes').upsert(filas), 'Ajustes guardados')){
+      // el margen cambia la fecha de bloqueo de tu empresa: se vuelve a aplicar
+      const pr = empresas.find(e => e.principal); if(pr) await sb.from('maestro_empresas').update({notas: pr.notas}).eq('id', pr.id);
+    }
+  };
+  $('#anadirAdmin').onclick = async () => { const em = $('#nuevoAdmin').value.trim().toLowerCase(); if(!/^\S+@\S+\.\S+$/.test(em)){ toast('Escribe un correo válido.', true); return; } guardar(sb.from('maestro_admins').insert({email: em}), 'Administrador añadido'); };
+}
+
+// ====== ACCIONES ======
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('button'); if(!b) return;
+  const id = b.dataset.editar || b.dataset.cobrar || b.dataset.alargar || b.dataset.suspender || b.dataset.reactivar;
+  const e = id && empresas.find(x => x.id === id);
+  if(b.dataset.editar) return abrirEmpresa(e);
+  if(b.dataset.cobrar) return abrirCobro(e);
+  if(b.dataset.alargar){
+    const n = parseInt(prompt(`¿Cuántos días más de prueba para ${e.nombre}?`, '15'), 10); if(!n || n < 1) return;
+    const base = e.prueba_hasta && e.prueba_hasta >= hoy() ? e.prueba_hasta : hoy();
+    return guardar(sb.from('maestro_empresas').update({prueba_hasta: sumarDias(base, n), estado:'prueba'}).eq('id', e.id), `Prueba alargada hasta el ${fmtF(sumarDias(base, n))}`);
+  }
+  if(b.dataset.suspender){
+    if(!confirm(`¿Suspender ${e.nombre}?\n\nNo podrán usar el cartón ni crear DeCAs nuevos hasta que la reactives. Sus datos se conservan.`)) return;
+    return guardar(sb.from('maestro_empresas').update({estado:'suspendida'}).eq('id', e.id), 'Suspendida');
+  }
+  if(b.dataset.reactivar){
+    const estado = e.pagado_hasta || !(e.prueba_hasta && e.prueba_hasta >= hoy()) ? 'activa' : 'prueba';
+    return guardar(sb.from('maestro_empresas').update({estado}).eq('id', e.id), 'Reactivada');
+  }
+  if(b.dataset.borrarpago){ if(!confirm('¿Borrar este apunte de cobro?')) return; return guardar(sb.from('maestro_pagos').delete().eq('id', b.dataset.borrarpago), 'Apunte borrado'); }
+  if(b.dataset.quitaradmin){ if(!confirm(`¿Quitar a ${b.dataset.quitaradmin} como administrador?`)) return; return guardar(sb.from('maestro_admins').delete().eq('email', b.dataset.quitaradmin), 'Quitado'); }
+});
+
+// ---- ficha de empresa ----
+function abrirEmpresa(e){
+  editando = e;
+  $('#meTit').textContent = e ? 'Editar empresa' : 'Nueva empresa';
+  const v = (id, val) => $('#' + id).value = val == null ? '' : val;
+  v('meNombre', e && e.nombre); v('meNif', e && e.nif); v('meContacto', e && e.contacto); v('meEmail', e && e.email); v('meTel', e && e.telefono); v('meDir', e && e.direccion);
+  v('mePlan', e ? e.plan : 'pro'); v('meCamiones', e ? e.camiones : 1); v('meEstado', e ? e.estado : 'prueba');
+  v('meDias', e ? '' : (ajustes.dias_prueba || 30));
+  v('mePrueba', e ? e.prueba_hasta : sumarDias(hoy(), +ajustes.dias_prueba || 30)); v('mePagado', e && e.pagado_hasta);
+  v('mePrecio', e && e.precio_camion != null ? String(e.precio_camion).replace('.', ',') : ''); v('meMensaje', e && e.mensaje); v('meNotas', e && e.notas);
+  $('#mePrincipal').checked = !!(e && e.principal);
+  $('#meDiasL').hidden = !!e; $('#meMsg').textContent = '';
+  $('#mEmpresa').hidden = false; $('#meNombre').focus();
+}
+$('#meDias').oninput = () => { const n = parseInt($('#meDias').value, 10); if(n >= 0) $('#mePrueba').value = sumarDias(hoy(), n); };
+$('#meCancelar').onclick = () => { $('#mEmpresa').hidden = true; editando = null; };
+$('#meGuardar').onclick = async () => {
+  const nombre = $('#meNombre').value.trim(); if(!nombre){ $('#meMsg').textContent = 'Escribe el nombre de la empresa.'; return; }
+  const row = {
+    nombre, nif: $('#meNif').value.trim().toUpperCase() || null, contacto: $('#meContacto').value.trim() || null, email: $('#meEmail').value.trim() || null,
+    telefono: $('#meTel').value.trim() || null, direccion: $('#meDir').value.trim() || null,
+    plan: $('#mePlan').value, camiones: Math.max(1, parseInt($('#meCamiones').value, 10) || 1), estado: $('#meEstado').value,
+    prueba_hasta: $('#mePrueba').value || null, pagado_hasta: $('#mePagado').value || null,
+    precio_camion: num($('#mePrecio').value), mensaje: $('#meMensaje').value.trim() || null, notas: $('#meNotas').value.trim() || null,
+    principal: $('#mePrincipal').checked
+  };
+  if(row.estado === 'prueba' && !row.prueba_hasta){ $('#meMsg').textContent = 'Pon hasta qué día dura la prueba.'; return; }
+  if(row.principal){ const otra = empresas.find(x => x.principal && (!editando || x.id !== editando.id)); if(otra){ if(!confirm(`Ahora la empresa principal es «${otra.nombre}». ¿Cambiarla por esta?`)) return; await sb.from('maestro_empresas').update({principal:false}).eq('id', otra.id); } }
+  if(editando && editando.principal && (row.estado === 'suspendida' || row.estado === 'baja') && !confirm('Es TU empresa: si la suspendes, se bloquea tu propio cartón. ¿Seguir?')) return;
+  const q = editando ? sb.from('maestro_empresas').update(row).eq('id', editando.id) : sb.from('maestro_empresas').insert(row);
+  if(await guardar(q, editando ? 'Guardado' : 'Empresa dada de alta')){ $('#mEmpresa').hidden = true; editando = null; }
+};
+
+// ---- cobro ----
+function hastaCobro(e, meses){
+  const desde = e.pagado_hasta && e.pagado_hasta >= hoy() ? sumarDias(e.pagado_hasta, 1) : hoy();
+  return sumarDias(sumarMeses(desde, meses), -1);
+}
+function abrirCobro(e){
+  cobrando = e;
+  $('#mcTit').textContent = 'Apuntar cobro · ' + e.nombre;
+  $('#mcMeses').value = '1'; $('#mcFecha').value = hoy(); $('#mcNota').value = '';
+  recalcularCobro();
+  $('#mCobro').hidden = false;
+}
+function recalcularCobro(){
+  const e = cobrando, m = +$('#mcMeses').value, men = mensual(e);
+  $('#mcImporte').value = men == null ? '' : String(Math.round(men * m * 100) / 100).replace('.', ',');
+  $('#mcHasta').value = hastaCobro(e, m);
+  $('#mcAyuda').textContent = men == null ? 'Este plan no tiene precio: escribe el importe a mano (o pon los precios en Ajustes).' : `${e.camiones} ${e.camiones == 1 ? 'camión' : 'camiones'} × ${eur(precioCamion(e))} × ${m} mes${m === 1 ? '' : 'es'}.`;
+}
+$('#mcMeses').onchange = recalcularCobro;
+$('#mcCancelar').onclick = () => { $('#mCobro').hidden = true; cobrando = null; };
+$('#mcGuardar').onclick = async () => {
+  const e = cobrando, importe = num($('#mcImporte').value), hasta = $('#mcHasta').value, meses = +$('#mcMeses').value;
+  if(importe == null){ toast('Escribe el importe.', true); return; }
+  if(!hasta){ toast('Pon hasta qué día queda pagado.', true); return; }
+  const { error } = await sb.from('maestro_pagos').insert({empresa_id: e.id, fecha: $('#mcFecha').value || hoy(), importe, meses, hasta, nota: $('#mcNota').value.trim() || null});
+  if(error){ toast('No se pudo apuntar: ' + error.message, true); return; }
+  if(await guardar(sb.from('maestro_empresas').update({pagado_hasta: hasta, estado: e.estado === 'baja' ? 'baja' : 'activa'}).eq('id', e.id), `Cobro apuntado: pagado hasta el ${fmtF(hasta)}`)){ $('#mCobro').hidden = true; cobrando = null; }
+};
+document.addEventListener('keydown', ev => { if(ev.key === 'Escape'){ $('#mEmpresa').hidden = true; $('#mCobro').hidden = true; } });
+
+comprobar();
+sb.auth.onAuthStateChange((evento) => { if(evento === 'SIGNED_OUT') ver('vLogin'); });
+})();
+</script>
+</body>
+</html>
