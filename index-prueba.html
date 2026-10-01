@@ -364,7 +364,7 @@ function render(){
     msg.style.color = 'var(--ok)'; confirmBtn.disabled = false;
   }
   // ⚖️ Carga máxima: esta carga + lo que ya lleva el camión
-  const kgEsta = pesoDeEstaCarga(), kgTotal = kgEsta + (choferActual && choferActual.puesto === 'chofer' ? kgEnCamion : 0), maxKg = cargaMaxima();
+  const kgEsta = pesoDeEstaCarga(), kgTotal = kgEsta + (choferActual && choferActual.puesto !== 'cargador' ? kgEnCamion : 0), maxKg = cargaMaxima();
   let avisoKg = document.getElementById('avisoKg');
   if(!avisoKg){ avisoKg = document.createElement('div'); avisoKg.id = 'avisoKg'; avisoKg.className = 'alerta-lejos'; avisoKg.style.display = 'none'; document.getElementById('confirmBtn').insertAdjacentElement('beforebegin', avisoKg); }
   if(currentCarga && kgTotal > maxKg){
@@ -510,6 +510,7 @@ $e('nuevoDecaBtn').onclick = ()=>{
   document.querySelectorAll('.pend-item').forEach(el=> el.classList.remove('activa'));
   ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndOrigenDir','ndDestino','ndDestinoDir','ndPeso','ndRef','ndAut','ndContr','ndContrNif','ndContrDom'].forEach(id => $e(id).value = '');
   $e('ndContrDet').open = false;
+  $e('ndContrDet').hidden = !(licenciaApp && licenciaApp.extra_contractual);   // solo si la empresa tiene contratado el extra
   $e('ndMercancia').value = 'Frutas y hortalizas frescas'; $e('ndPesoAprox').checked = true; $e('ndMsg').textContent = '';
   const t = transportistaPorDefecto();
   $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : ''; $e('ndTransDom').value = t ? (t.domicilio || '') : '';
@@ -617,10 +618,11 @@ async function cargarChoferes(){
   if(!sb){ sel.innerHTML = '<option value="">Sin conexión con el servidor</option>'; mostrarSinCobertura(); return; }
   let { data, error } = await sb.from('personal').select('*').order('puesto').order('nombre');
   if(error){ sel.innerHTML = `<option value="">Sin conexión con el servidor</option>`; mostrarSinCobertura(); return; }
-  // en la app de conductores solo salen cargadores y chóferes (ni tráfico ni dirección, ni quien está de baja)
-  data = (data || []).filter(c => ['cargador','chofer'].includes(c.puesto) && !c.baja);
+  // en la app salen cargadores y chóferes, y también tráfico y dirección (pueden coger un camión en cualquier momento); no sale quien está de baja
+  data = (data || []).filter(c => ['cargador','chofer','trafico','direccion'].includes(c.puesto) && !c.baja);
   personalCache = data;
-  sel.innerHTML = '<option value="">Selecciona quién eres…</option>' + data.map(c=>`<option value="${c.id}">${c.nombre} (${c.puesto === 'chofer' ? 'chófer' : c.puesto})</option>`).join('');
+  const etiquetaPuesto = p => p === 'chofer' ? 'chófer' : p === 'cargador' ? 'cargador' : 'oficina';
+  sel.innerHTML = '<option value="">Selecciona quién eres…</option>' + data.map(c=>`<option value="${c.id}">${c.nombre} (${etiquetaPuesto(c.puesto)})</option>`).join('');
   const guardado = localStorage.getItem('persona_id');
   const verificado = localStorage.getItem('persona_verificada');
   const qs = new URLSearchParams(location.search);
@@ -1469,7 +1471,7 @@ async function pollHistorial(){
 document.getElementById('plate').addEventListener('change', ()=>{
   refrescarTarjetaMatricula();
   pollHistorial();
-  if(choferActual && choferActual.puesto === 'chofer'){
+  if(choferActual && choferActual.puesto !== 'cargador'){
     const val = document.getElementById('plate').value.trim();
     if(val){ sb.from('personal').update({matricula_actual: val}).eq('id', choferActual.id); }
     pollDescargas();
@@ -1746,7 +1748,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   if(licenciaBloqueada()){ alert('El servicio está suspendido: no se pueden crear DeCAs nuevos. Avisa a tu empresa.'); return; }
   if(!currentCarga){ alert('Selecciona primero una carga pendiente de la lista, o pulsa «Crear nuevo DeCA».'); return; }
   if(currentCarga.manual && currentCarga.pesoAuto){ currentCarga.peso = String(pesoEstimado()); currentCarga.peso_aproximado = true; }   // peso medio alto según los palets
-  { const kgT = pesoDeEstaCarga() + (choferActual && choferActual.puesto === 'chofer' ? kgEnCamion : 0);
+  { const kgT = pesoDeEstaCarga() + (choferActual && choferActual.puesto !== 'cargador' ? kgEnCamion : 0);
     if(kgT > cargaMaxima() && !confirm(`⚖️ El camión llevaría unos ${kgT.toLocaleString('es-ES')} kg y la carga máxima es ${cargaMaxima().toLocaleString('es-ES')} kg.\n\n¿Generar el DeCA igualmente?`)) return; }
   if(!matConfirmada()){ revisarMatricula(true); document.getElementById('matCard').scrollIntoView({behavior:'smooth', block:'center'}); alert('Antes de generar el DeCA, confirma que las matrículas son las correctas (arriba).'); return; }
   const decaId = 'DECA-' + Date.now().toString(36).toUpperCase(); // etiqueta legible

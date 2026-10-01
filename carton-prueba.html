@@ -279,6 +279,10 @@ table.adm input.field{width:90px;padding:3px 6px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);align-items:center}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .legend .st{width:18px;height:18px;font-size:10px;cursor:default}
+.estados-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px;color:var(--text,inherit);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 0 10px}
+.estados-bar span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.estados-bar small{color:var(--muted)}
+.estados-bar .st{width:20px;height:20px;font-size:11px;cursor:default}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 .tools-right{justify-content:flex-end}
 @media (max-width:760px){
@@ -543,6 +547,17 @@ table.fichero td.acc{white-space:nowrap;width:1%}
   </div>
   </div>
 
+  <div class="estados-bar solo-carton" aria-label="Leyenda de estados" title="Los estados cambian solos con lo que hacen cargadores y chóferes en su app. Toca el círculo de un pedido para marcar o quitar un problema.">
+    <b>Estados:</b>
+    <span><i class="st pend"></i>Sin enviar</span>
+    <span><i class="st avis">•</i>Orden enviada</span>
+    <span><i class="st reco">✓</i>DeCA hecho</span>
+    <span><i class="st hub">⌂</i>En el hub</span>
+    <span><i class="st carg">✓</i>En el camión</span>
+    <span><i class="st desc">⚑</i>Descargado</span>
+    <span><i class="st lejos">!</i>Descargado lejos</span>
+    <span><i class="st prob">✗</i>Problema <small>(toca el círculo)</small></span>
+  </div>
   <div class="alertas-bar" id="alertasBar" hidden></div>
   <div class="aviso-bajas solo-direccion" id="avisoBajas" hidden></div>
   <section class="orders" id="orders" hidden aria-live="polite"></section>
@@ -580,8 +595,8 @@ table.fichero td.acc{white-space:nowrap;width:1%}
           <div class="combo"><input class="field" id="lnCli" placeholder="Cliente (cargador contractual)" data-combo="clientes" required autocomplete="off"><div class="combo-list" hidden></div></div>
           <div class="combo"><input class="field" id="lnDest" placeholder="Destino" data-combo="destinos" required autocomplete="off"><div class="combo-list" hidden></div></div>
           <input class="field full" id="lnRef" placeholder="Nº pedido / referencia (opcional)">
-          <select class="field full" id="lnContr" aria-label="Transportista contractual" title="Este cliente contrata con un transportista contractual: sale en el DeCA encima del efectivo" hidden></select>
-          <select class="field full" id="lnTrans" aria-label="Transportista efectivo"></select>
+          <select class="field full" id="lnContr" aria-label="Transportista contractual" title="Sale en el DeCA encima del transportista efectivo" hidden></select>
+          <select class="field full" id="lnTrans" aria-label="Transportista efectivo" title="Si lo dejas en «Transportista Efectivo», se pone solo el del camión (el autónomo o tu empresa)"></select>
           <select class="field full" id="lnMerc" aria-label="Naturaleza de la mercancía"></select>
           <input class="field full" id="lnAut" placeholder="Nº de autorización o ficha ADR — déjalo vacío si no procede">
           <div class="inline full">
@@ -596,20 +611,6 @@ table.fichero td.acc{white-space:nowrap;width:1%}
         </form>
       </section>
 
-      <section class="panel" aria-labelledby="h-leyenda">
-        <h2 id="h-leyenda">Estados</h2>
-        <div class="legend">
-          <span><i class="st pend"></i>Sin enviar</span>
-          <span><i class="st avis">•</i>Orden enviada</span>
-          <span><i class="st reco">✓</i>DeCA hecho</span>
-          <span><i class="st hub">⌂</i>En el hub</span>
-          <span><i class="st carg">✓</i>En el camión</span>
-          <span><i class="st desc">⚑</i>Descargado</span>
-          <span><i class="st lejos">!</i>Descargado lejos</span>
-          <span><i class="st prob">✗</i>Problema</span>
-        </div>
-        <p class="hint">Los estados cambian solos con lo que hacen cargadores y chóferes en su app. Toca el círculo para marcar o quitar un problema.</p>
-      </section>
 
       <div class="fin-dia">
         <button type="button" class="linkbtn" id="finDiaBtn" title="Cierra el día y deja el cartón en blanco para el día siguiente">🌙 Fin de jornada…</button>
@@ -749,6 +750,14 @@ let camiones = [], lineas = [], cargas = {}, decas = {}, ausencias = [];
 const ausente = id => ausencias.find(a => String(a.persona_id) === String(id)) || null;
 let operativos = null;   // quién ha marcado Tráfico como operativo hoy (null = todavía nadie marcado: todos)
 const esOperativo = id => !ausente(id) && (operativos === null || operativos.includes(String(id)));
+// Tráfico y dirección también pueden coger un camión: salen al final de la lista de chóferes (solo cuentan sus ausencias)
+const esOficina = p => ['trafico','direccion'].includes(p.puesto) && !p.transportista_id;
+function opcionesChoferPropio(){
+  const ch = personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id));   // los de los autónomos van en su lista; los que no están hoy, fuera
+  const of = personal.filter(x => esOficina(x) && !ausente(x.id));
+  return '<option value="">Chófer propio de la lista…</option>' + ch.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('')
+    + (of.length ? `<optgroup label="Oficina">${of.map(x => `<option value="${x.id}">${esc(x.nombre)} (oficina)</option>`).join('')}</optgroup>` : '');
+}
 // autónomos: van en la misma lista con «a:»; «a:-» indica que la lista ya los tiene en cuenta (si no, todos disponibles)
 const autOperativo = id => operativos === null || !operativos.includes('a:-') || operativos.includes('a:' + id);
 const MOTIVOS = {baja:'Baja', vacaciones:'Vacaciones', descanso:'Descanso', otro:'No disponible'};
@@ -784,6 +793,7 @@ function aplicarLicencia(){
   const dias = licencia && licencia.hasta ? Math.round((new Date(String(licencia.hasta).slice(0,10)) - new Date(hoyISO())) / 864e5) : null;
   if(enRegla && dias != null && dias <= 7){ aviso.textContent = dias === 0 ? '⚠️ Tu suscripción a myDeCaS vence hoy.' : `⚠️ Tu suscripción a myDeCaS vence en ${dias} día${dias === 1 ? '' : 's'} (${new Date(String(licencia.hasta).slice(0,10)).toLocaleDateString('es-ES')}).`; aviso.hidden = false; }
   else aviso.hidden = true;
+  pintarContractual();
 }
 setTimeout(leerLicencia, 0); setInterval(()=>{ if(!usuario) leerLicencia(); }, 60000);   // también en la pantalla de entrada
 function hoyISO(d){ d = d || new Date(); const z = new Date(d.getTime() - d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
@@ -884,14 +894,14 @@ async function cargarMaestros(){
   almacenesNombres = [...nombres].sort((a,b) => a.localeCompare(b,'es'));
   // Selects fijos
   const tv = $('#lnTrans').value, pr = transPropia();
-  $('#lnTrans').innerHTML = (pr ? '' : '<option value="">Transportista efectivo — marca tu empresa como «propia» en Transportista Contractual</option>') +
+  $('#lnTrans').innerHTML = '<option value="">Transportista Efectivo</option>' +
     transportistas.map(x => `<option value="${x.id}">Efectivo: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
-  $('#lnTrans').value = tv || (pr ? pr.id : '');
+  $('#lnTrans').value = tv || '';   // vacío = el del camión (autónomo o tu empresa)
+  pintarContractual();
   pintarCamAuto();
   actualizarCondAut();
   if(!$('#lnMerc').options.length) $('#lnMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join('');
-  const ch = personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id));   // los de los autónomos van en su lista; los que no están hoy, fuera
-  $('#camChofer').innerHTML = '<option value="">Chófer propio de la lista…</option>' + ch.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+  $('#camChofer').innerHTML = opcionesChoferPropio();
 }
 // Desplegable de autónomos de «Salen hoy»: solo los que trabajan hoy
 function pintarCamAuto(){
@@ -1006,7 +1016,7 @@ async function enviarLinea(l, silencioso){
   const payload = {
     almacen: l.almacen, detalle_planificado: detalleDe(l), estado: 'asignada',
     cliente_id: l.cliente_id, transportista_id: trans, asignado_id: asignado,
-    ...(l.transportista_contractual_id && String(l.transportista_contractual_id) !== String(trans) ? {transportista_contractual_id: l.transportista_contractual_id} : {}),
+    ...(hayExtraContractual() && l.transportista_contractual_id && String(l.transportista_contractual_id) !== String(trans) ? {transportista_contractual_id: l.transportista_contractual_id} : {}),
     origen: l.almacen, destino: l.destino, mercancia: l.mercancia || 'fruta y verdura',
     autorizacion_especial: l.autorizacion_especial || null, orden: l.orden ?? null,
     peso: String(pesoDe(l) || ''), peso_aproximado: true,
@@ -1241,7 +1251,7 @@ function truckHTML(t){
   const opt = (arr, sel, ph) => `<option value="">${ph}</option>` + arr.map(x => `<option ${x.matricula === sel ? 'selected' : ''}>${esc(x.matricula)}</option>`).join('')
     + (sel && sel !== '—' && !arr.some(x => x.matricula === sel) ? `<option selected>${esc(sel)}</option>` : '') + '<option value="__otra__">Otra matrícula…</option>';
   const autoNombre = t.tipo === 'autonomo' ? ((transportistas.find(x => String(x.id) === String(t.transportista_id)) || {}).nombre || t.nombre) : '';
-  const chofSel = `<select class="chofer" data-cam="${t.id}" data-f="chofer_id" aria-label="Chófer en la app"><option value="">${t.tipo === 'autonomo' ? esc(autoNombre) + ' (sin app)' : '¿Chófer en la app?'}</option>${personal.filter(p => p.puesto === 'chofer' && (t.tipo === 'autonomo' ? String(p.transportista_id || '') === String(t.transportista_id) : !p.transportista_id) || String(p.id) === String(t.chofer_id)).map(p => `<option value="${p.id}" ${String(p.id) === String(t.chofer_id) ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select>`;
+  const chofSel = `<select class="chofer" data-cam="${t.id}" data-f="chofer_id" aria-label="Chófer en la app"><option value="">${t.tipo === 'autonomo' ? esc(autoNombre) + ' (sin app)' : '¿Chófer en la app?'}</option>${personal.filter(p => p.puesto === 'chofer' && (t.tipo === 'autonomo' ? String(p.transportista_id || '') === String(t.transportista_id) : !p.transportista_id) || (t.tipo !== 'autonomo' && esOficina(p) && !ausente(p.id)) || String(p.id) === String(t.chofer_id)).map(p => `<option value="${p.id}" ${String(p.id) === String(t.chofer_id) ? 'selected' : ''}>${esc(p.nombre)}${esOficina(p) ? ' (oficina)' : ''}</option>`).join('')}</select>`;
   const estTxt = {preparando:'Preparando', confirmado:'Confirmado' + (t.confirmado_por ? ' por ' + t.confirmado_por : ' por dirección'), enviado:'Enviado al chófer'}[t.estado] || t.estado;
   const pendientesEnvio = ida.concat(vuelta).filter(l => (l.modo === 'ruta' && !enviada(l)) || (l.modo === 'hub' && decas[l.carga_id] && decas[l.carga_id].entregado_hub && !l.propuesta_enviada)).length;
   let motivo = '';
@@ -1311,7 +1321,7 @@ function renderDispo(){
     ${cgs.length ? `<div class="dispo-g"><b>Cargadores</b>${cgs.map(fila).join('')}</div>` : ''}${chs.length ? `<div class="dispo-g"><b>Chóferes</b>${chs.map(fila).join('')}</div>` : ''}${auts.length ? `<div class="dispo-g"><b>Autónomos</b>${auts.map(filaAut).join('')}</div>` : ''}` : '<p class="hint">No hay personal dado de alta.</p>';
   // la lista de «Salen hoy» también se actualiza con quién está hoy
   const sel = $('#camChofer'), v = sel.value;
-  sel.innerHTML = '<option value="">Chófer propio de la lista…</option>' + personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+  sel.innerHTML = opcionesChoferPropio();
   if(v && [...sel.options].some(o => o.value === v)) sel.value = v;
   pintarCamAuto();
   actualizarCondAut();
@@ -1381,25 +1391,21 @@ function render(){
 
 // ====== EDITAR UN PEDIDO YA APUNTADO ======
 let editandoId = null;
-// ====== TRANSPORTISTA CONTRACTUAL: solo para los clientes que lo tienen marcado; en el DeCA sale encima del efectivo ======
+// ====== TRANSPORTISTA CONTRACTUAL: extra de la suscripción (se enciende desde el programa maestro) ======
+// En el DeCA sale encima del transportista efectivo (si es distinto de él)
+const hayExtraContractual = () => !!(licencia && licencia.extra_contractual);
 function opcionesContractual(sel, valor){
   const pr = transPropia();
-  sel.innerHTML = transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
-  sel.value = valor || (pr ? pr.id : (sel.options[0] || {}).value || '');
+  sel.innerHTML = '<option value="">Sin transportista contractual</option>' + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
+  sel.value = valor !== undefined && valor !== null ? valor : (pr ? pr.id : '');
 }
-function clienteConContractual(nombre){
-  const n = String(nombre || '').trim().toLowerCase();
-  const c = clientesTodos.find(x => String(x.nombre || '').trim().toLowerCase() === n);
-  return !!(c && c.contractual_en_deca);
-}
-function revisarContractual(){
-  const ver = clienteConContractual($('#lnCli').value);
-  const sel = $('#lnContr');
-  if(ver && sel.hidden) opcionesContractual(sel, sel.value);
+function pintarContractual(){
+  const sel = $('#lnContr'); if(!sel) return;
+  const ver = hayExtraContractual();
+  if(ver) opcionesContractual(sel, sel.dataset.listo ? sel.value : undefined);
+  sel.dataset.listo = '1';
   sel.hidden = !ver;
 }
-['input','change'].forEach(ev => $('#lnCli').addEventListener(ev, revisarContractual));
-document.addEventListener('click', e => { if(e.target.closest && e.target.closest('#addLinea .combo-list')) setTimeout(revisarContractual, 0); });
 function abrirEdicion(l){
   editandoId = l.id;
   const d = decas[l.carga_id];
@@ -1412,10 +1418,10 @@ function abrirEdicion(l){
   $('#edModo').value = l.modo || 'hub';
   $('#edCg').innerHTML = opcionesCargador(l.cargador_id).replace('¿Cargador?', '— Sin cargador —');
   const pr = transPropia();
-  $('#edTrans').innerHTML = transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
-  $('#edTrans').value = l.transportista_id || (pr ? pr.id : '');
-  const conContr = clienteConContractual(l.cliente_nombre) || !!l.transportista_contractual_id;
-  $('#edContrL').hidden = !conContr; if(conContr) opcionesContractual($('#edContr'), l.transportista_contractual_id);
+  $('#edTrans').innerHTML = '<option value="">Según el camión</option>' + transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
+  $('#edTrans').value = l.transportista_id || '';
+  const conContr = hayExtraContractual() || !!l.transportista_contractual_id;
+  $('#edContrL').hidden = !conContr; if(conContr) opcionesContractual($('#edContr'), l.transportista_contractual_id || '');
   $('#edMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join(''); $('#edMerc').value = l.mercancia || 'fruta y verdura';
   $('#edAut').value = l.autorizacion_especial || '';
   $('#edKilos').value = l.kilos ?? ''; $('#edPrecio').value = l.precio_manual ?? '';
@@ -1687,12 +1693,12 @@ async function escribirComprobado(query, okMsg){
 }
 const FICHEROS = {
   clientes: {titulo:'Clientes (cargador contractual)', aviso:'El NIF y el domicilio salen en el DeCA: complétalos siempre.', tablas:[
-    {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax'],['contractual_en_deca','Transportista contractual en el DeCA','bool']]}]},
-  transportistas: {titulo:'Transportista contractual', aviso:'Empresas con las que el cliente contrata el transporte (incluida la tuya). Si el cliente tiene marcado «Transportista contractual en el DeCA», sale en el DeCA encima del transportista efectivo. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
+    {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax']]}]},
+  transportistas: {titulo:'Transportista contractual', aviso:'Empresas con las que el cliente contrata el transporte (incluida la tuya). Si tu empresa tiene contratado el extra «Transportista contractual», al apuntar el pedido se elige y sale en el DeCA encima del transportista efectivo. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
-  autonomos: {titulo:'Transportista efectivo (autónomos)', aviso:'Camioneros autónomos que hacen el transporte: son el transportista efectivo del DeCA. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
+  autonomos: {titulo:'Transportista efectivo', aviso:'Camioneros autónomos que hacen el transporte: son el transportista efectivo del DeCA. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},
-  personal: {titulo:'Personal (cargadores y chóferes)', aviso:'Puesto: cargador y chofer usan la app del conductor; trafico y direccion entran en este cartón. El PIN lo elige cada uno. Si lo olvida, pulsa «Enviar acceso»: le llega por WhatsApp un enlace para elegir uno nuevo, sin que nadie más lo vea.', tablas:[
+  personal: {titulo:'Personal (cargadores y chóferes)', aviso:'Puesto: cargador y chofer usan la app del conductor; trafico y direccion entran en este cartón y también pueden entrar en la app del conductor (por si cogen un camión). El PIN lo elige cada uno. Si lo olvida, pulsa «Enviar acceso»: le llega por WhatsApp un enlace para elegir uno nuevo, sin que nadie más lo vea.', tablas:[
     {tabla:'personal', orden:'nombre', campos:[['nombre','Nombre'],['puesto','Puesto',['cargador','chofer','trafico','direccion']],['telefono','Teléfono'],['matricula_actual','Matrícula actual (tractora / remolque)'],['transportista_id','De qué autónomo (vacío = propio)','autonomo'],['pin','PIN','pin']]}]},
   flota: {titulo:'Flota', aviso:'Al elegir una tractora en el cartón se pone sola su pareja habitual; luego se pueden combinar libremente.', tablas:[
     {tabla:'tractoras', subtitulo:'Tractoras', orden:'matricula', campos:[['matricula','Matrícula'],['remolque_habitual','Remolque habitual']]},
@@ -1779,9 +1785,40 @@ async function renderFicherosBase(){
       </tbody></table></div></div>`;
   }).join('');
   box.innerHTML = `<div class="fich-head"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2>${cfg.titulo}</h2></div>${cfg.aviso ? `<p class="hint">${cfg.aviso}</p>` : ''}</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Busca la dirección de los destinos y almacenes que no la tienen: la copia del otro listado si es el mismo sitio, o la saca de su ubicación GPS">📍 Rellenar direcciones</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Busca la dirección de los destinos y almacenes que no la tienen: la copia del otro listado si es el mismo sitio, o la saca de su ubicación GPS">📍 Rellenar direcciones</button>` : ''}<button type="button" class="btn small solo-dir" data-expficha="${vista}" title="Solo dirección: descarga esta ficha completa en una hoja de Excel">⬇️ Exportar a Excel</button><input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
     <div class="${cfg.tablas.length > 1 ? 'fich-cols' : ''}">${bloques}</div>`;
 }
+// ====== EXPORTAR A EXCEL (solo dirección): descarga la ficha tal como se ve, con los nombres en vez de números internos ======
+function exportarFicha(v){
+  const cfg = FICHEROS[v]; if(!cfg || !usuario || usuario.puesto !== 'direccion') return;
+  if(typeof XLSX === 'undefined'){ alert('No se ha podido cargar la herramienta de Excel. Revisa la conexión y vuelve a intentarlo.'); return; }
+  const libro = XLSX.utils.book_new();
+  cfg.tablas.forEach(t => {
+    const tabla = document.querySelector(`#ficheros [data-ftabla="${t.tabla}"] table`); if(!tabla) return;
+    const cols = t.campos.map((c, i) => ({c, i})).filter(x => x.c[2] !== 'pin');   // el PIN nunca sale
+    const filas = [...tabla.querySelectorAll('tbody tr[data-id]')].map(tr => {
+      const tds = tr.children, o = {};
+      cols.forEach(({c, i}) => {
+        const td = tds[i]; let val = '';
+        if(td){
+          const sel = td.querySelector('select'), chk = td.querySelector('input[type="checkbox"]'), inp = td.querySelector('input,textarea');
+          if(sel) val = sel.value === '' ? '' : (sel.options[sel.selectedIndex] || {}).text || '';
+          else if(chk) val = chk.checked ? 'Sí' : 'No';
+          else if(inp) val = inp.value;
+          else val = td.textContent.trim();
+        }
+        o[c[1]] = val;
+      });
+      if(tr.classList.contains('de-baja')) o['De baja'] = 'Sí';
+      return o;
+    });
+    const nombre = (t.subtitulo || cfg.titulo || t.tabla).replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31);
+    XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas.length ? filas : [{vacío:''}]), nombre);
+  });
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  XLSX.writeFile(libro, `${v}_${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}.xlsx`);
+}
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-expficha]'); if(b) exportarFicha(b.dataset.expficha); });
 // ====== IMPORTAR DESDE EXCEL (todas las fichas: clientes, transportistas, autónomos, personal, flota, destinos, almacenes y tarifas) ======
 // Lee la primera hoja, reconoce las columnas por su título, enseña cómo quedará y no repite lo que ya existe.
 const SINONIMOS = {
@@ -2042,7 +2079,7 @@ async function rellenarDireccionesGps(_, boton){
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-dirgps]'); if(b) rellenarDireccionesGps(b.dataset.dirgps, b); });
 // Columnas nuevas que todavía no existen en Supabase (si falta ejecutar una actualización)
-const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax','contractual_en_deca'], transportistas:['domicilio'], almacenes:['direccion','horario'], destinos:['horario']};
+const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax'], transportistas:['domicilio'], almacenes:['direccion','horario'], destinos:['horario']};
 const columnasCache = {};
 async function columnasQueFaltan(tabla){
   if(!COLUMNAS_NUEVAS[tabla]) return [];
@@ -3276,7 +3313,7 @@ $('#addLinea').addEventListener('submit', async e => {
     e_pal: q('#lnE'), m_pal: q('#lnM'), carros: q('#lnC'), box: q('#lnB'), cajas: q('#lnK'), remonta: $('#lnRem').checked,
     cargador_id: null, transportista_id: $('#lnTrans').value || null,
     mercancia: $('#lnMerc').value || 'fruta y verdura', autorizacion_especial: $('#lnAut').value.trim() || null};
-  if(!$('#lnContr').hidden && $('#lnContr').value) row.transportista_contractual_id = $('#lnContr').value;
+  if(hayExtraContractual() && $('#lnContr').value) row.transportista_contractual_id = $('#lnContr').value;
   if(!(row.e_pal + row.m_pal + row.carros + row.box + row.cajas)){ toast('Pon cuántos palets, carros o cajas son.', true); $('#lnE').focus(); return; }
   const nombreCli = $('#lnCli').value.trim();
   let cli = clientes.find(c => c.nombre.trim().toLowerCase() === nombreCli.toLowerCase());
@@ -3295,8 +3332,7 @@ $('#addLinea').addEventListener('submit', async e => {
     ['#lnAlm','#lnCli','#lnRef','#lnE','#lnM','#lnC','#lnB','#lnK','#lnAut'].forEach(id => $(id).value = '');
     $('#lnMerc').value = 'fruta y verdura';
     guardarBorrador('pedido', null);
-    const pr = transPropia(); if(pr) $('#lnTrans').value = pr.id;
-    $('#lnContr').hidden = true;
+    $('#lnTrans').value = '';   // el contractual se queda como estaba
     $('#lnRem').checked = false; $('#lnAlm').focus();
     refrescar(true);
   }catch(_){}
