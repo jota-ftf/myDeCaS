@@ -2337,9 +2337,9 @@ function renderAjustes(box){
       </div>
       <div class="baja-card">
         <b>Alarma por tiempo de espera</b>
-        <span class="hint">Si un chófer lleva en su destino más tiempo del máximo sin poder descargar, salta una alerta aquí (y se puede avisar por WhatsApp al responsable de alertas). Funciona con la app del chófer abierta y el GPS encendido. El destino tiene que tener su ubicación en la ficha Destinos (la zona Levante/Sur se saca de ahí).</span>
+        <span class="hint">Si un chófer lleva en su destino más tiempo del máximo sin poder descargar, salta una alerta aquí (y se puede avisar por WhatsApp al responsable de alertas). Funciona con la app del chófer abierta y el GPS encendido. El destino tiene que tener su ubicación en la ficha Destinos.</span>
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="esperaActiva" ${ajustes.espera_activa === 'si' ? 'checked' : ''}> Activada</label>
-        <span style="display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap">Máximo (minutos): ${ZONAS.map(([c, n]) => `<label style="display:inline-flex;gap:4px;align-items:center">${n} <input class="field" data-espera="${c}" type="number" min="10" step="5" value="${+ajustes['espera_max_' + c] || 120}" style="width:70px"></label>`).join('')}</span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Tiempo máximo de espera <input class="field" id="esperaMax" type="number" min="10" step="5" value="${+ajustes.espera_max || 120}" style="width:80px"> minutos</span>
         <button type="button" class="btn small" id="guardarEspera">Guardar</button>
       </div>
       <div class="baja-card">
@@ -3140,7 +3140,7 @@ document.addEventListener('click', async e => {
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
     if(b.id === 'guardarEspera'){ let ok = await guardarAjuste('espera_activa', $('#esperaActiva').checked ? 'si' : 'no');
-      for(const el of document.querySelectorAll('[data-espera]')){ if(!ok) break; ok = await guardarAjuste('espera_max_' + el.dataset.espera, String(Math.max(10, parseInt(el.value, 10) || 120))); }
+      if(ok) ok = await guardarAjuste('espera_max', String(Math.max(10, parseInt($('#esperaMax').value, 10) || 120)));
       if(ok) toast($('#esperaActiva').checked ? 'Alarma de espera activada' : 'Guardado (alarma desactivada)'); return; }
     if(b.id === 'guardarCargaMax'){ const v = Math.max(1000, parseInt($('#cargaMax').value, 10) || 24000); if(await guardarAjuste('carga_maxima_kg', String(v))){ toast('Guardado'); render(); } return; }
     if(b.id === 'guardarAlertas'){ const r = Math.max(100, parseInt($('#radioDesc').value, 10) || 1000); if(await guardarAjuste('radio_descarga_m', String(r)) && await guardarAjuste('tel_alertas', $('#telAlertas').value.trim())) toast('Guardado'); return; }
