@@ -885,6 +885,24 @@ async function pollDescargas(){
   });
 }
 // ====== ALARMA POR TIEMPO DE ESPERA (se activa en Ajustes del cartón): si el chófer lleva en el destino más del máximo sin descargar ======
+const ZONA_NOMBRE_APP = {V:'Levante', S:'Sur', C:'Centro', M:'Castilla-La Mancha', N:'Norte', B:'Badajoz', P:'Portugal'};
+// Ciudades de referencia de cada zona (las mismas que el cartón)
+const REF_ZONAS = [
+  ['V',37.98,-1.13],['V',37.60,-0.98],['V',37.68,-1.70],['V',38.35,-0.48],['V',39.47,-0.38],['V',39.99,-0.05],['V',41.12,1.25],['V',41.39,2.17],['V',41.98,2.82],['V',41.62,0.62],['V',39.57,2.65],
+  ['V',42.70,2.89],['V',43.61,3.88],['V',43.30,5.37],['V',45.76,4.84],['V',48.86,2.35],['V',45.46,9.19],['V',50.11,8.68],['V',52.37,4.90],['V',51.51,-0.12],['V',50.85,4.35],['V',48.14,11.58],
+  ['S',36.84,-2.46],['S',36.75,-3.52],['S',37.18,-3.60],['S',37.77,-3.79],['S',37.89,-4.78],['S',37.39,-5.98],['S',36.72,-4.42],['S',36.53,-6.29],['S',36.13,-5.45],['S',37.26,-6.94],
+  ['C',40.42,-3.70],['C',40.30,-3.73],['C',40.48,-3.36],
+  ['M',39.86,-4.03],['M',38.99,-3.93],['M',40.07,-2.14],['M',40.63,-3.17],['M',38.99,-1.86],['M',39.96,-4.83],
+  ['B',38.88,-6.97],['B',38.92,-6.34],['B',39.47,-6.37],['B',40.03,-6.09],
+  ['P',38.72,-9.14],['P',41.15,-8.61],['P',37.02,-7.93],['P',40.21,-8.43],['P',38.57,-7.91],['P',41.55,-8.42],
+  ['N',41.65,-4.72],['N',42.34,-3.70],['N',42.60,-5.57],['N',40.97,-5.66],['N',40.95,-4.12],['N',40.66,-4.70],['N',41.76,-2.46],['N',41.50,-5.75],['N',42.01,-4.53],['N',43.26,-2.93],['N',42.85,-2.67],
+  ['N',43.32,-1.98],['N',42.81,-1.64],['N',42.47,-2.45],['N',43.46,-3.80],['N',43.36,-5.84],['N',43.53,-5.66],['N',43.36,-8.41],['N',42.24,-8.72],['N',43.01,-7.56],['N',42.34,-7.86],['N',41.65,-0.88],
+  ['N',42.14,-0.41],['N',40.34,-1.11],['N',44.84,-0.58]];
+function zonaDeCoords(lat, lng){
+  let mejor = '', dMin = Infinity;
+  REF_ZONAS.forEach(([z, la, lo]) => { const dx = (lo - lng) * Math.cos((la + lat) / 2 * Math.PI / 180), dy = la - lat, d = dx*dx + dy*dy; if(d < dMin){ dMin = d; mejor = z; } });
+  return mejor;
+}
 let ultimaRevisionEspera = 0;
 async function vigilarEspera(data){
   if(ajustesApp.espera_activa !== 'si' || !sb || !choferActual || !data.length) return;
@@ -901,13 +919,13 @@ async function vigilarEspera(data){
     if(!dentro){ if(info && !info.avisado) try{ localStorage.removeItem(k); }catch(e){} continue; }   // se ha ido: vuelve a contar si regresa
     if(!info){ try{ localStorage.setItem(k, JSON.stringify({desde: Date.now()})); }catch(e){} continue; }   // acaba de llegar
     if(info.avisado) continue;
-    const zona = +l.lng > -2.7 ? 'V' : 'S';   // al este de la nave = Levante; al oeste = Sur (igual que en el cartón)
-    const max = +(zona ? ajustesApp['espera_max_' + zona] : (ajustesApp.espera_max_V || ajustesApp.espera_max_S)) || 120;
+    const zona = zonaDeCoords(+l.lat, +l.lng);   // la zona de la ciudad de referencia más cercana (igual que en el cartón)
+    const max = +ajustesApp['espera_max_' + zona] || 120;
     const min = Math.round((Date.now() - info.desde) / 60000);
     if(min < max) continue;
     info.avisado = true; try{ localStorage.setItem(k, JSON.stringify(info)); }catch(e){}
     await sb.from('alertas').insert({tipo:'espera', persona_id:String(choferActual.id), persona_nombre:choferActual.nombre, deca_id:r.deca_id,
-      mensaje:`⏱ ${choferActual.nombre} lleva ${min} min esperando para descargar en ${r.destino || 'destino'} (${r.deca_id}). Máximo${zona ? (zona === 'V' ? ' Levante' : ' Sur') : ''}: ${max} min.`, lat:g.lat, lng:g.lng});
+      mensaje:`⏱ ${choferActual.nombre} lleva ${min} min esperando para descargar en ${r.destino || 'destino'} (${r.deca_id}). Máximo ${ZONA_NOMBRE_APP[zona] || ''}: ${max} min.`, lat:g.lat, lng:g.lng});
   }
 }
 function pintarLejos(lista){

@@ -362,9 +362,11 @@ body:not([data-modo="hoja"]) #hoja{display:none}
 .hnueva .combo{grid-column:auto}
 .hnueva .field{padding:5px 6px;font-size:13px}
 @media (max-width:700px){.hnueva{grid-template-columns:1fr 1fr}}
-.hsalen{display:grid;grid-template-columns:minmax(0,1fr) 64px 56px auto;gap:6px;align-items:end;min-height:30px;border-bottom:1px solid var(--line);font-family:var(--f-hand);font-size:15px;text-transform:uppercase;padding:2px 0}
+.hsalen{display:grid;grid-template-columns:minmax(0,1fr) 64px minmax(84px,auto) auto;gap:6px;align-items:end;min-height:30px;border-bottom:1px solid var(--line);font-family:var(--f-hand);font-size:15px;text-transform:uppercase;padding:2px 0}
 .hsalen .hdir{appearance:none;-webkit-appearance:none;border:0;border-bottom:1.5px solid var(--ink);background:transparent;font:inherit;text-align:center;text-align-last:center;color:var(--pen);font-weight:700;cursor:pointer}
 .hsalen .hpal{font-family:var(--f-mono);font-size:11.5px;text-align:right;text-transform:none;color:var(--muted)}
+.hsalen .hpal.over{color:var(--bad);font-weight:800}.hsalen .hpal.full{color:var(--ok,#2e7d32);font-weight:700}
+.hsel.over{border-color:var(--bad)!important;color:var(--bad);font-weight:700}
 .hsalen .btn{font-family:var(--f-body);text-transform:none}
 
 /* ====== Ventana de edición de un pedido ====== */
@@ -579,7 +581,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
           <select class="field full" id="camChofer" aria-label="Chófer"></select>
           <select class="field full" id="camAuto" aria-label="Autónomo"></select>
           <select class="field full" id="camAutoCond" aria-label="Conductor del autónomo" hidden></select>
-          <select class="field full" id="camDir" aria-label="Dirección"><option value="X" selected>Sin dirección aún</option><option value="V">V · Levante</option><option value="S">S · Sur</option></select>
+          <select class="field full" id="camDir" aria-label="Dirección"></select>
           <button class="btn full" type="submit">Añadir al cartón</button>
         </form>
         <button type="button" class="btn small" id="copiarAyer">Copiar «salen hoy» del día anterior</button>
@@ -729,21 +731,51 @@ const DETALLE_TIPO = {e_pal:'europeo', m_pal:'grande (americano)', carros:'carro
 const PESO_KG = {e_pal:700, m_pal:900, carros:250, box:400, cajas:15};   // media alta de fruta y verdura; un camión lleno sale en unos 23-24 t (nunca por encima de lo legal)
 const SLOT_EURO = CAP / 33;   // un remolque coge como máximo 33 europalets
 const MERCANCIAS = ['fruta y verdura','productos perecederos','plantas vivas','congelado','secos'];
-const DIRS = ['V','S','X'];
-const DIR_TXT = {V:'Dirección Levante', S:'Dirección Sur', X:'Sin dirección aún'};
+// Zonas / direcciones. La de cada destino se saca de su ubicación GPS (la ciudad de referencia más cercana de la lista REF_ZONAS)
+const ZONAS = [['V','Levante'],['S','Sur'],['C','Centro'],['M','Castilla-La Mancha'],['N','Norte'],['B','Badajoz'],['P','Portugal']];
+const ZONA_NOMBRE = Object.fromEntries(ZONAS);
+const DIRS = [...ZONAS.map(z => z[0]), 'X'];
+const DIR_TXT = Object.fromEntries([...ZONAS.map(([c, n]) => [c, 'Dirección ' + n]), ['X', 'Sin dirección aún']]);
+const opcionesZona = (sel, corto) => ['X', ...DIRS.filter(d => d !== 'X')].map(d => `<option value="${d}" ${(sel || 'X') === d ? 'selected' : ''}>${d === 'X' ? (corto ? '–' : 'Sin dirección aún') : (corto ? d : d + ' · ' + ZONA_NOMBRE[d])}</option>`).join('');
 // Zona de cada destino (ficha Destinos): Levante (V) o Sur (S). Si el destino no la tiene, el pedido queda «sin zona»
 let zonasDestino = {};
-// Se saca de su ubicación GPS (lat/lng o el enlace de Google Maps): al este de la nave = Levante; al oeste = Sur
-const LNG_NAVE = -2.7;   // entre Berja y Almería
+// Ciudades de referencia: cada destino va a la zona de la ciudad más cercana a su ubicación GPS (lat/lng o enlace de Google Maps)
+const REF_ZONAS = [
+  ['V',37.98,-1.13],['V',37.60,-0.98],['V',37.68,-1.70],['V',38.35,-0.48],['V',39.47,-0.38],['V',39.99,-0.05],['V',41.12,1.25],['V',41.39,2.17],['V',41.98,2.82],['V',41.62,0.62],['V',39.57,2.65],
+  ['V',42.70,2.89],['V',43.61,3.88],['V',43.30,5.37],['V',45.76,4.84],['V',48.86,2.35],['V',45.46,9.19],['V',50.11,8.68],['V',52.37,4.90],['V',51.51,-0.12],['V',50.85,4.35],['V',48.14,11.58],
+  ['S',36.84,-2.46],['S',36.75,-3.52],['S',37.18,-3.60],['S',37.77,-3.79],['S',37.89,-4.78],['S',37.39,-5.98],['S',36.72,-4.42],['S',36.53,-6.29],['S',36.13,-5.45],['S',37.26,-6.94],
+  ['C',40.42,-3.70],['C',40.30,-3.73],['C',40.48,-3.36],
+  ['M',39.86,-4.03],['M',38.99,-3.93],['M',40.07,-2.14],['M',40.63,-3.17],['M',38.99,-1.86],['M',39.96,-4.83],
+  ['B',38.88,-6.97],['B',38.92,-6.34],['B',39.47,-6.37],['B',40.03,-6.09],
+  ['P',38.72,-9.14],['P',41.15,-8.61],['P',37.02,-7.93],['P',40.21,-8.43],['P',38.57,-7.91],['P',41.55,-8.42],
+  ['N',41.65,-4.72],['N',42.34,-3.70],['N',42.60,-5.57],['N',40.97,-5.66],['N',40.95,-4.12],['N',40.66,-4.70],['N',41.76,-2.46],['N',41.50,-5.75],['N',42.01,-4.53],['N',43.26,-2.93],['N',42.85,-2.67],
+  ['N',43.32,-1.98],['N',42.81,-1.64],['N',42.47,-2.45],['N',43.46,-3.80],['N',43.36,-5.84],['N',43.53,-5.66],['N',43.36,-8.41],['N',42.24,-8.72],['N',43.01,-7.56],['N',42.34,-7.86],['N',41.65,-0.88],
+  ['N',42.14,-0.41],['N',40.34,-1.11],['N',44.84,-0.58]];
+function zonaDeCoords(lat, lng){
+  let mejor = '', dMin = Infinity;
+  REF_ZONAS.forEach(([z, la, lo]) => { const dx = (lo - lng) * Math.cos((la + lat) / 2 * Math.PI / 180), dy = la - lat, d = dx*dx + dy*dy; if(d < dMin){ dMin = d; mejor = z; } });
+  return mejor;
+}
 function zonaPorUbicacion(x){
-  let lng = x.lng != null && x.lng !== '' ? parseFloat(String(x.lng).replace(',', '.')) : NaN;
-  if(isNaN(lng)){ const c = coordsDe(x.maps_url); if(c) lng = c.lng; }
-  if(isNaN(lng)) return '';
-  return lng > LNG_NAVE ? 'V' : 'S';
+  let lat = x.lat != null && x.lat !== '' ? parseFloat(String(x.lat).replace(',', '.')) : NaN, lng = x.lng != null && x.lng !== '' ? parseFloat(String(x.lng).replace(',', '.')) : NaN;
+  if(isNaN(lat) || isNaN(lng)){ const c = coordsDe(x.maps_url); if(c){ lat = c.lat; lng = c.lng; } }
+  if(isNaN(lat) || isNaN(lng)) return '';
+  return zonaDeCoords(lat, lng);
 }
 const zonaDestino = d => zonasDestino[normTxt(d || '')] || '';
 // Zona de un pedido: la del camión si ya va en uno con dirección; si no, la de su destino
-function zonaLinea(l){ const cam = l.camion_id && camion(l.camion_id); if(cam && ['V','S'].includes(cam.direccion)) return cam.direccion; return zonaDestino(l.destino) || 'X'; }
+function zonaLinea(l){ const cam = l.camion_id && camion(l.camion_id); if(cam && cam.direccion && cam.direccion !== 'X' && ZONA_NOMBRE[cam.direccion]) return cam.direccion; return zonaDestino(l.destino) || 'X'; }
+// Botones de zona de arriba: Todos, Levante, Sur y las demás zonas solo si hoy tienen pedidos o camiones
+function pintarFiltroZonas(conCosas){
+  const box = $('#filter'); if(!box) return;
+  const ver = ['all', ...DIRS.filter(d => d !== 'X' && (['V','S'].includes(d) || conCosas.includes(d) || filter === d))];
+  const clave = ver.join(',');
+  if(box.dataset.zonas !== clave){
+    box.dataset.zonas = clave;
+    box.innerHTML = ver.map(d => `<button type="button" data-f="${d}" aria-pressed="${filter === d}">${d === 'all' ? 'Todos' : ZONA_NOMBRE[d]} <span class="cnt" id="cnt-${d}"></span></button>`).join('');
+  }
+  const cd = $('#camDir'); if(cd && !cd.options.length) cd.innerHTML = opcionesZona('X');
+}
 // Camiones que hacen falta para un grupo de pedidos (metros de carga / 13,2 m, redondeando hacia arriba)
 const sumaBultos = list => list.reduce((t, l) => { ['e_pal','m_pal','carros','box','cajas'].forEach(k => t[k] += +l[k] || 0); return t; }, {e_pal:0, m_pal:0, carros:0, box:0, cajas:0});
 const camionesPara = list => { const m = ldmDe(list); return m > 0 ? Math.ceil(m / CAP - 1e-9) : 0; };
@@ -1215,6 +1247,13 @@ async function sincronizarAvisos(){
 }
 
 // ====== PINTAR ======
+// Hueco que le queda a un camión (para la vista Hoja): lo mismo que dice la caja del camión en la vista Cajas
+function huecoTxt(camId){
+  const h = huecoCamion(lineas.filter(l => l.camion_id === camId && !l.retorno));
+  if(h.over) return {cls:'over', txt:'⛔ No entra', h};
+  if(h.libresE === 0 && h.libresG === 0) return {cls:'full', txt:'Lleno ✓', h};
+  return {cls:'', txt:`quedan ${h.libresE}E${h.libresG ? ' / ' + h.libresG + ' gr.' : ''}`, h};
+}
 function capBlock(list, label){
   const ldm = ldmDe(list), h = huecoCamion(list), pct = h.pct;
   let cls = '', verdict;
@@ -1304,7 +1343,7 @@ function truckHTML(t){
         const suyos = ds.filter(d => d.conductor && normTxt(d.conductor) === normTxt((persona(t.chofer_id) || {}).nombre || t.nombre)).length;
         return `<details class="decas-cam"><summary title="DeCAs de este camión">📄 ${ds.length} DeCA${ds.length === 1 ? '' : 's'}${suyos ? ` · ${suyos} hecho${suyos === 1 ? '' : 's'} por él` : ''}</summary><ul>${ds.map(d => `<li>${d.pdf_url ? `<a href="${esc(d.pdf_url)}" target="_blank" rel="noopener">${esc(d.deca_id)}</a>` : esc(d.deca_id)} · ${esc(d.origen || '')}${d.entregado ? ' · ⚑ descargado' : ''}</li>`).join('')}</ul></details>`;
       })()}
-      <div class="truck-meta"><select class="dir-sel" data-cam="${t.id}" data-f="direccion" aria-label="Dirección del camión">${['X','V','S'].map(d => `<option value="${d}" ${(t.direccion || 'X') === d ? 'selected' : ''}>${d === 'X' ? 'Sin dirección aún' : d + ' · ' + (d === 'V' ? 'Levante' : 'Sur')}</option>`).join('')}</select>${gps}
+      <div class="truck-meta"><select class="dir-sel" data-cam="${t.id}" data-f="direccion" aria-label="Dirección del camión">${opcionesZona(t.direccion)}</select>${gps}
         <span class="pill ${t.estado}">${estTxt}</span>${t.finalizado ? '<span class="pill enviado" title="El chófer ha dejado el camión en la nave">🏁 Terminado</span>' : ''}${t.tipo === 'autonomo' ? '<span class="pill preparando">Autónomo</span>' : ''}</div>
     </div>
     <div class="veh">${chofSel}
@@ -1379,8 +1418,10 @@ function render(){
   const asignadas = lineas.filter(l => l.camion_id && !l.retorno);
   const tray = lineas.filter(l => !l.camion_id);
   const ida = lineas.filter(l => !l.retorno);
-  const nec = {V: camionesPara(ida.filter(l => zonaLinea(l) === 'V')), S: camionesPara(ida.filter(l => zonaLinea(l) === 'S')), X: camionesPara(ida.filter(l => zonaLinea(l) === 'X'))};
-  nec.total = nec.V + nec.S + nec.X;
+  const nec = {}; DIRS.forEach(d => nec[d] = camionesPara(ida.filter(l => zonaLinea(l) === d)));
+  nec.total = DIRS.reduce((t, d) => t + nec[d], 0);
+  const conCosas = DIRS.filter(d => d !== 'X' && (nec[d] || camiones.some(t => t.direccion === d)));   // zonas que hoy tienen pedidos o camiones
+  pintarFiltroZonas(conCosas);
   $('#h-salen').textContent = `Salen hoy · ${camiones.length} ${camiones.length === 1 ? 'camión' : 'camiones'}`;
   const sinCg = lineas.filter(l => l.camion_id && l.modo === 'hub' && !l.cargador_id && !l.retorno).length;
   const sinEnviar = lineas.filter(l => l.modo === 'hub' && l.cargador_id && !enviada(l)).length;
@@ -1392,7 +1433,7 @@ function render(){
     <div class="stat"><b>${cuadrados}/${camiones.length}</b><span>Cuadrados</span></div>
     <div class="stat ${sinCg ? 'alert' : ''}"><b>${sinCg}</b><span>Sin cargador</span></div>
     <div class="stat ${sinEnviar ? 'alert' : ''}"><b>${sinEnviar}</b><span>Órdenes sin enviar</span></div>
-    <div class="stat ${nec.total > camiones.length ? 'alert' : ''}" title="Con todos los pedidos del día (en camiones y sin asignar): metros de carga ÷ 13,2 m por camión. Carros: 38 por camión."><b>${nec.total}</b><span>Camiones necesarios · L ${nec.V} · S ${nec.S}${nec.X ? ' · sin zona ' + nec.X : ''}</span></div>`;
+    <div class="stat ${nec.total > camiones.length ? 'alert' : ''}" title="Con todos los pedidos del día (en camiones y sin asignar): metros de carga ÷ 13,2 m por camión. Carros: 38 por camión."><b>${nec.total}</b><span>Camiones necesarios${DIRS.filter(d => nec[d]).map(d => ' · ' + (d === 'X' ? 'sin zona' : ZONA_NOMBRE[d]) + ' ' + nec[d]).join('')}</span></div>`;
 
   $('#roster').innerHTML = camiones.length ? camiones.map(t => {
     const pct = Math.round(ldmDe(lineas.filter(l => l.camion_id === t.id && !l.retorno))/CAP*100);
@@ -1404,10 +1445,10 @@ function render(){
 
   // palets por dirección en los botones de arriba (lo que va en los camiones, sin contar el retorno)
   const palDir = d => fmt(paletsDe(ida.filter(l => d === 'all' || zonaLinea(l) === d)));   // todos los pedidos del día, por su zona
-  ['all','V','S'].forEach(d => { const el = document.getElementById('cnt-' + d); if(el) el.textContent = palDir(d); });
+  ['all', ...DIRS].forEach(d => { const el = document.getElementById('cnt-' + d); if(el) el.textContent = palDir(d); });
   // Pedidos sin asignar, ya separados por la zona de su destino (Levante, Sur o sin zona si el destino no la tiene)
-  const ZT = {V:'Levante', S:'Sur', X:'Sin zona (el destino no tiene ubicación en su ficha)'};
-  const zonasVer = filter === 'all' ? ['V','S','X'] : [filter, 'X'];
+  const ZT = {...ZONA_NOMBRE, X:'Sin zona (el destino no tiene ubicación en su ficha)'};
+  const zonasVer = filter === 'all' ? DIRS : [filter, 'X'];
   $('#trayZonas').innerHTML = zonasVer.map(z => { const ls = tray.filter(l => zonaLinea(l) === z);
     if(!ls.length && !(z === 'X' && !tray.length)) return '';
     return `<div class="tray-zona">${tray.length ? `<div class="tray-zona-t">${ZT[z]} · ${ls.length} pedido${ls.length === 1 ? '' : 's'} · ${qtyHTML(sumaBultos(ls))} · ${camionesPara(ls)} ${camionesPara(ls) === 1 ? 'camión' : 'camiones'}</div>` : ''}<ul class="lines ${ls.length ? '' : 'empty'}" data-zone="tray">${ls.map(l => lineHTML(l)).join('')}</ul></div>`; }).join('');
@@ -1416,7 +1457,7 @@ function render(){
   const dirs = filter === 'all' ? DIRS : [filter];
   $('#dirBlocks').innerHTML = dirs.map(d => {
     const ts = camiones.filter(t => (t.direccion || 'X') === d);
-    if(d === 'X' && !ts.length) return '';
+    if(!ts.length && !nec[d] && !['V','S'].includes(d)) return '';   // las zonas sin nada hoy no salen (Levante y Sur siempre)
     return `<section class="dirblock"><h3>${DIR_TXT[d]} · ${ts.length} camiones${d !== 'X' && nec[d] ? ` <span class="nec ${nec[d] > ts.length ? 'falta' : ''}">· hacen falta ${nec[d]}${nec[d] > ts.length ? ` (faltan ${nec[d] - ts.length})` : ''}</span>` : ''}</h3>
       <div class="trucks">${ts.map(truckHTML).join('') || '<p class="hint">Nadie sale en esta dirección.</p>'}</div></section>`;
   }).join('');
@@ -1566,7 +1607,7 @@ function renderHoja(){
         <span title="${esc(l.cliente_nombre)}">${esc(l.cliente_nombre)}</span>
         <span class="halm" title="${esc(l.almacen)}"><span class="halm-n">${esc(l.almacen)}</span>${cgMini}${l.modo === 'hub' && !l.retorno ? (enviada(l) ? '<span class="hcg-txt" title="Orden enviada">✓ enviada</span>' : `<button type="button" class="btn small primary hsend" data-act="enviar" ${l.cargador_id ? '' : 'disabled'} title="Enviar la orden al cargador">Enviar</button>`) : ''}</span>
         <span class="hsub" title="Nº de pedido">${esc(l.referencia || '')}</span>
-        <select class="hsel ${l.camion_id ? '' : 'vacio'}" data-hmover="1" aria-label="Chófer">${opts}</select>
+        <select class="hsel ${l.camion_id ? '' : 'vacio'} ${l.camion_id && huecoTxt(l.camion_id).cls === 'over' ? 'over' : ''}" data-hmover="1" aria-label="Chófer" ${l.camion_id && huecoTxt(l.camion_id).cls === 'over' ? 'title="Este camión ya va lleno: no entra"' : ''}>${opts}</select>
         <span class="hq">${qtyHTML(l)}${l.remonta ? '<span class="x2">×2</span>' : ''}</span>
         <button type="button" class="st ${est}" data-act="problema" title="${ST_NAME[est]}" aria-label="Estado: ${ST_NAME[est]}">${ST_TXT[est]}</button>
         <button type="button" class="edit-btn" data-act="editar" title="Editar el pedido" aria-label="Editar el pedido">✏️</button>
@@ -1588,8 +1629,8 @@ function renderHoja(){
       : t.estado === 'confirmado' ? `<button type="button" class="btn small primary" data-camact="enviar" data-cam="${t.id}" title="Enviar la carga al chófer">Enviar</button>`
       : '<span class="sent">Enviado</span>';
     return `<div class="hsalen"><span title="${esc(t.nombre)}">${esc(t.nombre)}</span>
-      <select class="hdir" data-cam="${t.id}" data-f="direccion" aria-label="Dirección">${['X','V','S'].map(d => `<option value="${d}" ${(t.direccion || 'X') === d ? 'selected' : ''}>${d === 'X' ? '–' : d}</option>`).join('')}</select>
-      <span class="hpal">${fmt(pal)}/33</span>${acc}</div>`;
+      <select class="hdir" data-cam="${t.id}" data-f="direccion" aria-label="Dirección">${opcionesZona(t.direccion, true)}</select>
+      <span class="hpal ${huecoTxt(t.id).cls}" title="Lo mismo que en la vista Cajas">${huecoTxt(t.id).txt}</span>${acc}</div>`;
   }).join('');
   box.innerHTML = `<div class="hoja-izq">${nueva}
       <div class="hoja-cols">${Object.entries(grupos).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista)}</div>`).join('') || '<p class="hint">Aún no hay pedidos. Apúntalos en la fila de arriba: almacén, cliente, destino y cantidad (por ejemplo 4+1E).</p>'}</div>
@@ -2293,7 +2334,7 @@ function renderAjustes(box){
         <b>Alarma por tiempo de espera</b>
         <span class="hint">Si un chófer lleva en su destino más tiempo del máximo sin poder descargar, salta una alerta aquí (y se puede avisar por WhatsApp al responsable de alertas). Funciona con la app del chófer abierta y el GPS encendido. El destino tiene que tener su ubicación en la ficha Destinos (la zona Levante/Sur se saca de ahí).</span>
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="esperaActiva" ${ajustes.espera_activa === 'si' ? 'checked' : ''}> Activada</label>
-        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Máximo Levante <input class="field" id="esperaV" type="number" min="10" step="5" value="${+ajustes.espera_max_V || 120}" style="width:80px"> min · Sur <input class="field" id="esperaS" type="number" min="10" step="5" value="${+ajustes.espera_max_S || 120}" style="width:80px"> min</span>
+        <span style="display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap">Máximo (minutos): ${ZONAS.map(([c, n]) => `<label style="display:inline-flex;gap:4px;align-items:center">${n} <input class="field" data-espera="${c}" type="number" min="10" step="5" value="${+ajustes['espera_max_' + c] || 120}" style="width:70px"></label>`).join('')}</span>
         <button type="button" class="btn small" id="guardarEspera">Guardar</button>
       </div>
       <div class="baja-card">
@@ -2981,7 +3022,7 @@ function prLineas(ls){
 // Cabecera común a las dos formas de imprimir
 function prCabecera(cams){
   const trans = transPropia();
-  return `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (filter === 'V' ? 'Dirección Levante' : 'Dirección Sur')}</h1>
+  return `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (DIR_TXT[filter] || '')}</h1>
     <span class="pr-meta">${trans ? 'Transportista: ' + esc(trans.nombre) + ' · ' : ''}Impreso ${new Date().toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</span>
     <span class="pr-date">${fechaBonita(fecha)}</span></div>`;
 }
@@ -3021,7 +3062,7 @@ function imprimir(){
   const cams = camiones.filter(t => dirs.includes(t.direccion || 'X'));
   const estTxt = {preparando:'preparando', confirmado:'confirmado', enviado:'enviado'};
   const trans = transPropia();
-  let h = `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (filter === 'V' ? 'Dirección Levante' : 'Dirección Sur')}</h1>
+  let h = `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (DIR_TXT[filter] || '')}</h1>
     <span class="pr-meta">${trans ? 'Transportista: ' + esc(trans.nombre) + ' · ' : ''}Impreso ${new Date().toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</span>
     <span class="pr-date">${fechaBonita(fecha)}</span></div>`;
   h += `<div class="pr-salen"><b>Salen hoy (${cams.length})</b>${cams.map(t => `<span>${t.direccion === 'X' ? '–' : t.direccion} · ${esc(t.nombre)}${t.tipo === 'autonomo' ? ' (aut.)' : ''}</span>`).join('') || 'nadie apuntado'}</div>`;
@@ -3093,8 +3134,9 @@ document.addEventListener('click', async e => {
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
-    if(b.id === 'guardarEspera'){ const v = Math.max(10, parseInt($('#esperaV').value, 10) || 120), sv = Math.max(10, parseInt($('#esperaS').value, 10) || 120);
-      if(await guardarAjuste('espera_activa', $('#esperaActiva').checked ? 'si' : 'no') && await guardarAjuste('espera_max_V', String(v)) && await guardarAjuste('espera_max_S', String(sv))) toast($('#esperaActiva').checked ? 'Alarma de espera activada' : 'Guardado (alarma desactivada)'); return; }
+    if(b.id === 'guardarEspera'){ let ok = await guardarAjuste('espera_activa', $('#esperaActiva').checked ? 'si' : 'no');
+      for(const el of document.querySelectorAll('[data-espera]')){ if(!ok) break; ok = await guardarAjuste('espera_max_' + el.dataset.espera, String(Math.max(10, parseInt(el.value, 10) || 120))); }
+      if(ok) toast($('#esperaActiva').checked ? 'Alarma de espera activada' : 'Guardado (alarma desactivada)'); return; }
     if(b.id === 'guardarCargaMax'){ const v = Math.max(1000, parseInt($('#cargaMax').value, 10) || 24000); if(await guardarAjuste('carga_maxima_kg', String(v))){ toast('Guardado'); render(); } return; }
     if(b.id === 'guardarAlertas'){ const r = Math.max(100, parseInt($('#radioDesc').value, 10) || 1000); if(await guardarAjuste('radio_descarga_m', String(r)) && await guardarAjuste('tel_alertas', $('#telAlertas').value.trim())) toast('Guardado'); return; }
     if(b.dataset.opertodos || b.dataset.operninguno){
@@ -3261,7 +3303,12 @@ document.addEventListener('change', async e => {
       if(enviada(l) && s.value) await run(sb.from('cargas_planificadas').update({asignado_id: s.value}).eq('id', l.carga_id), 'Orden pasada al nuevo cargador');
       return refrescar(true);
     }
-    if(s.dataset.hmover){ const l = lineas.find(x => x.id === s.closest('.hrow').dataset.id); if(l) await moverLinea(l, s.value || null, false); return; }
+    if(s.dataset.hmover){ const l = lineas.find(x => x.id === s.closest('.hrow').dataset.id); if(!l) return;
+      await moverLinea(l, s.value || null, false);
+      if(s.value){ const t = camion(s.value), r = huecoTxt(s.value);   // contador de lo que le queda y aviso si ya no entra
+        if(r.cls === 'over'){ toast(`⛔ Ya no entra en ${t ? t.nombre : 'el camión'}: se pasa de lo que cabe. Quita algo o pásalo a otro camión.`, true); try{ sonidoAlerta(); }catch(_){} }
+        else toast(`${t ? t.nombre : 'Camión'}: ${r.cls === 'full' ? 'lleno, cuadrado ✓' : `le caben ${r.h.libresE} europalet${r.h.libresE === 1 ? '' : 's'} más${r.h.libresG ? ` o ${r.h.libresG} palet${r.h.libresG === 1 ? '' : 's'} grande${r.h.libresG === 1 ? '' : 's'}` : ''}`}`); }
+      return; }
     const li = s.closest('.line'); if(!li) return;
     const l = lineas.find(x => x.id === li.dataset.id);
     if(s.dataset.act === 'mover'){ await moverLinea(l, s.value || null, false); return; }
