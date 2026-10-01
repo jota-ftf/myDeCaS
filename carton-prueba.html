@@ -1264,6 +1264,10 @@ function truckHTML(t){
       <select data-cam="${t.id}" data-f="tractora" aria-label="Tractora">${opt(tractoras, tSel, 'Tractora')}</select>
       <select data-cam="${t.id}" data-f="remolque" aria-label="Remolque">${opt(remolques, rSel, 'Remolque')}</select></div>
     ${capBlock(ida)}
+    ${(() => { const kg = ida.reduce((sum, l) => sum + (+l.kilos || pesoDe(l)), 0), maxKg = +ajustes.carga_maxima_kg || 24000;
+      if(!kg) return '';
+      return kg > maxKg ? `<div class="aviso-punta" style="background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">⚖️ Unos ${kg.toLocaleString('es-ES')} kg: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg)</div>`
+                        : `<div class="hint" style="margin:2px 0" title="Kilos apuntados, o calculados con el peso medio de cada palet">⚖️ ~${kg.toLocaleString('es-ES')} kg de ${maxKg.toLocaleString('es-ES')}</div>`; })()}
     ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en el hub)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
     <div class="section-label"><span>Ida · ${ida.length} recogidas</span></div>
     <ul class="lines ${ida.length ? '' : 'empty'}" data-zone="${t.id}" data-ret="0">${ida.map((l,i) => lineHTML(l, i, ida.length)).join('')}</ul>
@@ -1617,12 +1621,11 @@ async function enviarPinWa(){
   if(!telefonoWa(tel)){ toast('Escribe el teléfono (9 cifras).', true); $('#pinTel').focus(); return; }
   // se abre la ventana antes de guardar para que el navegador no la bloquee
   const ventana = window.open('about:blank', '_blank');
-  const codigo = codigoAleatorio();
-  const caduca = new Date(Date.now() + 3 * 864e5).toISOString();
-  const patch = {codigo_acceso: codigo, codigo_caduca: caduca};
-  if(tel !== (p.telefono || '')) patch.telefono = tel;
-  try{ await escribirComprobado(sb.from('personal').update(patch).eq('id', p.id)); }
-  catch(e){ if(ventana) ventana.close(); if(e && /codigo_/.test(e.message || '')) toast('Falta ejecutar la actualización 23 en Supabase.', true); return; }
+  const r = await rpcAcceso('crear_enlace', {p_token: tokenCarton(), p_persona: String(p.id)});
+  if(r.error || !r.codigo){ if(ventana) ventana.close(); toast(r.error || 'No se pudo crear el enlace.', true); return; }
+  const codigo = r.codigo, caduca = r.caduca;
+  const patch = {codigo_caduca: caduca};
+  if(tel !== (p.telefono || '')){ patch.telefono = tel; await sb.from('personal').update({telefono: tel}).eq('id', p.id); }
   const url = `https://wa.me/${telefonoWa(tel)}?text=${encodeURIComponent(textoAcceso(p, codigo))}`;
   if(ventana) ventana.location.href = url; else window.open(url, '_blank');
   toast('Enlace preparado en WhatsApp: pulsa enviar.');
@@ -1690,8 +1693,8 @@ function celda(campo, valor, tabla, idFila, fila){
   if(tipo === 'destino') return `<input class="field" data-k="${k}" value="${esc(valor ?? '')}" list="destinosList" placeholder="(todos)">`;
   if(tipo === 'pin'){
     if(!idFila) return '<span class="pin-est">lo elige el trabajador</span>';
-    const enlaceVivo = fila.codigo_acceso && fila.codigo_caduca && new Date(fila.codigo_caduca) > new Date();
-    const est = enlaceVivo ? `✉️ enlace enviado (vale hasta el ${new Date(fila.codigo_caduca).toLocaleDateString('es-ES')})` : fila.pin ? (fila.pin_temporal ? '🔑 provisional' : '🔒 puesto') : 'sin PIN';
+    const enlaceVivo = fila.codigo_caduca && new Date(fila.codigo_caduca) > new Date();
+    const est = enlaceVivo ? `✉️ enlace enviado (vale hasta el ${new Date(fila.codigo_caduca).toLocaleDateString('es-ES')})` : (fila.tiene_pin || fila.pin) ? (fila.pin_temporal ? '🔑 provisional' : '🔒 puesto') : 'sin PIN';
     return `<span class="pin-est">${est}</span><button type="button" class="btn small wa" title="Le manda por WhatsApp un enlace para que elija su PIN. Nadie más lo ve." data-genpin="${idFila}" data-fname="${esc(fila.nombre || '')}" data-ftel="${esc(fila.telefono || '')}" data-fpuesto="${esc(fila.puesto || '')}">Enviar acceso</button>`;
   }
   if(tipo === 'mapa'){
@@ -2137,13 +2140,25 @@ function renderAjustes(box){
         <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">WhatsApp del responsable <input class="field" id="telAlertas" inputmode="tel" value="${esc(ajustes.tel_alertas || '')}" placeholder="600 000 000" style="width:150px"></span>
         <button type="button" class="btn small" id="guardarAlertas">Guardar</button>
       </div>
+      <div class="baja-card">
+        <b>Carga máxima del camión</b>
+        <span class="hint">Si los kilos de un camión pasan de aquí, sale un aviso rojo en su caja del cartón, y en la app el conductor tiene que confirmarlo antes de generar el DeCA.</span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input class="field" id="cargaMax" type="number" min="1000" step="500" value="${+ajustes.carga_maxima_kg || 24000}" style="width:110px"> kg <button type="button" class="btn small" id="guardarCargaMax">Guardar</button></span>
+      </div>
     </div>`;
 }
 
 // ====== SESIÓN DEL CARTÓN (tráfico / dirección) ======
 let usuario = null, arrancado = false;
 const ROL_TXT = {trafico:'Tráfico', direccion:'Dirección'};
-function huellaPin(pin){ let h = 7; for(const ch of String(pin)) h = (h * 31 + ch.charCodeAt(0)) % 1000003; return 'h' + h; }
+// Acceso seguro (actualización 34): el PIN se comprueba en la base de datos y se guarda solo un «pase de sesión»
+const tokenCarton = () => { try{ return localStorage.getItem('carton_token') || ''; }catch(_){ return ''; } };
+function guardarToken(t){ try{ if(t) localStorage.setItem('carton_token', t); else localStorage.removeItem('carton_token'); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
+async function rpcAcceso(nombre, args){
+  const { data, error } = await sb.rpc(nombre, args);
+  if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
+  return data || {};
+}
 function usuariosCarton(){ return personalTodos.filter(p => ['trafico','direccion'].includes(p.puesto) && !p.baja); }
 function panelLogin(cual){ ['loginNormal','loginPrimero','loginNuevoPin'].forEach(id => $('#' + id).hidden = id !== cual); $('#loginMsg').textContent = ''; }
 function mostrarLogin(){
@@ -2186,21 +2201,20 @@ function aplicarPermisos(){
 }
 function iniciarSesion(u){
   usuario = u;
-  try{ localStorage.setItem('carton_usuario', String(u.id)); localStorage.setItem('carton_huella', huellaPin(u.pin)); }catch(_){}
   document.body.dataset.sesion = 'si'; aplicarPermisos(); $('#login').hidden = true;
   $('#usuarioBox').innerHTML = `👤 <b>${esc(u.nombre)}</b> · ${ROL_TXT[u.puesto] || u.puesto} <button type="button" class="btn small" id="miPinBtn">Cambiar mi PIN</button> <button type="button" class="btn small" id="cambiarUsrBtn" title="Deja el cartón listo para que entre otra persona">🔄 Cambiar usuario</button> <button type="button" class="btn small" id="salirBtn">Cerrar sesión</button>`;
   arrancar();
 }
-function pinOcupado(pin, idPropio){ return personalTodos.some(p => ['trafico','direccion'].includes(p.puesto) && !p.baja && String(p.id) !== String(idPropio) && String(p.pin || '') === String(pin)); }
 function pinValido(a, b){ if(!/^\d{4,6}$/.test(a)){ $('#loginMsg').textContent = 'El PIN tiene que tener entre 4 y 6 números.'; return false; } if(a !== b){ $('#loginMsg').textContent = 'Los dos PIN no coinciden.'; return false; } return true; }
 let pendienteNuevoPin = null;
 $('#loginBtn').onclick = async () => {
   const area = $('#loginUser').value, pin = $('#loginPin').value.trim();
   if(!pin){ $('#loginMsg').textContent = 'Escribe tu PIN.'; return; }
-  const { data } = await sb.from('personal').select('*').eq('puesto', area);
-  const u = (data || []).find(x => !x.baja && x.pin && String(x.pin) === pin);
-  if(!u){ $('#loginMsg').textContent = 'PIN incorrecto. Si es la primera vez que entras, pide a Administración tu enlace de acceso.'; $('#loginPin').value = ''; return; }
+  const r = await rpcAcceso('entrar_carton', {p_area: area, p_pin: pin});
   $('#loginPin').value = '';
+  if(r.error || !r.persona){ $('#loginMsg').textContent = r.error || 'No se ha podido entrar.'; return; }
+  guardarToken(r.token);
+  const u = Object.assign(persona(r.persona.id) || {}, r.persona);
   if(u.pin_temporal){ pendienteNuevoPin = u; $('#nuevoPinTxt').textContent = 'Estás usando un PIN provisional. Elige ahora uno tuyo:'; panelLogin('loginNuevoPin'); return; }
   iniciarSesion(u);
 };
@@ -2208,22 +2222,22 @@ $('#loginPin').addEventListener('keydown', e => { if(e.key === 'Enter') $('#logi
 $('#npinBtn').onclick = async () => {
   const a = $('#npin1').value.trim(), b = $('#npin2').value.trim();
   if(!pinValido(a, b) || !pendienteNuevoPin) return;
-  await cargarMaestros();
-  if(pinOcupado(a, pendienteNuevoPin.id)){ $('#loginMsg').textContent = 'Ese PIN ya lo usa otra persona. Elige otro.'; return; }
-  const { error } = await sb.from('personal').update(pendienteNuevoPin._porEnlace ? {pin:a, pin_temporal:false, codigo_acceso:null, codigo_caduca:null} : {pin:a, pin_temporal:false}).eq('id', pendienteNuevoPin.id);
-  if(error){ $('#loginMsg').textContent = 'No se pudo guardar: ' + error.message; return; }
+  const r = await rpcAcceso('poner_pin', {p_token: tokenCarton(), p_pin: a});
+  if(r.error === 'ocupado'){ $('#loginMsg').textContent = 'Ese PIN ya lo usa otra persona. Elige otro.'; return; }
+  if(r.error){ $('#loginMsg').textContent = 'No se pudo guardar: ' + r.error; return; }
   if(pendienteNuevoPin._porEnlace){ try{ history.replaceState(null, '', location.pathname); }catch(_){} delete pendienteNuevoPin._porEnlace; }
-  pendienteNuevoPin.pin = a; pendienteNuevoPin.pin_temporal = false;
+  pendienteNuevoPin.tiene_pin = true; pendienteNuevoPin.pin_temporal = false;
   iniciarSesion(pendienteNuevoPin);
 };
 $('#primBtn').onclick = async () => {
   const nombre = $('#primNombre').value.trim(), a = $('#primPin').value.trim(), b = $('#primPin2').value.trim();
   if(!nombre){ $('#loginMsg').textContent = 'Escribe tu nombre.'; return; }
   if(!pinValido(a, b)) return;
-  const { data, error } = await sb.from('personal').insert({nombre, puesto:'direccion', pin:a, pin_temporal:false}).select('*').single();
-  if(error){ $('#loginMsg').textContent = 'No se pudo crear: ' + error.message + ' (¿has ejecutado la actualización 21?)'; return; }
+  const r = await rpcAcceso('crear_primer_usuario', {p_nombre: nombre, p_pin: a});
+  if(r.error || !r.persona){ $('#loginMsg').textContent = 'No se pudo crear: ' + (r.error || ''); return; }
+  guardarToken(r.token);
   await cargarMaestros();
-  iniciarSesion(data);
+  iniciarSesion(Object.assign(persona(r.persona.id) || {}, r.persona));
 };
 // ====== COPIA DE SEGURIDAD AUTOMÁTICA (en Supabase) ======
 // Si desde la última copia ha cambiado algo, Supabase guarda una copia nueva (se puede volver a ella con 0-volver-a-la-copia.sql)
@@ -2643,7 +2657,7 @@ async function conductoresAutonomo(autId){
       <td><select class="field" data-c="puesto">${['chofer','cargador'].map(o => `<option ${p && p.puesto === o ? 'selected' : ''}>${o}</option>`).join('')}</select></td>
       <td><input class="field" data-c="telefono" value="${esc(p ? p.telefono || '' : '')}" placeholder="Teléfono" inputmode="tel"></td>
       <td><input class="field" data-c="matricula_actual" value="${esc(p ? p.matricula_actual || '' : (a.matricula_actual || ''))}" placeholder="Matrícula actual"></td>
-      <td class="n">${p ? `<span class="pin-est">${p.pin ? '🔒 tiene PIN' : 'sin PIN'}</span> <button type="button" class="btn small wa" data-caacceso="${p.id}">Enviar acceso</button> <button type="button" class="btn small" data-caguardar="${p.id}">Guardar</button> <button type="button" class="xbtn" data-cabaja="${p.id}" title="Quitar">×</button>` : `<button type="button" class="btn small primary" data-caguardar="">Añadir</button>`}</td></tr>`;
+      <td class="n">${p ? `<span class="pin-est">${(p.tiene_pin || p.pin) ? '🔒 tiene PIN' : 'sin PIN'}</span> <button type="button" class="btn small wa" data-caacceso="${p.id}">Enviar acceso</button> <button type="button" class="btn small" data-caguardar="${p.id}">Guardar</button> <button type="button" class="xbtn" data-cabaja="${p.id}" title="Quitar">×</button>` : `<button type="button" class="btn small primary" data-caguardar="">Añadir</button>`}</td></tr>`;
   ov.innerHTML = `<div class="modal-card" style="max-width:900px">
     <h2>Conductores de ${esc(a.nombre)}</h2>
     <p class="hint" style="margin:0">Cada conductor entra en la app del conductor con su nombre y su PIN. El PIN lo elige él mismo con el enlace de «Enviar acceso» (llega por WhatsApp; nadie más lo ve). Cuando carguen en un camión de ${esc(a.nombre)}, el DeCA sale con él como transportista.</p>
@@ -2887,11 +2901,11 @@ document.addEventListener('click', async e => {
     if(b.id === 'salirBtn' || b.id === 'cambiarUsrBtn'){ if(b.id === 'salirBtn' && !confirm('¿Cerrar sesión en este ordenador?')) return;
       b.disabled = true; b.textContent = 'Guardando copia…';
       await copiaAutomatica('cierre de sesión', true);
-      try{ localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} location.reload(); return; }
+      const tk = tokenCarton(); if(tk) await sb.rpc('cerrar_sesion', {p_token: tk}); guardarToken(''); location.reload(); return; }
     if(b.id === 'miPinBtn'){ const a = prompt('Escribe tu PIN nuevo (4 a 6 números):'); if(a === null) return; const c = prompt('Repítelo:'); if(c === null) return;
       if(!/^\d{4,6}$/.test(a.trim()) || a.trim() !== c.trim()){ toast('El PIN no es válido o no coincide.', true); return; }
-      await cargarMaestros(); if(pinOcupado(a.trim(), usuario.id)){ toast('Ese PIN ya lo usa otra persona. Elige otro.', true); return; }
-      try{ await escribirComprobado(sb.from('personal').update({pin:a.trim(), pin_temporal:false}).eq('id', usuario.id), 'PIN cambiado'); usuario.pin = a.trim(); localStorage.setItem('carton_huella', huellaPin(a.trim())); }catch(_){} return; }
+      const r = await rpcAcceso('poner_pin', {p_token: tokenCarton(), p_pin: a.trim()});
+      if(r.error === 'ocupado') toast('Ese PIN ya lo usa otra persona. Elige otro.', true); else if(r.error) toast('No se pudo cambiar: ' + r.error, true); else toast('PIN cambiado'); return; }
     if(b.id === 'pasarReal'){
       if(!confirm('¿Pasar a USO REAL?\n\nA partir de ahora ningún DeCA se podrá anular desde la app. Para volver a pruebas habrá que pedírselo al administrador.')) return;
       if(!confirm('¿Seguro? Esta acción no se puede deshacer desde el cartón.')) return;
@@ -2919,6 +2933,7 @@ document.addEventListener('click', async e => {
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
+    if(b.id === 'guardarCargaMax'){ const v = Math.max(1000, parseInt($('#cargaMax').value, 10) || 24000); if(await guardarAjuste('carga_maxima_kg', String(v))){ toast('Guardado'); render(); } return; }
     if(b.id === 'guardarAlertas'){ const r = Math.max(100, parseInt($('#radioDesc').value, 10) || 1000); if(await guardarAjuste('radio_descarga_m', String(r)) && await guardarAjuste('tel_alertas', $('#telAlertas').value.trim())) toast('Guardado'); return; }
     if(b.dataset.opertodos || b.dataset.operninguno){
       const ids = b.dataset.opertodos ? personal.filter(p => ['cargador','chofer'].includes(p.puesto) && !ausente(p.id)).map(p => String(p.id)) : [];
@@ -3236,16 +3251,15 @@ document.body.dataset.sesion = 'no';
 (async () => {
   try{ await cargarMaestros(); }catch(err){ setSync(false, err.message); }
   // ¿sesión recordada en este ordenador?
-  let id = null, huella = null; try{ id = localStorage.getItem('carton_usuario'); huella = localStorage.getItem('carton_huella'); }catch(_){}
   // ¿viene de un enlace de acceso enviado por WhatsApp?
   const qs = new URLSearchParams(location.search), qp = qs.get('p'), qc = qs.get('c');
   let enlaceMalo = false;
   if(qp && qc){
-    const { data } = await sb.from('personal').select('*').eq('id', qp).limit(1);
-    const x = data && data[0];
-    if(x && x.codigo_acceso && x.codigo_acceso === qc && x.codigo_caduca && new Date(x.codigo_caduca) > new Date() && ['trafico','direccion'].includes(x.puesto) && !x.baja){
+    const r = await rpcAcceso('usar_enlace', {p_persona: qp, p_codigo: qc});   // un solo uso: después ya no vale para nadie
+    const x = r.persona && Object.assign(persona(r.persona.id) || {}, r.persona);
+    if(x && ['trafico','direccion'].includes(x.puesto)){
+      guardarToken(r.token);
       mostrarLogin();
-      await sb.from('personal').update({codigo_acceso: null, codigo_caduca: null}).eq('id', x.id);   // el enlace ya no vale para nadie más
       pendienteNuevoPin = x; x._porEnlace = true;
       panelLogin('loginNuevoPin'); $('#nuevoPinTxt').textContent = `Hola ${x.nombre}. Elige tu PIN (puede ser el mismo que tenías):`;
       return;
@@ -3253,9 +3267,11 @@ document.body.dataset.sesion = 'no';
     try{ history.replaceState(null, '', location.pathname); }catch(_){}
     enlaceMalo = true;
   }
-  const u = id && persona(id);
-  if(u && ['trafico','direccion'].includes(u.puesto) && !u.baja && u.pin && !u.pin_temporal && huellaPin(u.pin) === huella) iniciarSesion(u);
-  else { mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
+  const tk = tokenCarton();
+  const ses = tk ? await rpcAcceso('sesion_persona', {p_token: tk}) : {};
+  const u = ses.persona && Object.assign(persona(ses.persona.id) || {}, ses.persona);
+  if(u && ['trafico','direccion'].includes(u.puesto) && !u.baja && !u.pin_temporal) iniciarSesion(u);
+  else { if(tk && ses.error) guardarToken(''); mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
 })();
 })();
 </script>

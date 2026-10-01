@@ -280,6 +280,14 @@ const TYPES = [
 ];
 // Peso medio (alto) por bulto, igual que en el cartón: un camión lleno sale en unos 23-24 t, nunca por encima de lo legal
 const PESO_TIPO = {'europeo':700, 'grande (americano)':900, 'carro':250, 'box':400, 'especial':500, 'cajas':15};
+const cargaMaxima = ()=> +((typeof ajustesApp !== 'undefined' && ajustesApp.carga_maxima_kg) || 24000);
+let kgEnCamion = 0;   // kilos de los DeCAs que el chófer lleva ahora mismo sin descargar
+function pesoDeEstaCarga(){
+  if(!currentCarga) return 0;
+  if(currentCarga.manual && currentCarga.pesoAuto) return pesoEstimado();
+  const declarado = parseFloat(String(currentCarga.peso || '').replace(',', '.')) || 0;
+  return Math.max(declarado, currentCarga.manual ? 0 : pesoEstimado());
+}
 function pesoEstimado(){ return TYPES.reduce((s,t)=> s + (state[t.id].qty || 0) * (PESO_TIPO[t.id] || 0), 0); }
 const CAPACITY = 13.2;   // metros útiles del remolque (33 europalets × 0,40 m)
 let state = TYPES.reduce((a,t)=>(a[t.id]={qty:0, remontable:false}, a), {});
@@ -350,6 +358,14 @@ function render(){
     resumen.style.color = 'var(--ok)';
     msg.style.color = 'var(--ok)'; confirmBtn.disabled = false;
   }
+  // ⚖️ Carga máxima: esta carga + lo que ya lleva el camión
+  const kgEsta = pesoDeEstaCarga(), kgTotal = kgEsta + (choferActual && choferActual.puesto === 'chofer' ? kgEnCamion : 0), maxKg = cargaMaxima();
+  let avisoKg = document.getElementById('avisoKg');
+  if(!avisoKg){ avisoKg = document.createElement('div'); avisoKg.id = 'avisoKg'; avisoKg.className = 'alerta-lejos'; avisoKg.style.display = 'none'; document.getElementById('confirmBtn').insertAdjacentElement('beforebegin', avisoKg); }
+  if(currentCarga && kgTotal > maxKg){
+    avisoKg.innerHTML = `⚖️ ¡OJO! ${kgTotal > kgEsta ? `Con esta carga el camión llevaría unos <b>${kgTotal.toLocaleString('es-ES')} kg</b>` : `Esta carga pesa unos <b>${kgEsta.toLocaleString('es-ES')} kg</b>`}: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg). Revisa los kilos o avisa a Tráfico.`;
+    avisoKg.style.display = 'block';
+  } else avisoKg.style.display = 'none';
   const vivo = document.getElementById('ndPesoVivo');
   if(vivo && currentCarga && currentCarga.pesoAuto){ const kg = pesoEstimado(); vivo.textContent = kg ? `${kg.toLocaleString('es-ES')} kg (aprox., calculado con los palets)` : 'se calcula con los palets'; }
   if(typeof licenciaBloqueada === 'function' && licenciaBloqueada()){ confirmBtn.disabled = true; msg.textContent = '⛔ Servicio suspendido: no se pueden crear DeCAs nuevos.'; msg.style.color = 'var(--bad)'; }
@@ -369,6 +385,13 @@ function rellenarDesdeOrden(){
   });
   return sinReconocer;
 }
+document.addEventListener('click', e=>{
+  const det = document.getElementById('cargaRealDetails');
+  if(!det.open || !e.target.closest) return;
+  if(e.target.closest('#cargaRealDetails') || e.target.closest('#confirmBtn') || e.target.closest('#igualQueOrdenBtn') || e.target.closest('#nuevoDecaCard') || e.target.closest('#ndSeguir')) return;
+  if(!document.contains(e.target)) return;   // botones que se acaban de redibujar (+ y −)
+  det.open = false;
+});
 document.getElementById('igualQueOrdenBtn').onclick = ()=>{
   if(!currentCarga || currentCarga.manual){ alert('Primero selecciona una carga pendiente de la lista.'); return; }
   if(!(currentCarga.detalle_planificado || '').trim()){ alert('Esta orden no tiene detalle planificado con cantidades.'); return; }
@@ -468,7 +491,7 @@ function transportistaPorDefecto(){
 }
 function salirDeNuevo(){
   $e('nuevoDecaCard').style.display = 'none';
-  $e('ndPaletsAyuda').style.display = 'none';
+  $e('ndPaletsAyuda').style.display = 'none'; $e('cargaRealDetails').open = false;
   $e('igualQueOrdenBtn').style.display = ''; $e('avisoCambiarSolo').style.display = '';
   if(currentCarga && currentCarga.manual){
     currentCarga = null; $e('trabajandoCard').style.display = 'none';
@@ -569,7 +592,15 @@ function enlaceMapa(nombre, texto){
 }
 
 // ====== Selección de "quién eres" (se recuerda en este dispositivo) ======
+// Acceso seguro (actualización 34): el PIN se comprueba en la base de datos y el móvil guarda solo un «pase de sesión»
 let personalCache = [];
+const tokenApp = ()=> { try{ return localStorage.getItem('persona_token') || ''; }catch(e){ return ''; } };
+function guardarTokenApp(t){ try{ if(t) localStorage.setItem('persona_token', t); else localStorage.removeItem('persona_token'); localStorage.removeItem('persona_pin_huella'); }catch(e){} }
+async function rpcAcceso(nombre, args){
+  const { data, error } = await sb.rpc(nombre, args);
+  if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase. Avisa a la oficina.' : error.message};
+  return data || {};
+}
 async function cargarChoferes(){
   const sel = document.getElementById('choferSel');
   if(!sb){ sel.innerHTML = '<option value="">Sin conexión con el servidor</option>'; mostrarSinCobertura(); return; }
@@ -586,10 +617,10 @@ async function cargarChoferes(){
   if(desdeEnlace && codigo){
     // Enlace de acceso enviado por WhatsApp: elige su PIN sin que nadie lo haya visto
     try{ history.replaceState(null, '', location.pathname); }catch(_){}
-    const { data: fx } = await sb.from('personal').select('*').eq('id', desdeEnlace).limit(1);
-    const per = fx && fx[0];
-    if(per && per.codigo_acceso && per.codigo_acceso === codigo && per.codigo_caduca && new Date(per.codigo_caduca) > new Date() && data.some(c=>String(c.id)===String(per.id))){
-      await sb.from('personal').update({codigo_acceso: null, codigo_caduca: null}).eq('id', per.id);   // el enlace ya no vale para nadie más
+    const r = await rpcAcceso('usar_enlace', {p_persona: desdeEnlace, p_codigo: codigo});   // un solo uso: después ya no vale para nadie
+    const per = r.persona;
+    if(per && data.some(c=>String(c.id)===String(per.id))){
+      guardarTokenApp(r.token);
       sel.value = per.id;
       activarPersona(per);
       choferActual.porEnlace = true;
@@ -604,10 +635,10 @@ async function cargarChoferes(){
     aplicarChoferSeleccionado();
   } else if(guardado && verificado === guardado && data.some(c=>c.id===guardado)){
     sel.value = guardado;
-    const per = data.find(c=>c.id===guardado);
-    // Si Tráfico le ha generado un PIN provisional (o el PIN ha cambiado), en este móvil se le vuelve a pedir
-    if(per.pin && (per.pin_temporal || localStorage.getItem('persona_pin_huella') !== huellaPin(per.pin))) aplicarChoferSeleccionado();
-    else activarPersona(per);
+    // ¿Sigue valiendo el pase guardado en este móvil? Si no (o ha caducado), se le pide el PIN otra vez
+    const ses = tokenApp() ? await rpcAcceso('sesion_persona', {p_token: tokenApp()}) : {};
+    if(ses.persona && String(ses.persona.id) === String(guardado)) activarPersona(Object.assign(data.find(c=>c.id===guardado), ses.persona));
+    else { guardarTokenApp(''); aplicarChoferSeleccionado(); }
   } else {
     document.getElementById('pendientesLista').innerHTML = '<div class="empty">Elige quién eres arriba para ver tus cargas</div>';
   }
@@ -625,11 +656,10 @@ document.getElementById('pinGuardar').onclick = async ()=>{
   const a = document.getElementById('pin1').value.trim(), b = document.getElementById('pin2').value.trim(), msg = document.getElementById('pinMsg');
   if(!/^\d{4,6}$/.test(a)){ msg.textContent = 'El PIN tiene que tener entre 4 y 6 números.'; msg.style.color = 'var(--bad)'; return; }
   if(a !== b){ msg.textContent = 'Los dos PIN no coinciden.'; msg.style.color = 'var(--bad)'; return; }
-  const { error } = await sb.from('personal').update(choferActual.porEnlace ? {pin: a, pin_temporal: false, codigo_acceso: null, codigo_caduca: null} : {pin: a, pin_temporal: false}).eq('id', choferActual.id);
-  if(error){ msg.textContent = 'No se pudo guardar: ' + error.message; msg.style.color = 'var(--bad)'; return; }
-  const p = personalCache.find(x => x.id === choferActual.id); if(p){ p.pin = a; p.pin_temporal = false; }
+  const r = await rpcAcceso('poner_pin', {p_token: tokenApp(), p_pin: a});
+  if(r.error){ msg.textContent = 'No se pudo guardar: ' + r.error; msg.style.color = 'var(--bad)'; return; }
+  const p = personalCache.find(x => x.id === choferActual.id); if(p){ p.tiene_pin = true; p.pin_temporal = false; }
   choferActual.pinTemporal = false; choferActual.porEnlace = false;
-  localStorage.setItem('persona_pin_huella', huellaPin(a));
   document.getElementById('pinCard').style.display = 'none';
   alert('PIN guardado. Recuérdalo: te lo pedirá al entrar.');
 };
@@ -638,7 +668,7 @@ document.getElementById('cambiarPinBtn').onclick = ()=> mostrarPin(false);
 function activarPersona(persona){
   choferActual = {id: persona.id, nombre: persona.nombre, puesto: persona.puesto, pinTemporal: !!persona.pin_temporal};
   document.getElementById('cambiarPinBtn').style.display = 'inline-block';
-  if(!persona.pin || persona.pin_temporal) mostrarPin(true); else document.getElementById('pinCard').style.display = 'none';
+  if(!(persona.tiene_pin || persona.pin) || persona.pin_temporal) mostrarPin(true); else document.getElementById('pinCard').style.display = 'none';
   localStorage.setItem('persona_id', persona.id);
   localStorage.setItem('persona_verificada', persona.id);
   const plateInput = document.getElementById('plate');
@@ -779,6 +809,7 @@ async function pollDescargas(){
   // Descargados LEJOS del destino: tiene que llevarlos a su sitio y confirmarlo allí
   const lejos = (await decasDeMisCamiones(diasAtras(4))).filter(r=> r.entregado && r.fuera_zona && !r.anulado);
   pintarLejos(lejos);
+  kgEnCamion = data.reduce((sum, r)=> sum + (parseFloat(String(r.peso || '').replace(',', '.')) || 0), 0);
   data.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha)); // las más antiguas primero: probablemente las próximas en descargar
   const box = document.getElementById('descargasLista');
   document.getElementById('descargasBadge').textContent = String(data.length);
@@ -1172,20 +1203,25 @@ function aplicarChoferSeleccionado(){
   }
   const cache = personalCache.find(c=>c.id===sel.value);
   if(!cache) return;
-  // se leen sus datos al momento, por si Tráfico acaba de generarle un PIN provisional
-  sb.from('personal').select('*').eq('id', cache.id).limit(1).then(({data})=>{
+  // se leen sus datos al momento, por si acaba de cambiar algo
+  sb.from('personal').select('*').eq('id', cache.id).limit(1).then(async ({data})=>{
     const persona = (data && data[0]) || cache;
     Object.assign(cache, persona);
-    if(!persona.pin){ activarPersona(persona); return; }   // trabajador nuevo: entra y elige su PIN
+    if(!(persona.tiene_pin || persona.pin)){   // trabajador nuevo: entra y elige su PIN
+      const r = await rpcAcceso('entrar_sin_pin', {p_persona: String(persona.id)});
+      if(r.error){ alert(r.error); sel.value = ''; return; }
+      guardarTokenApp(r.token); activarPersona(Object.assign(cache, r.persona)); return;
+    }
     const intento = prompt(persona.pin_temporal
       ? `Hola ${persona.nombre}, introduce el PIN PROVISIONAL que te ha dado Tráfico:`
       : `Hola ${persona.nombre}, introduce tu PIN:`);
     if(intento === null) { sel.value = ''; return; }
-    if(intento.trim() === String(persona.pin)){
-      localStorage.setItem('persona_pin_huella', huellaPin(persona.pin));
-      activarPersona(persona);   // si era provisional, activarPersona le pide que elija uno suyo
+    const r = await rpcAcceso('entrar_app', {p_persona: String(persona.id), p_pin: intento.trim()});
+    if(r.persona){
+      guardarTokenApp(r.token);
+      activarPersona(Object.assign(cache, r.persona));   // si era provisional, activarPersona le pide que elija uno suyo
     } else {
-      alert('PIN incorrecto.');
+      alert(r.error || 'PIN incorrecto.');
       sel.value = '';
     }
   });
@@ -1196,7 +1232,7 @@ function limpiarPantalla(){
   currentCarga = null; cargasPendientes = []; hayCargas = false; hayViaje = false; cargadorTractoraActual = '';
   TYPES.forEach(t=>{ state[t.id] = {qty:0, remontable:false}; }); lastGeo = null; render();
   ['descargasCard','trabajandoCard','resultCard','matCard','pinCard','nuevoDecaCard','nuevoDecaBtn'].forEach(id => $i(id).style.display = 'none');
-  $i('igualQueOrdenBtn').style.display = ''; $i('avisoCambiarSolo').style.display = ''; $i('ndPaletsAyuda').style.display = 'none';
+  $i('igualQueOrdenBtn').style.display = ''; $i('avisoCambiarSolo').style.display = ''; $i('ndPaletsAyuda').style.display = 'none'; $i('cargaRealDetails').open = false;
   $i('cambiarPinBtn').style.display = 'none';
   setTimeout(revisarGpsFondo, 0);   // sin sesión, el GPS en segundo plano se apaga
   gpsAhoraNo = false; $i('gpsAviso').style.display = 'none';
@@ -1223,7 +1259,9 @@ document.getElementById('cambiarUsuarioBtn').onclick = ()=>{
   if(choferActual && !confirm('¿Cerrar sesión en este móvil? Para volver a entrar te pedirá tu PIN.')) return;
   const quienSale = localStorage.getItem('persona_verificada');
   if(quienSale) leerMovil().then(ls=> borrarDelMovil(ls.filter(x=> !x.persona_id || String(x.persona_id) === String(quienSale)).map(x=> x.deca_id)));
-  localStorage.removeItem('persona_id'); localStorage.removeItem('persona_verificada'); localStorage.removeItem('persona_pin_huella');
+  if(sb && tokenApp()) sb.rpc('cerrar_sesion', {p_token: tokenApp()}).then(()=>{}, ()=>{});
+  guardarTokenApp('');
+  localStorage.removeItem('persona_id'); localStorage.removeItem('persona_verificada');
   document.getElementById('pinCard').style.display = 'none'; document.getElementById('cambiarPinBtn').style.display = 'none';
   document.getElementById('choferSel').value = '';
   aplicarChoferSeleccionado();
@@ -1285,6 +1323,7 @@ function seleccionarCarga(id){
   if(currentCarga && currentCarga.manual && !confirm('Estás haciendo un DeCA nuevo sin orden. ¿Dejarlo y trabajar en esta carga?')) return;
   salirDeNuevo();
   currentCarga = c;
+  document.getElementById('cargaRealDetails').open = false;   // empieza cerrado: la carga ya viene igual que la orden
   document.getElementById('resultCard').style.display = 'none'; // evita confundir un DeCA anterior con esta carga nueva
   lastGeo = null;
   const cli = c.clientes || {}, t = c.transportistas || {};
@@ -1674,6 +1713,8 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   if(licenciaBloqueada()){ alert('El servicio está suspendido: no se pueden crear DeCAs nuevos. Avisa a tu empresa.'); return; }
   if(!currentCarga){ alert('Selecciona primero una carga pendiente de la lista, o pulsa «Crear nuevo DeCA».'); return; }
   if(currentCarga.manual && currentCarga.pesoAuto){ currentCarga.peso = String(pesoEstimado()); currentCarga.peso_aproximado = true; }   // peso medio alto según los palets
+  { const kgT = pesoDeEstaCarga() + (choferActual && choferActual.puesto === 'chofer' ? kgEnCamion : 0);
+    if(kgT > cargaMaxima() && !confirm(`⚖️ El camión llevaría unos ${kgT.toLocaleString('es-ES')} kg y la carga máxima es ${cargaMaxima().toLocaleString('es-ES')} kg.\n\n¿Generar el DeCA igualmente?`)) return; }
   if(!matConfirmada()){ revisarMatricula(true); document.getElementById('matCard').scrollIntoView({behavior:'smooth', block:'center'}); alert('Antes de generar el DeCA, confirma que las matrículas son las correctas (arriba).'); return; }
   const decaId = 'DECA-' + Date.now().toString(36).toUpperCase(); // etiqueta legible
   const publicId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (decaId + '-' + Math.random().toString(36).slice(2));
@@ -1750,6 +1791,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   // Deja la app lista para la siguiente carga pendiente del mismo viaje
   const eraManual = currentCarga && currentCarga.manual;
   currentCarga = null;
+  document.getElementById('cargaRealDetails').open = false;
   if(eraManual) salirDeNuevo();
   document.getElementById('trabajandoCard').style.display = 'none';
   TYPES.forEach(t=>{ state[t.id] = {qty:0, remontable:false}; });
