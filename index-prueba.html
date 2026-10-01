@@ -100,6 +100,20 @@
 .card.plegable > .row{cursor:pointer}
 .card.plegable.ahora{border-color:var(--accent);border-width:2px}
 .card.plegable.ahora > .row strong::after{content:'  · ahora';font-weight:700;font-size:.8rem;color:var(--accent)}
+
+/* DeCA por voz: letras grandes para quien ve poco */
+.voz-capa{position:fixed;inset:0;z-index:2000;background:#0b0f1a;color:#fff;display:flex;align-items:center;justify-content:center;padding:16px}
+.voz-capa[hidden]{display:none}
+.voz-caja{width:100%;max-width:560px;text-align:center}
+.voz-paso{color:#aab4c8;font-size:1rem;margin-bottom:8px}
+.voz-pregunta{font-size:1.75rem;font-weight:800;line-height:1.25;color:#fff}
+.voz-capa #vozParar{color:#fff;border-color:#55607a;background:transparent;font-size:1.1rem}
+.voz-estado{margin-top:18px;font-size:1.3rem;color:#5cb8ff;min-height:1.6em}
+.voz-estado.escucha{animation:vozLatido 1.1s ease-in-out infinite}
+@keyframes vozLatido{50%{opacity:.45}}
+.voz-oido{margin-top:10px;font-size:1.45rem;color:#4fe0a6;font-weight:700;min-height:1.5em}
+.voz-botones{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+.voz-botones .btn{width:auto;min-width:130px;font-size:1.25rem;padding:16px 22px;margin:0}
 </style>
 </head>
 <body>
@@ -167,6 +181,7 @@
 
   <div class="card" id="nuevoDecaCard" style="display:none;border-color:var(--accent);border-width:2px">
     <div class="row"><strong style="font-size:1.05rem">➕ Nuevo DeCA</strong><span class="badge" id="nuevoCancelar" style="cursor:pointer">✖ Cancelar</span></div>
+    <button class="btn btn-primary" id="vozBtn" type="button" style="display:none;margin:8px 0 6px;font-size:1.15rem;padding:16px">🎤 Hacerlo hablando</button>
     <div class="pmeta" style="margin:4px 0 8px">Rellena los datos del porte. Lo marcado con * es obligatorio para el DeCA.</div>
     <label>Cargador (quien contrata el porte) *</label>
     <input type="text" id="ndCargador" list="ndListaClientes" placeholder="Nombre o empresa" autocomplete="off">
@@ -211,6 +226,17 @@
     <datalist id="ndListaClientes"></datalist><datalist id="ndListaTrans"></datalist>
     <datalist id="ndListaAlmacenes"></datalist><datalist id="ndListaDestinos"></datalist>
     <datalist id="ndListaMercancias"><option value="Frutas y hortalizas frescas"><option value="Frutas frescas"><option value="Hortalizas frescas"><option value="Cítricos"><option value="Plantas y flores"></datalist>
+  </div>
+
+  <div id="vozCapa" class="voz-capa" hidden role="dialog" aria-modal="true" aria-live="assertive">
+    <div class="voz-caja">
+      <div class="voz-paso" id="vozPaso"></div>
+      <div class="voz-pregunta" id="vozPregunta"></div>
+      <div class="voz-estado" id="vozEstado"></div>
+      <div class="voz-oido" id="vozOido"></div>
+      <div class="voz-botones" id="vozBotones"></div>
+      <button class="btn btn-ghost" id="vozParar" type="button" style="margin-top:14px">✋ Parar y seguir a mano</button>
+    </div>
   </div>
 
   <div class="card plegable" id="descargasCard" style="display:none">
@@ -348,11 +374,11 @@ function render(){
   document.getElementById('ldmTxt').textContent = `${ldm.toFixed(1)} / ${CAPACITY} LDM`;
   const bar = document.getElementById('ldmBar');
   bar.style.width = pct+'%';
-  bar.className = 'bar' + (ldm>CAPACITY?' bad':(pct>85?' warn':''));
+  bar.className = 'bar' + (ldm>CAPACITY+1e-9?' bad':(pct>85?' warn':''));
 
   const fitEl = document.getElementById('ldmFit');
   const free = Math.max(0, CAPACITY - ldm);
-  if(ldm>=CAPACITY){ fitEl.textContent = 'Sin espacio libre.'; }
+  if(ldm>=CAPACITY-1e-9){ fitEl.textContent = 'Sin espacio libre.'; }
   else {
     // Un remolque de 13,20 m coge como máximo 33 europalets (0,40 m cada uno) o 26 palets grandes (0,50 m)
     const fitEuro = Math.floor(free / 0.4 + 1e-9);
@@ -364,7 +390,7 @@ function render(){
   const resumen = document.getElementById('cargaResumenCompacto');
   const confirmBtn = document.getElementById('confirmBtn');
   const detalleTexto = TYPES.filter(t=>state[t.id].qty>0).map(t=>`${state[t.id].qty} ${t.name}`).join(', ') || 'nada añadido todavía';
-  if(ldm>CAPACITY){
+  if(ldm>CAPACITY+1e-9){
     msg.textContent = '⚠️ ¡ERROR! Supera la capacidad del remolque. Reduce la carga o notifica a Tráfico.';
     msg.style.color = 'var(--bad)'; confirmBtn.disabled = true;
     resumen.innerHTML = `⚠️ <b>${detalleTexto}</b> · ${ldm.toFixed(1)}/${CAPACITY} LDM — supera la capacidad`;
@@ -532,8 +558,142 @@ $e('nuevoDecaBtn').onclick = ()=>{
   const t = transportistaPorDefecto();
   $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : ''; $e('ndTransDom').value = t ? (t.domicilio || '') : '';
   $e('nuevoDecaCard').style.display = 'block';
+  $e('vozBtn').style.display = VOZ.disponible() ? 'block' : 'none';
   $e('nuevoDecaCard').scrollIntoView({behavior:'smooth', block:'start'});
 };
+// ====== NUEVO DeCA POR VOZ: la app pregunta en voz alta y el conductor solo contesta hablando ======
+// En el móvil usa el reconocimiento de voz del propio teléfono (app nativa) o el del navegador Chrome.
+const VOZ = {
+  rec: null,
+  disponible(){ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; return !!C.SpeechRecognition || !!(window.SpeechRecognition || window.webkitSpeechRecognition); },
+  async hablar(txt){
+    const C = (window.Capacitor && window.Capacitor.Plugins) || {};
+    try{ if(C.TextToSpeech){ await C.TextToSpeech.speak({text: txt, lang: 'es-ES', rate: 0.95}); return; } }catch(e){}
+    if(!('speechSynthesis' in window)) return;
+    await new Promise(res => { let hecho = false; const fin = () => { if(!hecho){ hecho = true; res(); } };
+      try{ const u = new SpeechSynthesisUtterance(txt); u.lang = 'es-ES'; u.rate = 0.95; u.onend = fin; u.onerror = fin; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){ fin(); }
+      setTimeout(fin, 4000 + txt.length * 90); });
+  },
+  async escuchar(){
+    const C = (window.Capacitor && window.Capacitor.Plugins) || {};
+    if(C.SpeechRecognition){
+      try{
+        const p = await C.SpeechRecognition.checkPermissions().catch(() => ({}));
+        if(p.speechRecognition !== 'granted') await C.SpeechRecognition.requestPermissions();
+        const r = await C.SpeechRecognition.start({language: 'es-ES', maxResults: 3, partialResults: false, popup: false});
+        return (r && r.matches) || [];
+      }catch(e){ return []; }
+    }
+    const R = window.SpeechRecognition || window.webkitSpeechRecognition; if(!R) return [];
+    return new Promise(res => {
+      let alts = [], hecho = false; const fin = () => { if(!hecho){ hecho = true; VOZ.rec = null; res(alts); } };
+      try{
+        const r = new R(); VOZ.rec = r; r.lang = 'es-ES'; r.maxAlternatives = 3; r.interimResults = false; r.continuous = false;
+        r.onresult = e => { const x = e.results[0]; alts = [...x].map(a => a.transcript); };
+        r.onerror = fin; r.onend = fin; r.start();
+        setTimeout(() => { try{ r.stop(); }catch(_){} setTimeout(fin, 800); }, 12000);
+      }catch(e){ fin(); }
+    });
+  },
+  parar(){ try{ VOZ.rec && VOZ.rec.abort(); }catch(e){} try{ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; C.SpeechRecognition && C.SpeechRecognition.stop(); C.TextToSpeech && C.TextToSpeech.stop(); }catch(e){} try{ speechSynthesis.cancel(); }catch(e){} }
+};
+const vozNorm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\b(s\.?\s?l\.?u?|s\.?\s?a\.?|s\.?\s?c\.?a\.?|sat|coop(erativa)?)\b/g, ' ').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
+// Busca en la lista el nombre que más se parece a lo que ha dicho (vale con decir parte del nombre)
+function vozBuscar(alts, lista){
+  let mejor = null, pMax = 0;
+  for(const a of alts){ const q = vozNorm(a); if(!q) continue; const qp = q.split(' ').filter(w => w.length > 2);
+    for(const nombre of lista){ const n = vozNorm(nombre); if(!n) continue;
+      let p = 0;
+      if(n === q) p = 100; else if(n.includes(q) || q.includes(n)) p = 70 + Math.min(q.length, n.length) / Math.max(q.length, n.length) * 20;
+      else { const np = n.split(' '); const comunes = qp.filter(w => np.some(x => x === w || (w.length > 4 && (x.startsWith(w) || w.startsWith(x))))).length; if(comunes) p = 30 + 40 * comunes / Math.max(qp.length, 1); }
+      if(p > pMax){ pMax = p; mejor = nombre; } } }
+  return pMax >= 45 ? mejor : null;
+}
+const VOZ_NUM = {cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiuno:21,veintiun:21,veintiuna:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29,treinta:30,cuarenta:40,cincuenta:50};
+function vozNumeros(t){   // "treinta y tres" → "33", "veintiséis" → "26"
+  let x = ' ' + vozNorm(t) + ' ';
+  x = x.replace(/\b(treinta|cuarenta|cincuenta) y (uno|una|un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\b/g, (m, a, b) => ' ' + (VOZ_NUM[a] + VOZ_NUM[b]) + ' ');
+  x = x.replace(/\b[a-z]+\b/g, w => VOZ_NUM[w] != null ? String(VOZ_NUM[w]) : w);
+  return x.trim();
+}
+// "26 grandes y 4 europeos" → {grande: 26, europeo: 4}
+const VOZ_TIPOS = [['grande (americano)', /^(grandes?|americanos?|metros?|de metro|palets? grandes?)/], ['europeo', /^(europeos?|euros?|europalets?|palets? europeos?)/], ['carro', /^carros?/], ['box', /^(box|boxes|bos|bós)/], ['cajas', /^cajas?/], ['especial', /^(especial|especiales|bultos?)/]];
+function vozPalets(alts){
+  for(const a of alts){
+    const t = vozNumeros(a), res = {}; let algo = false;
+    const re = /(\d+)\s+(?:de\s+)?(?:palets?\s+)?([a-z ]+?)(?=\s+\d|\s+y\s+\d|$)/g; let m;
+    while((m = re.exec(t))){ const resto = m[2].replace(/^y\s+/, '').trim(); const tipo = VOZ_TIPOS.find(([, r]) => r.test(resto));
+      if(tipo){ res[tipo[0]] = (res[tipo[0]] || 0) + (+m[1]); algo = true; } }
+    if(algo) return res;
+  }
+  return null;
+}
+function vozSiNo(alts){ const t = vozNorm(alts.join(' ')); if(/\b(si|vale|correcto|eso es|bien|claro|ok|okey|de acuerdo|exacto|perfecto|adelante|genera)\b/.test(t) && !/\bno\b/.test(t)) return true; if(/\b(no|cambiar|mal|incorrecto|repetir)\b/.test(t)) return false; return null; }
+function vozNif(alts){
+  const letras = {a:'A',be:'B',b:'B',ce:'C',c:'C',de:'D',d:'D',e:'E',efe:'F',f:'F',ge:'G',g:'G',hache:'H',h:'H',jota:'J',j:'J',ka:'K',ele:'L',eme:'M',ene:'N',pe:'P',p:'P',cu:'Q',q:'Q',erre:'R',ere:'R',ese:'S',s:'S',te:'T',t:'T',uve:'V',v:'V',equis:'X',x:'X',ye:'Y',y:'Y',zeta:'Z',z:'Z',w:'W'};
+  for(const a of alts){ const w = vozNumeros(a).split(' ').map(p => letras[p] || p.toUpperCase()).join('').replace(/[^A-Z0-9]/g, ''); if(/^[A-Z0-9]\d{7}[A-Z0-9]$/.test(w)) return w; }
+  return null;
+}
+let vozActivo = false;
+function vozPantalla(paso, pregunta){ $e('vozCapa').hidden = false; $e('vozPaso').textContent = paso || ''; $e('vozPregunta').textContent = pregunta || ''; $e('vozOido').textContent = ''; $e('vozBotones').innerHTML = ''; $e('vozEstado').textContent = ''; $e('vozEstado').classList.remove('escucha'); }
+async function vozPreguntar(paso, texto, valida){
+  for(let intento = 0; intento < 3 && vozActivo; intento++){
+    vozPantalla(paso, texto);
+    await VOZ.hablar(intento ? 'No te he entendido bien. ' + texto : texto);
+    if(!vozActivo) return null;
+    $e('vozEstado').textContent = '🎤 Te escucho… habla ahora'; $e('vozEstado').classList.add('escucha');
+    const alts = await VOZ.escuchar();
+    $e('vozEstado').classList.remove('escucha'); $e('vozEstado').textContent = '';
+    if(!vozActivo) return null;
+    if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined) return {valor: v, dicho: alts[0]}; }
+  }
+  return null;
+}
+async function asistenteVoz(){
+  if(!VOZ.disponible()){ alert('Este móvil no deja usar la voz. Rellénalo a mano.'); return; }
+  vozActivo = true;
+  const lista = id => [...$e(id).options].map(o => o.value);
+  const poner = (id, v) => { $e(id).value = v; $e(id).dispatchEvent(new Event('input', {bubbles: true})); };
+  const datos = {};
+  const pasos = {
+    async cargador(){ const r = await vozPreguntar('Paso 1 de 5', '¿Quién es el cargador? Di el nombre del cliente.', alts => vozBuscar(alts, lista('ndListaClientes')) || alts[0]);
+      if(!r) return false; poner('ndCargador', r.valor); datos.cargador = r.valor;
+      if(!$e('ndCargadorNif').value.trim()){ const n = await vozPreguntar('Paso 1 de 5', 'Este cliente no lo tengo. Dime su NIF, letra a letra.', vozNif); if(n) $e('ndCargadorNif').value = n.valor; }
+      return true; },
+    async origen(){ const r = await vozPreguntar('Paso 2 de 5', '¿Dónde cargas? Di el almacén o el pueblo.', alts => vozBuscar(alts, lista('ndListaAlmacenes')) || alts[0]); if(!r) return false; poner('ndOrigen', r.valor); datos.origen = r.valor; return true; },
+    async destino(){ const r = await vozPreguntar('Paso 3 de 5', '¿A dónde va la carga?', alts => vozBuscar(alts, lista('ndListaDestinos')) || alts[0]); if(!r) return false; poner('ndDestino', r.valor); datos.destino = r.valor; return true; },
+    async palets(){ const r = await vozPreguntar('Paso 4 de 5', '¿Cuántos palets llevas y de qué tipo? Por ejemplo: veintiséis grandes, o diez europeos y cuatro carros.', vozPalets); if(!r) return false; datos.palets = r.valor; return true; },
+    async pedido(){ const r = await vozPreguntar('Paso 5 de 5', '¿Tiene número de pedido? Dilo, o di no.'); if(!r) return true;
+      const t = vozNorm(r.valor); if(/^(no|ninguno|nada|no tiene|no hay)\b/.test(t)){ $e('ndRef').value = ''; datos.pedido = ''; } else { $e('ndRef').value = vozNumeros(r.valor).replace(/^(el\s+)?(pedido|numero|n|referencia|es)(\s+(de\s+)?(pedido|numero))?\s+/, '').replace(/\s+/g, '').toUpperCase(); datos.pedido = $e('ndRef').value; } return true; }
+  };
+  const nombrePal = (t, n) => ({'europeo': n === 1 ? 'europeo' : 'europeos', 'grande (americano)': n === 1 ? 'grande' : 'grandes', 'carro': n === 1 ? 'carro' : 'carros', 'box': 'box', 'cajas': n === 1 ? 'caja' : 'cajas', 'especial': n === 1 ? 'bulto especial' : 'bultos especiales'})[t];
+  try{
+    for(const k of ['cargador','origen','destino','palets','pedido']){ if(!vozActivo) return; if(!(await pasos[k]())){ if(vozActivo){ await VOZ.hablar('No lo he entendido. Sigue a mano, por favor.'); } return vozCerrar(); } }
+    for(let vuelta = 0; vuelta < 4 && vozActivo; vuelta++){
+      const pal = Object.entries(datos.palets || {}).map(([t, n]) => n + ' ' + nombrePal(t, n)).join(' y ');
+      const sinPunto = t => String(t || '').replace(/[.,\s]+$/, '');
+      const resumen = `Cargador: ${sinPunto(datos.cargador)}. De ${sinPunto(datos.origen)} a ${sinPunto(datos.destino)}. ${pal}.${datos.pedido ? ' Pedido ' + datos.pedido + '.' : ''}`;
+      const r = await vozPreguntar('Revisa', resumen + ' ¿Está bien?', vozSiNo);
+      if(!r) return vozCerrar();
+      if(r.valor){ break; }
+      const c = await vozPreguntar('Cambiar', '¿Qué quieres cambiar? Di: cargador, origen, destino, palets o pedido.', alts => { const t = vozNorm(alts.join(' ')); return /cargador|cliente/.test(t) ? 'cargador' : /origen|carga|almacen/.test(t) ? 'origen' : /destino/.test(t) ? 'destino' : /palet|bulto|carro/.test(t) ? 'palets' : /pedido|numero|referencia/.test(t) ? 'pedido' : null; });
+      if(!c) return vozCerrar();
+      await pasos[c.valor]();
+    }
+    if(!vozActivo) return;
+    $e('ndSeguir').click();
+    if($e('ndMsg').textContent){ await VOZ.hablar('Falta algún dato. ' + $e('ndMsg').textContent + ' Rellénalo a mano.'); return vozCerrar(); }
+    TYPES.forEach(t => { state[t.id] = {qty: (datos.palets || {})[t.id] || 0, remontable: false}; }); render();
+    if($e('confirmBtn').disabled){ await VOZ.hablar(totalLdm() > CAPACITY + 1e-9 ? 'Cuidado: esos palets no caben en el camión. Revísalos en la pantalla.' : 'Revisa los palets en la pantalla.'); return vozCerrar(); }
+    const g = await vozPreguntar('Último paso', '¿Genero el DeCA ahora?', vozSiNo);
+    vozCerrar();
+    if(g && g.valor){ $e('confirmBtn').click(); VOZ.hablar('Generando el DeCA.'); }
+    else VOZ.hablar('Vale. Cuando quieras, pulsa el botón azul de abajo: Confirmar carga y generar DeCA.');
+  }catch(e){ vozCerrar(); }
+}
+function vozCerrar(){ vozActivo = false; VOZ.parar(); $e('vozCapa').hidden = true; }
+$e('vozParar').onclick = vozCerrar;
+$e('vozBtn').onclick = asistenteVoz;
 $e('nuevoCancelar').onclick = salirDeNuevo;
 // Al elegir un cargador o transportista conocido, se rellenan solos su NIF y domicilio
 $e('ndCargador').addEventListener('input', ()=>{

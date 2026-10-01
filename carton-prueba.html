@@ -317,6 +317,11 @@ body[data-cerrado="1"] .truck:not(.terminado){outline:2px solid var(--accent);ou
 
 /* ====== Desplegable con buscador ====== */
 .combo{position:relative;grid-column:1/-1}
+/* × pequeña para borrar lo escrito (solo sale si hay algo) */
+.combo > input.field{padding-right:30px}
+.limpiar{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;border:0;border-radius:50%;background:var(--line);color:var(--ink);font-size:15px;line-height:22px;padding:0;cursor:pointer;opacity:.75}
+.limpiar:hover{opacity:1;background:var(--bad);color:#fff}
+input:placeholder-shown + .limpiar{display:none}
 .combo-list{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 2px);max-height:280px;overflow-y:auto;background:var(--surface);border:1px solid var(--pen);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .combo-list div{padding:6px 10px;cursor:pointer;font-size:13.5px}
 .combo-list div.act,.combo-list div:hover{background:var(--pen-soft)}
@@ -599,14 +604,14 @@ table.fichero td.acc{white-space:nowrap;width:1%}
         <h2 id="h-nuevo">Apuntar pedido</h2>
         <p class="hint">Lo que entra por teléfono o correo. Va a «sin asignar».</p>
         <form class="row" id="addLinea" autocomplete="off">
-          <div class="combo"><input class="field" id="lnAlm" placeholder="Almacén — escribe o elige de la lista" data-combo="almacenes" required autocomplete="off"><div class="combo-list" hidden></div></div>
-          <div class="combo"><input class="field" id="lnCli" placeholder="Cliente (cargador contractual)" data-combo="clientes" required autocomplete="off"><div class="combo-list" hidden></div></div>
-          <div class="combo"><input class="field" id="lnDest" placeholder="Destino" data-combo="destinos" required autocomplete="off"><div class="combo-list" hidden></div></div>
-          <input class="field full" id="lnRef" placeholder="Nº pedido / referencia (opcional)">
+          <div class="combo"><input class="field" id="lnAlm" placeholder="Almacén — escribe o elige de la lista" data-combo="almacenes" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnAlm" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
+          <div class="combo"><input class="field" id="lnCli" placeholder="Cliente (cargador contractual)" data-combo="clientes" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnCli" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
+          <div class="combo"><input class="field" id="lnDest" placeholder="Destino" data-combo="destinos" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnDest" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
+          <div class="combo"><input class="field" id="lnRef" placeholder="Nº pedido / referencia (opcional)"><button type="button" class="limpiar" data-limpiar="lnRef" aria-label="Borrar" title="Borrar">×</button></div>
           <select class="field full" id="lnContr" aria-label="Transportista contractual" title="Sale en el DeCA encima del transportista efectivo" hidden></select>
           <select class="field full" id="lnTrans" aria-label="Transportista efectivo" title="Si lo dejas en «Transportista Efectivo», se pone solo el del camión (el autónomo o tu empresa)"></select>
           <select class="field full" id="lnMerc" aria-label="Naturaleza de la mercancía"></select>
-          <input class="field full" id="lnAut" placeholder="Nº de autorización o ficha ADR — déjalo vacío si no procede">
+          <div class="combo"><input class="field" id="lnAut" placeholder="Nº de autorización o ficha ADR — déjalo vacío si no procede"><button type="button" class="limpiar" data-limpiar="lnAut" aria-label="Borrar" title="Borrar">×</button></div>
           <div class="inline full">
             <input class="field num" id="lnE" type="number" min="0" step="1" placeholder="Euro" aria-label="Europalets">
             <input class="field num" id="lnM" type="number" min="0" step="1" placeholder="Metro" aria-label="Palets de metro">
@@ -3483,6 +3488,11 @@ document.body.dataset.sesion = 'no';
   if(u && ['trafico','direccion'].includes(u.puesto) && !u.baja && !u.pin_temporal) iniciarSesion(u);
   else { if(tk && ses.error) guardarToken(''); mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
 })();
+// × de los campos del pedido: borra lo escrito y deja el cursor ahí para escribir de nuevo
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-limpiar]'); if(!b) return;
+  const inp = document.getElementById(b.dataset.limpiar); if(!inp) return;
+  inp.value = ''; inp.dispatchEvent(new Event('input', {bubbles: true})); inp.focus(); });
+
 // ====== DÍA CERRADO: solo se pueden tocar los camiones que aún no han terminado el viaje ======
 (function(){
   const cerrado = () => !!ajustes['cierre_' + fecha];
