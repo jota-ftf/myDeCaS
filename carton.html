@@ -41,6 +41,7 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+body:not([data-rol="direccion"]) .solo-dir{display:none!important}
 html,body{margin:0}
 body{background:var(--ground);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.4;padding-inline:16px;padding-block:16px 60px}
 .wrap{max-width:none;margin:0 auto;display:flex;flex-direction:column;gap:14px}
@@ -534,6 +535,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       </div>
       <button type="button" class="btn small" id="actualizarBtn" title="Vuelve a leer todo del servidor">⟳ Actualizar</button>
       <button type="button" class="btn small" id="copiaBtn" title="Descarga una copia de todos los datos en Excel">💾 Copia</button>
+      <button type="button" class="btn small solo-dir" id="accesoBtn" title="Pone el cartón como una aplicación más en el escritorio de este ordenador">📌 Acceso directo</button>
       <button type="button" class="btn small solo-carton" id="panelBtn" title="Oculta o muestra la columna de la izquierda para dar más sitio al cartón">Ocultar panel</button>
       <button type="button" class="btn small solo-carton" id="imprimir" title="Imprime lo que estás viendo (Todos, Levante o Sur)">🖨 Imprimir</button>
       <button type="button" class="btn small primary solo-carton" id="verOrdenes">Órdenes de carga</button>
@@ -625,6 +627,31 @@ table.fichero td.acc{white-space:nowrap;width:1%}
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
+<input type="file" id="importarArchivo" accept=".xlsx,.xls,.csv,.ods" hidden>
+<div class="modal" id="impDlg" hidden role="dialog" aria-modal="true" aria-labelledby="impTit">
+  <div class="modal-card" style="max-width:860px">
+    <h2 id="impTit" style="margin:0">Importar desde Excel</h2>
+    <p class="hint" style="margin:0" id="impAyuda"></p>
+    <div id="impMapa" class="modal-grid"></div>
+    <div id="impExtra"></div>
+    <div id="impResumen" style="font-weight:700"></div>
+    <div class="tabla-wrap" style="max-height:300px;overflow:auto"><table class="fichero" id="impTabla"></table></div>
+    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="impCompletar" checked> Si ya existe, rellenar los datos que le falten (sin borrar nada de lo que ya tiene)</label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button type="button" class="btn" id="impCerrar">Cancelar</button>
+      <button type="button" class="btn primary" id="impOk">Importar</button>
+    </div>
+  </div>
+</div>
+<div id="licenciaBloqueo" hidden style="position:fixed;inset:0;z-index:9999;background:rgba(8,12,20,.92);display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;color:#1a1f2b;border-radius:16px;max-width:460px;width:100%;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <div style="font-size:2.6rem" id="licIcono">⛔</div>
+    <h2 style="margin:8px 0 10px;font-size:1.3rem" id="licTitulo">Servicio suspendido</h2>
+    <p style="margin:0 0 8px;line-height:1.5" id="licTexto"></p>
+    <p style="margin:0;color:#667;font-size:.9rem">Tus datos y DeCAs se conservan. Los códigos QR de los DeCAs ya hechos siguen funcionando.</p>
+  </div>
+</div>
+<div id="licenciaAviso" hidden style="background:#ff9f43;color:#1a1000;text-align:center;font-weight:700;padding:6px 10px;font-size:.9rem"></div>
 <div id="printArea"></div>
 <div class="modal" id="pinDlg" hidden role="dialog" aria-modal="true" aria-labelledby="pinTit">
   <div class="modal-card" style="max-width:480px">
@@ -690,7 +717,7 @@ const LDM = {e_pal:0.4, m_pal:0.5, carros:0.4, box:0.5, cajas:0.02};
 const CAP = 13.2;   // metros útiles del remolque: 33 europalets × 0,40 m
 // Cómo se escribe cada tipo en el "detalle planificado" (lo que la app del conductor sabe leer)
 const DETALLE_TIPO = {e_pal:'europeo', m_pal:'grande (americano)', carros:'carro', box:'box', cajas:'cajas'};
-const PESO_KG = {e_pal:300, m_pal:450, carros:250, box:200, cajas:15};
+const PESO_KG = {e_pal:700, m_pal:900, carros:250, box:400, cajas:15};   // media alta de fruta y verdura; un camión lleno sale en unos 23-24 t (nunca por encima de lo legal)
 const SLOT_EURO = CAP / 33;   // un remolque coge como máximo 33 europalets
 const MERCANCIAS = ['fruta y verdura','productos perecederos','plantas vivas','congelado','secos'];
 const DIRS = ['V','S','X'];
@@ -720,6 +747,8 @@ let camiones = [], lineas = [], cargas = {}, decas = {}, ausencias = [];
 const ausente = id => ausencias.find(a => String(a.persona_id) === String(id)) || null;
 let operativos = null;   // quién ha marcado Tráfico como operativo hoy (null = todavía nadie marcado: todos)
 const esOperativo = id => !ausente(id) && (operativos === null || operativos.includes(String(id)));
+// autónomos: van en la misma lista con «a:»; «a:-» indica que la lista ya los tiene en cuenta (si no, todos disponibles)
+const autOperativo = id => operativos === null || !operativos.includes('a:-') || operativos.includes('a:' + id);
 const MOTIVOS = {baja:'Baja', vacaciones:'Vacaciones', descanso:'Descanso', otro:'No disponible'};
 let personal = [], clientes = [], transportistas = [], tractoras = [], remolques = [];
 let ordersOpen = false;
@@ -729,6 +758,32 @@ let lastOk = null;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => (Math.round(n*100)/100).toLocaleString('es-ES', {maximumFractionDigits:2});
+// ====== LICENCIA DE LA EMPRESA (la cambia solo el proveedor, desde Supabase: tabla «licencia») ======
+// Sin tabla o sin fila = todo activo (así funciona igual antes de la actualización 30)
+let licencia = null;
+async function leerLicencia(){
+  try{ const { data, error } = await sb.from('licencia').select('*').eq('id', 1).limit(1); licencia = (!error && data && data[0]) || null; }catch(e){ licencia = null; }
+  aplicarLicencia();
+}
+function planActual(){ return String((licencia && licencia.plan) || 'pro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
+function licenciaEnRegla(){ return !licencia || (licencia.activa !== false && (!licencia.hasta || String(licencia.hasta).slice(0,10) >= hoyISO())); }
+function aplicarLicencia(){
+  const caja = document.getElementById('licenciaBloqueo'), aviso = document.getElementById('licenciaAviso');
+  const enRegla = licenciaEnRegla(), soloApp = planActual() === 'estandar';
+  if(!enRegla || soloApp){
+    document.getElementById('licIcono').textContent = enRegla ? '📱' : '⛔';
+    document.getElementById('licTitulo').textContent = enRegla ? 'Tu plan no incluye el cartón' : 'Servicio suspendido';
+    document.getElementById('licTexto').textContent = (licencia && licencia.mensaje) || (enRegla
+      ? 'Tu plan Estándar incluye solo la app myDeCaS para los conductores. Para usar el cartón de Tráfico, pasa al plan Básico o Pro.'
+      : 'El acceso a myDeCaS está suspendido. Ponte en contacto con myDeCaS para reactivarlo.');
+    caja.hidden = false;
+  } else caja.hidden = true;
+  // Aviso 7 días antes de que venza
+  const dias = licencia && licencia.hasta ? Math.round((new Date(String(licencia.hasta).slice(0,10)) - new Date(hoyISO())) / 864e5) : null;
+  if(enRegla && dias != null && dias <= 7){ aviso.textContent = dias === 0 ? '⚠️ Tu suscripción a myDeCaS vence hoy.' : `⚠️ Tu suscripción a myDeCaS vence en ${dias} día${dias === 1 ? '' : 's'} (${new Date(String(licencia.hasta).slice(0,10)).toLocaleDateString('es-ES')}).`; aviso.hidden = false; }
+  else aviso.hidden = true;
+}
+setTimeout(leerLicencia, 0); setInterval(()=>{ if(!usuario) leerLicencia(); }, 60000);   // también en la pantalla de entrada
 function hoyISO(d){ d = d || new Date(); const z = new Date(d.getTime() - d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
 function fechaBonita(iso){ const [y,m,d] = iso.split('-'); return `${+d}-${+m}-${y.slice(2)}`; }
 let personalTodos = [], clientesTodos = [], transportistasTodos = [], ajustes = {meses_conservacion:'12', grupos_whatsapp:'[]'};
@@ -813,6 +868,7 @@ async function cargarMaestros(){
   personal = personalTodos.filter(x => !x.baja); clientes = clientesTodos.filter(x => !x.baja); transportistas = transportistasTodos.filter(x => !x.baja);
   const aj = await sb.from('ajustes').select('*');
   (aj.data || []).forEach(x => ajustes[x.clave] = x.valor);
+  await leerLicencia();
   if(usuario){ const yo = personalTodos.find(x => String(x.id) === String(usuario.id)); if(yo){ Object.assign(usuario, yo); aplicarPermisos(); } }
   if(usuario && usuario.puesto === 'direccion') comprobarBajas();
   tractoras = tr.data || []; remolques = re.data || [];
@@ -829,15 +885,19 @@ async function cargarMaestros(){
   $('#lnTrans').innerHTML = (pr ? '' : '<option value="">Transportista efectivo — marca tu empresa como «propia» en Transportistas</option>') +
     transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
   $('#lnTrans').value = tv || (pr ? pr.id : '');
-  const autos = transportistas.filter(x => x.autonomo);
-  const av = $('#camAuto').value;
-  $('#camAuto').innerHTML = autos.length ? '<option value="">…o autónomo de la lista</option>' + autos.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.matricula_actual ? ' · ' + esc(x.matricula_actual) : ''}</option>`).join('')
-    : '<option value="">No hay autónomos: añádelos en la pestaña Autónomos</option>';
-  if(av) $('#camAuto').value = av;
+  pintarCamAuto();
   actualizarCondAut();
   if(!$('#lnMerc').options.length) $('#lnMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join('');
   const ch = personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id));   // los de los autónomos van en su lista; los que no están hoy, fuera
   $('#camChofer').innerHTML = '<option value="">Chófer propio de la lista…</option>' + ch.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+}
+// Desplegable de autónomos de «Salen hoy»: solo los que trabajan hoy
+function pintarCamAuto(){
+  const autos = transportistas.filter(x => x.autonomo && autOperativo(x.id));
+  const av = $('#camAuto').value;
+  $('#camAuto').innerHTML = autos.length ? '<option value="">…o autónomo de la lista</option>' + autos.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.matricula_actual ? ' · ' + esc(x.matricula_actual) : ''}</option>`).join('')
+    : '<option value="">No hay autónomos: añádelos en la pestaña Autónomos</option>';
+  if(av && [...$('#camAuto').options].some(o => o.value === av)) $('#camAuto').value = av;
 }
 
 // Al elegir un autónomo: si tiene conductores dados de alta, se elige cuál lleva el camión
@@ -1212,6 +1272,10 @@ function truckHTML(t){
       <select data-cam="${t.id}" data-f="tractora" aria-label="Tractora">${opt(tractoras, tSel, 'Tractora')}</select>
       <select data-cam="${t.id}" data-f="remolque" aria-label="Remolque">${opt(remolques, rSel, 'Remolque')}</select></div>
     ${capBlock(ida)}
+    ${(() => { const kg = ida.reduce((sum, l) => sum + (+l.kilos || pesoDe(l)), 0), maxKg = +ajustes.carga_maxima_kg || 24000;
+      if(!kg) return '';
+      return kg > maxKg ? `<div class="aviso-punta" style="background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">⚖️ Unos ${kg.toLocaleString('es-ES')} kg: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg)</div>`
+                        : `<div class="hint" style="margin:2px 0" title="Kilos apuntados, o calculados con el peso medio de cada palet">⚖️ ~${kg.toLocaleString('es-ES')} kg de ${maxKg.toLocaleString('es-ES')}</div>`; })()}
     ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en el hub)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
     <div class="section-label"><span>Ida · ${ida.length} recogidas</span></div>
     <ul class="lines ${ida.length ? '' : 'empty'}" data-zone="${t.id}" data-ret="0">${ida.map((l,i) => lineHTML(l, i, ida.length)).join('')}</ul>
@@ -1237,13 +1301,16 @@ function renderDispo(){
       ${a ? (esDir ? `<span class="dispo-m">${MOTIVOS[a.motivo] || a.motivo} · hasta ${fechaBonita(a.hasta)}</span><button type="button" class="linkbtn" data-dispook="${a.id}">Ya está</button>` : '<span class="dispo-m">no disponible</span>')
           : (esDir ? `<button type="button" class="linkbtn" data-dispono="${p.id}" title="Solo dirección: baja, vacaciones, descanso…">Ausencia…</button>` : '')}</label>`; };
   const n = l => l.filter(p => esOperativo(p.id)).length;
-  $('#dispoResumen').textContent = `· ${n(cgs)} cargador${n(cgs) === 1 ? '' : 'es'} · ${n(chs)} chófer${n(chs) === 1 ? '' : 'es'}`;
-  box.innerHTML = (cgs.length || chs.length) ? `<div class="send-row" style="margin:4px 0 6px"><button type="button" class="btn small" data-opertodos="1">Todos</button><button type="button" class="btn small" data-operninguno="1">Ninguno</button></div>
-    ${cgs.length ? `<div class="dispo-g"><b>Cargadores</b>${cgs.map(fila).join('')}</div>` : ''}${chs.length ? `<div class="dispo-g"><b>Chóferes</b>${chs.map(fila).join('')}</div>` : ''}` : '<p class="hint">No hay personal dado de alta.</p>';
+  const auts = transportistas.filter(x => x.autonomo), nAut = auts.filter(a => autOperativo(a.id)).length;
+  const filaAut = a => `<label class="dispo-p ${autOperativo(a.id) ? '' : 'fuera'}"><input type="checkbox" data-oper="a:${a.id}" ${autOperativo(a.id) ? 'checked' : ''}><span>${esc(a.nombre)}</span></label>`;
+  $('#dispoResumen').textContent = `· ${n(cgs)} cargador${n(cgs) === 1 ? '' : 'es'} · ${n(chs)} chófer${n(chs) === 1 ? '' : 'es'}${auts.length ? ` · ${nAut} autónomo${nAut === 1 ? '' : 's'}` : ''}`;
+  box.innerHTML = (cgs.length || chs.length || auts.length) ? `<div class="send-row" style="margin:4px 0 6px"><button type="button" class="btn small" data-opertodos="1">Todos</button><button type="button" class="btn small" data-operninguno="1">Ninguno</button></div>
+    ${cgs.length ? `<div class="dispo-g"><b>Cargadores</b>${cgs.map(fila).join('')}</div>` : ''}${chs.length ? `<div class="dispo-g"><b>Chóferes</b>${chs.map(fila).join('')}</div>` : ''}${auts.length ? `<div class="dispo-g"><b>Autónomos</b>${auts.map(filaAut).join('')}</div>` : ''}` : '<p class="hint">No hay personal dado de alta.</p>';
   // la lista de «Salen hoy» también se actualiza con quién está hoy
   const sel = $('#camChofer'), v = sel.value;
   sel.innerHTML = '<option value="">Chófer propio de la lista…</option>' + personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
   if(v && [...sel.options].some(o => o.value === v)) sel.value = v;
+  pintarCamAuto();
   actualizarCondAut();
 }
 function pedirAusencia(p){
@@ -1565,12 +1632,11 @@ async function enviarPinWa(){
   if(!telefonoWa(tel)){ toast('Escribe el teléfono (9 cifras).', true); $('#pinTel').focus(); return; }
   // se abre la ventana antes de guardar para que el navegador no la bloquee
   const ventana = window.open('about:blank', '_blank');
-  const codigo = codigoAleatorio();
-  const caduca = new Date(Date.now() + 3 * 864e5).toISOString();
-  const patch = {codigo_acceso: codigo, codigo_caduca: caduca};
-  if(tel !== (p.telefono || '')) patch.telefono = tel;
-  try{ await escribirComprobado(sb.from('personal').update(patch).eq('id', p.id)); }
-  catch(e){ if(ventana) ventana.close(); if(e && /codigo_/.test(e.message || '')) toast('Falta ejecutar la actualización 23 en Supabase.', true); return; }
+  const r = await rpcAcceso('crear_enlace', {p_token: tokenCarton(), p_persona: String(p.id)});
+  if(r.error || !r.codigo){ if(ventana) ventana.close(); toast(r.error || 'No se pudo crear el enlace.', true); return; }
+  const codigo = r.codigo, caduca = r.caduca;
+  const patch = {codigo_caduca: caduca};
+  if(tel !== (p.telefono || '')){ patch.telefono = tel; await sb.from('personal').update({telefono: tel}).eq('id', p.id); }
   const url = `https://wa.me/${telefonoWa(tel)}?text=${encodeURIComponent(textoAcceso(p, codigo))}`;
   if(ventana) ventana.location.href = url; else window.open(url, '_blank');
   toast('Enlace preparado en WhatsApp: pulsa enviar.');
@@ -1595,18 +1661,18 @@ async function escribirComprobado(query, okMsg){
 }
 const FICHEROS = {
   clientes: {titulo:'Clientes (cargador contractual)', aviso:'El NIF y el domicilio salen en el DeCA: complétalos siempre.', tablas:[
-    {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono']]}]},
+    {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax']]}]},
   transportistas: {titulo:'Transportistas efectivos', aviso:'Su nombre y NIF salen en el DeCA. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
-    {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
+    {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
   autonomos: {titulo:'Autónomos', aviso:'Camioneros autónomos que trabajan para vosotros. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
-    {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},
+    {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},
   personal: {titulo:'Personal (cargadores y chóferes)', aviso:'Puesto: cargador y chofer usan la app del conductor; trafico y direccion entran en este cartón. El PIN lo elige cada uno. Si lo olvida, pulsa «Enviar acceso»: le llega por WhatsApp un enlace para elegir uno nuevo, sin que nadie más lo vea.', tablas:[
     {tabla:'personal', orden:'nombre', campos:[['nombre','Nombre'],['puesto','Puesto',['cargador','chofer','trafico','direccion']],['telefono','Teléfono'],['matricula_actual','Matrícula actual (tractora / remolque)'],['transportista_id','De qué autónomo (vacío = propio)','autonomo'],['pin','PIN','pin']]}]},
   flota: {titulo:'Flota', aviso:'Al elegir una tractora en el cartón se pone sola su pareja habitual; luego se pueden combinar libremente.', tablas:[
     {tabla:'tractoras', subtitulo:'Tractoras', orden:'matricula', campos:[['matricula','Matrícula'],['remolque_habitual','Remolque habitual']]},
     {tabla:'remolques', subtitulo:'Remolques', orden:'matricula', campos:[['matricula','Matrícula']]}]},
   destinos: {titulo:'Destinos', aviso:'', tablas:[
-    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
+    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
   tarifas_cli: {titulo:'Tarifas de clientes', aviso:'Una fila por cliente y destino. Deja el destino vacío para la tarifa general de ese cliente (se usa cuando no hay una más concreta). «Cobro por»: palet (rellena el precio de cada tipo), viaje (precio por camión completo para ese cliente) o kilo.', tablas:[
     {tabla:'tarifas_cliente', orden:'created_at', ordenar:(a,b) => nombreCliente(a.cliente_id).localeCompare(nombreCliente(b.cliente_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['cliente_id','Cliente','cliente'],['destino','Destino (vacío = todos)','destino'],['tipo','Cobro por',['palet','viaje','kilo']],['precio_e','€ europalet','num'],['precio_m','€ palet grande','num'],['precio_c','€ carro','num'],['precio_b','€ box','num'],['precio_k','€ caja','num'],['precio_kilo','€ / kilo','num'],['precio_viaje','€ / viaje','num']]}]},
@@ -1614,7 +1680,7 @@ const FICHEROS = {
     {tabla:'tarifas_autonomo', orden:'created_at', ordenar:(a,b) => nombreTrans(a.transportista_id).localeCompare(nombreTrans(b.transportista_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['transportista_id','Autónomo','autonomo'],['destino','Destino (vacío = todos)','destino'],['tipo','Pago por',['viaje','porcentaje','palet']],['precio','Importe (€ viaje · % · € palet)','num']]}]},
   almacenes: {titulo:'Almacenes (puntos de recogida)', aviso:'Borra los que ya no trabajáis y añade los nuevos: esta es la lista del desplegable del cartón.', tablas:[
-    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
+    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
 };
 function cambiarVista(v){
   if(usuario && !puedeVer(v)){ toast('No tienes permiso para ver esta sección.', true); v = 'carton'; }
@@ -1638,8 +1704,8 @@ function celda(campo, valor, tabla, idFila, fila){
   if(tipo === 'destino') return `<input class="field" data-k="${k}" value="${esc(valor ?? '')}" list="destinosList" placeholder="(todos)">`;
   if(tipo === 'pin'){
     if(!idFila) return '<span class="pin-est">lo elige el trabajador</span>';
-    const enlaceVivo = fila.codigo_acceso && fila.codigo_caduca && new Date(fila.codigo_caduca) > new Date();
-    const est = enlaceVivo ? `✉️ enlace enviado (vale hasta el ${new Date(fila.codigo_caduca).toLocaleDateString('es-ES')})` : fila.pin ? (fila.pin_temporal ? '🔑 provisional' : '🔒 puesto') : 'sin PIN';
+    const enlaceVivo = fila.codigo_caduca && new Date(fila.codigo_caduca) > new Date();
+    const est = enlaceVivo ? `✉️ enlace enviado (vale hasta el ${new Date(fila.codigo_caduca).toLocaleDateString('es-ES')})` : (fila.tiene_pin || fila.pin) ? (fila.pin_temporal ? '🔑 provisional' : '🔒 puesto') : 'sin PIN';
     return `<span class="pin-est">${est}</span><button type="button" class="btn small wa" title="Le manda por WhatsApp un enlace para que elija su PIN. Nadie más lo ve." data-genpin="${idFila}" data-fname="${esc(fila.nombre || '')}" data-ftel="${esc(fila.telefono || '')}" data-fpuesto="${esc(fila.puesto || '')}">Enviar acceso</button>`;
   }
   if(tipo === 'mapa'){
@@ -1677,7 +1743,7 @@ async function renderFicherosBase(){
     const filas = (datos[i].data || []).filter(t.filtro || (() => true));
     if(t.ordenar) filas.sort(t.ordenar);
     const err = datos[i].error ? `<p class="why">No se pudo leer: ${esc(datos[i].error.message)}</p>` : '';
-    return `<div data-ftabla="${t.tabla}">${t.subtitulo ? `<h3 style="margin:0 0 6px">${t.subtitulo} · ${filas.length}</h3>` : ''}${err}
+    return `<div data-ftabla="${t.tabla}">${t.subtitulo ? `<h3 style="margin:0 0 6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">${t.subtitulo} · ${filas.length} ${cfg.tablas.length > 1 ? botonImportar(t.tabla, 'Importar ' + t.subtitulo.toLowerCase()) : ''}</h3>` : ''}${err}
       <div class="tabla-wrap"><table class="fichero"><thead><tr>${t.campos.map(c => `<th>${c[1]}</th>`).join('')}<th></th></tr></thead><tbody>
       <tr class="nuevo">${t.campos.map(c => `<td>${celda(c, c[2] && Array.isArray(c[2]) ? c[2][0] : '', t.tabla, null, {}).replace('class="field"', `class="field" placeholder="${c[1]}${c[0] === t.campos[0][0] ? ' (nuevo)' : ''}"${t.tabla === 'tarifas_cliente' && /^precio_(e|m|c|b|k|kilo)$/.test(c[0]) ? ' list="listaPrecios"' : ''}`)}</td>`).join('')}
         <td class="acc"><button type="button" class="btn small primary" data-fadd="${t.tabla}">Añadir</button></td></tr>
@@ -1687,8 +1753,277 @@ async function renderFicherosBase(){
       </tbody></table></div></div>`;
   }).join('');
   box.innerHTML = `<div class="fich-head"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2>${cfg.titulo}</h2></div>${cfg.aviso ? `<p class="hint">${cfg.aviso}</p>` : ''}</div>
-    <input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Busca la dirección de los destinos y almacenes que no la tienen: la copia del otro listado si es el mismo sitio, o la saca de su ubicación GPS">📍 Rellenar direcciones</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
     <div class="${cfg.tablas.length > 1 ? 'fich-cols' : ''}">${bloques}</div>`;
+}
+// ====== IMPORTAR DESDE EXCEL (todas las fichas: clientes, transportistas, autónomos, personal, flota, destinos, almacenes y tarifas) ======
+// Lee la primera hoja, reconoce las columnas por su título, enseña cómo quedará y no repite lo que ya existe.
+const SINONIMOS = {
+  nombre: ['nombre','razon social','nombre fiscal','denominacion','cliente','empresa','nombre comercial','proveedor','transportista','destino','almacen','nombre y apellidos','trabajador','name'],
+  nif: ['nif','cif','dni','nif/cif','cif/nif','nif cif','nie','vat','n identificacion fiscal','identificacion fiscal'],
+  domicilio: ['domicilio','direccion','direccion fiscal','domicilio fiscal','calle','address','direccion completa'],
+  direccion: ['direccion','domicilio','calle','address'],
+  telefono: ['telefono','tel','tlf','telf','movil','telefono movil','telefono 1','phone','whatsapp'],
+  contacto: ['contacto','persona de contacto','persona contacto','atencion','a la atencion de','responsable'],
+  email: ['email','e-mail','correo','correo electronico','mail','e mail'],
+  fax: ['fax','telefax'],
+  matricula: ['matricula','matriculas','placa','tractora'],
+  remolque_habitual: ['remolque','remolque habitual','semirremolque'],
+  puesto: ['puesto','cargo','categoria'],
+  matricula_actual: ['matricula','matricula actual'],
+  maps_url: ['ubicacion','mapa','google maps','enlace google maps','enlace mapa','maps','coordenadas','localizacion'],
+  cliente_id: ['cliente','nombre cliente','razon social','empresa','cargador'],
+  transportista_id: ['autonomo','nombre autonomo','transportista','de que autonomo'],
+  destino: ['destino','plaza','mercado','destino (vacio = todos)'],
+  tipo: ['tipo','cobro por','pago por','modalidad','forma de cobro','forma de pago'],
+  precio_e: ['europalet','europalets','euro','palet europeo','precio europalet','€ europalet','eur'],
+  precio_m: ['palet grande','palets grandes','grande','americano','palet americano','industrial','metro','€ palet grande'],
+  precio_c: ['carro','carros','€ carro'],
+  precio_b: ['box','€ box'],
+  precio_k: ['caja','cajas','caja suelta','€ caja'],
+  precio_kilo: ['kilo','precio kilo','€/kg','€ kg','€ / kilo','kg'],
+  precio_viaje: ['viaje','precio viaje','camion completo','porte','€ / viaje','€ viaje'],
+  precio: ['precio','importe','tarifa','€','importe (€ viaje · % · € palet)'],
+};
+const EXTRA_DOMICILIO = [['cp',['cp','codigo postal','cod postal','c postal','postal']],['poblacion',['poblacion','localidad','municipio','ciudad','city']],['provincia',['provincia','province']]];
+const SIN_LAT = ['lat','latitud','latitude'], SIN_LNG = ['lng','lon','long','longitud','longitude'];
+const normT = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\./g, '').replace(/[_:º°ª]/g, ' ').replace(/\s+/g, ' ').trim();   // «C.I.F.» → «cif»
+function camposImportablesT(t){ return (t && t.campos || []).filter(c => c[2] !== 'pin' && c[0] !== 'propia'); }
+function camposImportables(cfg){ return cfg && cfg.tablas && cfg.tablas.length === 1 ? camposImportablesT(cfg.tablas[0]) : []; }
+function botonImportar(tabla, texto){ return `<button type="button" class="btn small" data-imptabla="${tabla}" title="Sube una hoja de cálculo (Excel, CSV…) con la lista">📥 ${texto || 'Importar desde Excel'}</button>`; }
+let imp = null;
+function columnaPara(cab, campo){
+  const lista = [...(SINONIMOS[campo[0]] || []), normT(campo[1]), normT(campo[0])].map(normT);
+  let i = cab.findIndex(h => lista.includes(h));
+  if(i < 0) i = cab.findIndex(h => h && lista.some(x => x.length > 3 && (h.startsWith(x + ' ') || h.endsWith(' ' + x))));
+  return i;
+}
+function numeroES(v){
+  let t = String(v).replace(/[€%\s]/g, '');
+  if(t.includes(',') && t.includes('.')) t = t.replace(/\./g, '').replace(',', '.'); else t = t.replace(',', '.');
+  const n = parseFloat(t); return isNaN(n) ? null : n;
+}
+function buscarPor(lista, v){ const n = normT(v), nif = n.replace(/[^a-z0-9]/g, ''); return lista.find(x => normT(x.nombre) === n) || (nif.length > 5 ? lista.find(x => x.nif && normT(x.nif).replace(/[^a-z0-9]/g, '') === nif) : null) || null; }
+async function abrirImportar(archivo, tabla){
+  const cfg = Object.values(FICHEROS).find(f => f.tablas.some(t => t.tabla === tabla) && f === FICHEROS[vista]) || Object.values(FICHEROS).find(f => f.tablas.some(t => t.tabla === tabla));
+  const t = cfg.tablas.find(x => x.tabla === tabla), campos = camposImportablesT(t);
+  let filas;
+  try{
+    const libro = XLSX.read(await archivo.arrayBuffer(), {type:'array'});
+    filas = XLSX.utils.sheet_to_json(libro.Sheets[libro.SheetNames[0]], {header:1, defval:'', raw:false});
+  }catch(e){ toast('No he podido leer ese archivo. Guárdalo como Excel (.xlsx) o CSV y vuelve a probar.', true); return; }
+  filas = filas.filter(f => f.some(v => String(v).trim() !== ''));
+  if(!filas.length){ toast('La hoja está vacía.', true); return; }
+  // la fila de títulos: la primera (de las 10 primeras) que tenga más columnas reconocidas
+  let fTit = 0, mejor = -1;
+  filas.slice(0, 10).forEach((f, i) => { const cab = f.map(normT); const n = campos.filter(c => columnaPara(cab, c) >= 0).length; if(n > mejor){ mejor = n; fTit = i; } });
+  const cab = filas[fTit].map(normT);
+  const conTitulos = mejor > 0;
+  const titulos = conTitulos ? filas[fTit].map((h, i) => String(h).trim() || `Columna ${i+1}`) : filas[0].map((_, i) => `Columna ${i+1}`);
+  const datos = conTitulos ? filas.slice(fTit + 1) : filas;
+  const mapa = {}, usadas = new Set();
+  campos.forEach((c, k) => { let i = conTitulos ? columnaPara(cab, c) : (k < titulos.length ? k : -1); if(usadas.has(i)) i = -1; mapa[c[0]] = i; if(i >= 0) usadas.add(i); });
+  const extras = {}; if(campos.some(c => c[0] === 'domicilio') && conTitulos) EXTRA_DOMICILIO.forEach(([k, syn]) => { const i = cab.findIndex(h => syn.map(normT).includes(h)); if(i >= 0 && i !== mapa.domicilio) extras[k] = i; });
+  const latlng = conTitulos && campos.some(c => c[2] === 'mapa') ? {lat: cab.findIndex(h => SIN_LAT.includes(h)), lng: cab.findIndex(h => SIN_LNG.includes(h))} : null;
+  const { data: existentes } = await sb.from(t.tabla).select('*').limit(5000);
+  imp = {cfg, t, campos, titulos, datos, mapa, extras, latlng: latlng && latlng.lat >= 0 && latlng.lng >= 0 ? latlng : null, usarExtra: Object.fromEntries(Object.keys(extras).map(k => [k, true])), existentes: (existentes || []).filter(t.filtro || (() => true))};
+  const que = (t.subtitulo || cfg.titulo).split('(')[0].trim().toLowerCase();
+  $('#impTit').textContent = `Importar ${que} desde «${archivo.name}»`;
+  $('#impAyuda').textContent = (conTitulos ? 'He reconocido las columnas por su título. Revisa que cada dato sale de la columna correcta y pulsa «Importar». No se guarda nada hasta entonces.' : 'No he encontrado títulos en la hoja: elige de qué columna sale cada dato.') + (campos.some(c => c[2] === 'cliente' || c[2] === 'autonomo') ? ' Los clientes y autónomos se buscan por su nombre o NIF: tienen que estar dados de alta antes.' : '');
+  $('#impMapa').innerHTML = campos.map(c => `<label>${esc(c[1])}${c[0] === t.campos[0][0] ? ' *' : ''}<select class="field" data-impc="${c[0]}"><option value="-1">— No importar —</option>${titulos.map((h, i) => `<option value="${i}" ${mapa[c[0]] === i ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`).join('');
+  $('#impExtra').innerHTML = (Object.keys(extras).length ? `<div class="hint">Añadir al domicilio: ${Object.entries(extras).map(([k, i]) => `<label style="margin-right:12px"><input type="checkbox" data-impx="${k}" checked> ${esc(titulos[i])}</label>`).join('')}</div>` : '') +
+    (imp.latlng ? `<div class="hint">📍 La ubicación se toma de las columnas «${esc(titulos[imp.latlng.lat])}» y «${esc(titulos[imp.latlng.lng])}» cuando no haya enlace de Google Maps.</div>` : '');
+  pintarImportar();
+  $('#impDlg').hidden = false;
+}
+function convertir(c, v, r, f){
+  const [k, , tipo, extra] = c;
+  if(tipo === 'mapa'){
+    if(!v && imp.latlng) v = `${String(f[imp.latlng.lat] ?? '').trim()}, ${String(f[imp.latlng.lng] ?? '').trim()}`;
+    const co = coordsDe(v); if(co){ r[extra.lat] = co.lat; r[extra.lng] = co.lng; }
+    if(/^https?:/i.test(v)) r[k] = v;
+    if(co || /^https?:/i.test(v)) r._ver[k] = co ? `${co.lat.toFixed(5)}, ${co.lng.toFixed(5)}` : 'enlace';
+    return;
+  }
+  if(v === '') return;
+  if(Array.isArray(tipo)){
+    const n = normT(v);
+    const o = (/%/.test(v) && tipo.includes('porcentaje')) ? 'porcentaje' : tipo.find(o => { const x = normT(o); return n === x || n.startsWith(x) || n.split(' ').includes(x); });
+    if(o){ r[k] = o; r._ver[k] = o; } else r._mal.push(`«${v}» no vale para ${c[1]}`);
+    return;
+  }
+  if(tipo === 'num'){ const n = numeroES(v); if(n != null){ r[k] = n; r._ver[k] = String(n).replace('.', ','); } return; }
+  if(tipo === 'bool'){ const n = normT(v); if(['si','s','x','1','true','verdadero','yes'].includes(n)){ r[k] = true; r._ver[k] = 'Sí'; } else if(['no','n','0','false','falso'].includes(n)){ r[k] = false; r._ver[k] = 'No'; } return; }
+  if(tipo === 'cliente' || tipo === 'autonomo'){
+    const x = buscarPor(tipo === 'cliente' ? clientesTodos : transportistasTodos.filter(t => t.autonomo), v);
+    if(x){ r[k] = x.id; r._ver[k] = x.nombre; } else { r._ver[k] = `¿${v}?`; r._mal.push(`${tipo === 'cliente' ? 'Cliente' : 'Autónomo'} «${v}» no encontrado`); }
+    return;
+  }
+  if(k === 'nif') v = v.toUpperCase().replace(/[\s.\-]/g, '');          // «b-12.345.678» → «B12345678»
+  if(/matricula|remolque/.test(k)) v = v.toUpperCase();
+  if(k === 'email') v = v.toLowerCase().replace(/\s/g, '');
+  r[k] = v; r._ver[k] = v;
+}
+function filasImportar(){
+  const {campos, datos, mapa, extras, usarExtra} = imp;
+  return datos.map(f => {
+    const r = {_ver:{}, _mal:[]};
+    campos.forEach(c => {
+      const i = mapa[c[0]]; let v = i >= 0 ? String(f[i] ?? '').trim() : '';
+      if(c[0] === 'domicilio'){ const partes = [v, ...['cp','poblacion','provincia'].filter(k => extras[k] != null && usarExtra[k]).map(k => String(f[extras[k]] ?? '').trim())].filter(Boolean); v = partes.join(', ').replace(/,\s*(\d{5}),\s*/, ', $1 '); }
+      convertir(c, v, r, f);
+    });
+    return r;
+  });
+}
+function claveDup(r){
+  const tb = imp.t.tabla;
+  if(tb === 'tarifas_cliente') return 'tc:' + r.cliente_id + '|' + normT(r.destino);
+  if(tb === 'tarifas_autonomo') return 'ta:' + r.transportista_id + '|' + normT(r.destino);
+  return r.nif ? 'nif:' + normT(r.nif).replace(/[^a-z0-9]/g, '') : 'n:' + normT(r[imp.t.campos[0][0]]);
+}
+function pintarImportar(){
+  const clave0 = imp.t.campos[0][0], porNombre = !['cliente','autonomo'].includes(imp.t.campos[0][2]);
+  const filas = filasImportar();
+  const ya = new Map(); imp.existentes.forEach(x => { ya.set(claveDup(x), x); if(porNombre) ya.set('n:' + normT(x[clave0]), x); });
+  const vistos = new Set(); let nuevos = 0, repetidos = 0, enArchivo = 0, sinClave = 0, conFallos = 0;
+  imp.plan = filas.map(r => {
+    if(r[clave0] == null || r[clave0] === ''){ sinClave++; return {r, estado:'sin'}; }
+    if(r._mal.length) conFallos++;
+    const k = claveDup(r), kn = porNombre ? 'n:' + normT(r[clave0]) : k;
+    if(vistos.has(k) || vistos.has(kn)){ enArchivo++; return {r, estado:'dup'}; }
+    vistos.add(k); vistos.add(kn);
+    const ex = ya.get(k) || ya.get(kn);
+    if(ex){ repetidos++; return {r, estado:'existe', ex}; }
+    nuevos++; return {r, estado:'nuevo'};
+  });
+  const nombreClave = imp.t.campos[0][1].toLowerCase().replace(/ \(.*\)/, '');
+  $('#impResumen').innerHTML = `${nuevos} nuevo${nuevos === 1 ? '' : 's'} · ${repetidos} ya estaba${repetidos === 1 ? '' : 'n'}${enArchivo ? ` · ${enArchivo} repetido${enArchivo === 1 ? '' : 's'} en la hoja` : ''}${sinClave ? ` · ${sinClave} fila${sinClave === 1 ? '' : 's'} sin ${esc(nombreClave)} válido (se saltan)` : ''}${conFallos ? ` · <span style="color:var(--warn)">${conFallos} con algún dato que no se entiende (se importa el resto)</span>` : ''}`;
+  const cs = imp.campos.filter(c => imp.mapa[c[0]] >= 0 || (c[2] === 'mapa' && imp.latlng) || (c[0] === 'domicilio' && Object.keys(imp.extras).length));
+  const etiqueta = {nuevo:'<span style="color:var(--ok)">Nuevo</span>', existe:'<span style="color:var(--muted)">Ya existe</span>', dup:'<span style="color:var(--warn)">Repetido</span>', sin:'<span style="color:var(--bad)">Se salta</span>'};
+  $('#impTabla').innerHTML = `<thead><tr><th></th>${cs.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${imp.plan.slice(0, 200).map(p => `<tr title="${esc(p.r._mal.join(' · '))}"><td>${etiqueta[p.estado]}${p.r._mal.length ? ' ⚠️' : ''}</td>${cs.map(c => `<td>${esc(p.r._ver[c[0]] || '')}</td>`).join('')}</tr>`).join('')}${imp.plan.length > 200 ? `<tr><td colspan="${cs.length + 1}" class="hint">… y ${imp.plan.length - 200} más</td></tr>` : ''}</tbody>`;
+  $('#impOk').textContent = nuevos ? `Importar ${nuevos}` : 'Importar';
+}
+const limpiarFila = r => Object.fromEntries(Object.entries(r).filter(([k]) => !k.startsWith('_')));
+async function hacerImportar(){
+  const btn = $('#impOk'); if(btn.disabled) return;
+  const nuevos = imp.plan.filter(p => p.estado === 'nuevo').map(p => ({...(imp.t.fijo || {}), ...limpiarFila(p.r)}));
+  const completar = $('#impCompletar').checked ? imp.plan.filter(p => p.estado === 'existe').map(p => { const cambios = {}; Object.entries(limpiarFila(p.r)).forEach(([k, v]) => { if(p.ex[k] == null || String(p.ex[k]).trim() === '') cambios[k] = v; }); return {id: p.ex.id, cambios}; }).filter(x => Object.keys(x.cambios).length) : [];
+  if(!nuevos.length && !completar.length){ toast('No hay nada nuevo que importar.'); return; }
+  btn.disabled = true; btn.textContent = 'Importando…';
+  let hechos = 0, completados = 0;
+  try{
+    for(let i = 0; i < nuevos.length; i += 200){
+      const { data, error } = await sb.from(imp.t.tabla).insert(nuevos.slice(i, i + 200)).select('id');
+      if(error) throw error; hechos += (data || []).length;
+    }
+    for(const x of completar){ const { error } = await sb.from(imp.t.tabla).update(x.cambios).eq('id', x.id); if(!error) completados++; }
+  }catch(e){
+    const falta = /column|columna|schema cache/i.test(e.message || '') ? ' (falta ejecutar la última actualización en Supabase)' : '';
+    toast(`Se han importado ${hechos}. Error con el resto: ${e.message}${falta}`, true); btn.disabled = false; btn.textContent = 'Importar'; await cargarMaestros(); renderFicheros(); return;
+  }
+  $('#impDlg').hidden = true; btn.disabled = false; imp = null;
+  toast(`✅ Importados ${hechos}${completados ? ` · completados ${completados} que ya estaban` : ''}.`);
+  await cargarMaestros(); renderFicheros();
+}
+let impTabla = null;
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-imptabla]');
+  if(b){ impTabla = b.dataset.imptabla; const f = $('#importarArchivo'); f.value = ''; f.click(); }
+  if(e.target.id === 'impCerrar'){ $('#impDlg').hidden = true; imp = null; }
+  if(e.target.id === 'impOk') hacerImportar();
+});
+document.addEventListener('change', e => {
+  if(e.target.id === 'importarArchivo' && e.target.files[0] && impTabla) abrirImportar(e.target.files[0], impTabla);
+  if(imp && e.target.dataset && e.target.dataset.impc != null){ imp.mapa[e.target.dataset.impc] = +e.target.value; pintarImportar(); }
+  if(imp && e.target.dataset && e.target.dataset.impx != null){ imp.usarExtra[e.target.dataset.impx] = e.target.checked; pintarImportar(); }
+});
+// ====== DIRECCIÓN A PARTIR DE LA UBICACIÓN GPS (OpenStreetMap, gratis: como mucho una consulta por segundo) ======
+async function direccionDesdeGps(lat, lng){
+  try{
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=es`, {signal: ctl.signal});
+    clearTimeout(t); if(!r.ok) return null;
+    const j = await r.json(), a = j.address || {};
+    const calle = [a.road || a.pedestrian || a.industrial || a.hamlet || a.neighbourhood || '', a.house_number || ''].filter(Boolean).join(' ');
+    const pueblo = a.city || a.town || a.village || a.municipality || '';
+    const prov = a.province || a.state_district || a.state || '';
+    const txt = [calle, [a.postcode, pueblo].filter(Boolean).join(' ')].filter(Boolean).join(', ') + (prov && prov !== pueblo ? ` (${prov})` : '');
+    return txt.trim() || (j.display_name ? j.display_name.split(',').slice(0, 4).join(',').trim() : null);
+  }catch(e){ return null; }
+}
+async function rellenarDireccionesGps(_, boton){
+  // 1) Lee las dos fichas. La ubicación sale de sus coordenadas o, si no las tiene, del enlace de Google Maps (cuando lo lleva dentro)
+  const FICH = {destinos:{lng:'lng', txt:'destino'}, almacenes:{lng:'lon', txt:'almacén'}};
+  const filas = [];
+  for(const tabla of Object.keys(FICH)){
+    if((await columnasQueFaltan(tabla)).includes('direccion')){ toast('Primero ejecuta la actualización 33 en Supabase.', true); return; }
+    const { data, error } = await sb.from(tabla).select('*').limit(5000);
+    if(error){ toast('No se pudo leer ' + tabla + ': ' + error.message, true); return; }
+    (data || []).forEach(x => {
+      const lngK = FICH[tabla].lng;
+      let lat = x.lat != null && x.lat !== '' ? +x.lat : null, lng = x[lngK] != null && x[lngK] !== '' ? +x[lngK] : null;
+      if((lat == null || lng == null) && x.maps_url){ const c = coordsDe(x.maps_url); if(c){ lat = c.lat; lng = c.lng; } }
+      filas.push({tabla, x, lat, lng, dir: String(x.direccion || '').trim(), clave: normTxt(x.nombre)});
+    });
+  }
+  const cambios = new Map();   // «tabla|id» → lo que hay que guardar
+  const poner = (f, campos) => { const k = f.tabla + '|' + f.x.id; cambios.set(k, Object.assign(cambios.get(k) || {_f: f}, campos)); };
+  // 2) Si el mismo sitio (mismo nombre) está en las dos fichas, lo que tenga uno se copia al otro
+  let copiadas = 0;
+  for(const f of filas){
+    const otro = filas.find(g => g.tabla !== f.tabla && g.clave && g.clave === f.clave);
+    if(!otro) continue;
+    const c = {};
+    if(!f.dir && otro.dir){ c.direccion = otro.dir; f.dir = otro.dir; }
+    if((f.lat == null || f.lng == null) && otro.lat != null && otro.lng != null){
+      c.lat = otro.lat; c[FICH[f.tabla].lng] = otro.lng; f.lat = otro.lat; f.lng = otro.lng;
+      if(!f.x.maps_url && otro.x.maps_url) c.maps_url = otro.x.maps_url;
+    }
+    if(Object.keys(c).length){ poner(f, c); copiadas++; }
+  }
+  // 3) Los que tienen ubicación pero no dirección: se busca la dirección a partir del GPS
+  const porGps = filas.filter(f => !f.dir && f.lat != null && f.lng != null);
+  const sinNada = filas.filter(f => !f.dir && (f.lat == null || f.lng == null));
+  // las coordenadas que estaban solo dentro del enlace se guardan también (así el mapa y la app las usan)
+  filas.forEach(f => { const lngK = FICH[f.tabla].lng; if(f.lat != null && f.lng != null && (f.x.lat == null || f.x[lngK] == null) && !(cambios.get(f.tabla + '|' + f.x.id) || {}).lat) poner(f, {lat: f.lat, [lngK]: f.lng}); });
+  if(!cambios.size && !porGps.length){
+    const lista = sinNada.slice(0, 12).map(f => `• ${f.x.nombre} (${FICH[f.tabla].txt})`).join('\n');
+    alert(sinNada.length ? `No hay de dónde sacar la dirección de estos (no tienen ubicación GPS ni están en la otra ficha con dirección):\n\n${lista}${sinNada.length > 12 ? `\n… y ${sinNada.length - 12} más` : ''}\n\nPega en su columna «Ubicación» el enlace largo de Google Maps (el que se ve en la barra del navegador, con números) o «latitud, longitud». Los enlaces cortos tipo maps.app.goo.gl no llevan la ubicación dentro.`
+                         : 'Todos los destinos y almacenes ya tienen su dirección.');
+    return;
+  }
+  if(porGps.length && !confirm(`${copiadas ? `Copio ${copiadas} dato${copiadas === 1 ? '' : 's'} entre Destinos y Almacenes (mismo sitio en las dos fichas).\n` : ''}Busco la dirección de ${porGps.length} a partir de su ubicación GPS (tarda un segundo cada uno).\n\nDespués revísalas: la dirección del mapa puede no ser exacta.`)) return;
+  boton.disabled = true; let gps = 0;
+  for(const [i, f] of porGps.entries()){
+    if(f.dir) continue;   // ya se la puso su «gemelo» de la otra ficha
+    boton.textContent = `📍 Buscando… ${i + 1}/${porGps.length}`;
+    const d = await direccionDesdeGps(f.lat, f.lng);
+    if(d){ poner(f, {direccion: d}); gps++;
+      // y al mismo sitio de la otra ficha, si tampoco tenía
+      const otro = filas.find(g => g.tabla !== f.tabla && g.clave && g.clave === f.clave && !g.dir);
+      if(otro){ poner(otro, {direccion: d}); otro.dir = d; }
+    }
+    if(i < porGps.length - 1) await new Promise(r => setTimeout(r, 1100));
+  }
+  let guardados = 0, fallos = 0;
+  for(const c of cambios.values()){ const f = c._f; delete c._f; const { error } = await sb.from(f.tabla).update(c).eq('id', f.x.id); if(error) fallos++; else guardados++; }
+  boton.disabled = false; boton.textContent = '📍 Rellenar direcciones';
+  const quedan = sinNada.filter(f => !(cambios.get(f.tabla + '|' + f.x.id) || {}).direccion && !f.dir).length;
+  toast(`✅ Actualizados ${guardados}: ${copiadas} copiados entre fichas, ${gps} sacados del GPS.${quedan ? ` ${quedan} sin ubicación para buscar.` : ''}${fallos ? ` ${fallos} no se pudieron guardar.` : ''} Revísalos.`, !!fallos);
+  await cargarMaestros(); renderFicheros();
+}
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-dirgps]'); if(b) rellenarDireccionesGps(b.dataset.dirgps, b); });
+// Columnas nuevas que todavía no existen en Supabase (si falta ejecutar una actualización)
+const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax'], transportistas:['domicilio'], almacenes:['direccion']};
+const columnasCache = {};
+async function columnasQueFaltan(tabla){
+  if(!COLUMNAS_NUEVAS[tabla]) return [];
+  if(!columnasCache[tabla]){
+    const { data } = await sb.from(tabla).select('*').limit(1);
+    columnasCache[tabla] = data && data[0] ? COLUMNAS_NUEVAS[tabla].filter(k => !(k in data[0])) : [];
+  }
+  return columnasCache[tabla];
 }
 async function ficheroGuardar(tabla, id, tr){
   const cfg = ((FICHEROS[vista] || {}).tablas || []).find(t => t.tabla === tabla) || Object.values(FICHEROS).flatMap(f => f.tablas).find(t => t.tabla === tabla);
@@ -1710,6 +2045,12 @@ async function ficheroGuardar(tabla, id, tr){
     row[k] = v;
   });
   if(tabla === 'personal' && personalTodos.length && !('transportista_id' in personalTodos[0])) delete row.transportista_id;   // aún sin la actualización 28
+  const faltan = (await columnasQueFaltan(tabla)).filter(k => k in row);   // columnas nuevas sin la actualización 31/33: se guarda lo demás
+  if(faltan.length){ if(faltan.some(k => row[k])) toast(`«${faltan.join('», «')}» no se guarda hasta ejecutar la última actualización en Supabase.`, true); faltan.forEach(k => delete row[k]); }
+  if(['destinos','almacenes'].includes(tabla) && 'direccion' in row && !row.direccion){
+    const lat = row.lat, lng = tabla === 'almacenes' ? row.lon : row.lng;
+    if(lat != null && lng != null){ const d = await direccionDesdeGps(lat, lng); if(d){ row.direccion = d; toast('📍 Dirección sacada de la ubicación: ' + d + ' — revísala.'); } }
+  }
   const clave = cfg.campos[0][0];
   if(!row[clave]){ toast(`Rellena «${cfg.campos[0][1]}».`, true); return; }
   try{
@@ -1854,13 +2195,25 @@ function renderAjustes(box){
         <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">WhatsApp del responsable <input class="field" id="telAlertas" inputmode="tel" value="${esc(ajustes.tel_alertas || '')}" placeholder="600 000 000" style="width:150px"></span>
         <button type="button" class="btn small" id="guardarAlertas">Guardar</button>
       </div>
+      <div class="baja-card">
+        <b>Carga máxima del camión</b>
+        <span class="hint">Si los kilos de un camión pasan de aquí, sale un aviso rojo en su caja del cartón, y en la app el conductor tiene que confirmarlo antes de generar el DeCA.</span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input class="field" id="cargaMax" type="number" min="1000" step="500" value="${+ajustes.carga_maxima_kg || 24000}" style="width:110px"> kg <button type="button" class="btn small" id="guardarCargaMax">Guardar</button></span>
+      </div>
     </div>`;
 }
 
 // ====== SESIÓN DEL CARTÓN (tráfico / dirección) ======
 let usuario = null, arrancado = false;
 const ROL_TXT = {trafico:'Tráfico', direccion:'Dirección'};
-function huellaPin(pin){ let h = 7; for(const ch of String(pin)) h = (h * 31 + ch.charCodeAt(0)) % 1000003; return 'h' + h; }
+// Acceso seguro (actualización 34): el PIN se comprueba en la base de datos y se guarda solo un «pase de sesión»
+const tokenCarton = () => { try{ return localStorage.getItem('carton_token') || ''; }catch(_){ return ''; } };
+function guardarToken(t){ try{ if(t) localStorage.setItem('carton_token', t); else localStorage.removeItem('carton_token'); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
+async function rpcAcceso(nombre, args){
+  const { data, error } = await sb.rpc(nombre, args);
+  if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
+  return data || {};
+}
 function usuariosCarton(){ return personalTodos.filter(p => ['trafico','direccion'].includes(p.puesto) && !p.baja); }
 function panelLogin(cual){ ['loginNormal','loginPrimero','loginNuevoPin'].forEach(id => $('#' + id).hidden = id !== cual); $('#loginMsg').textContent = ''; }
 function mostrarLogin(){
@@ -1882,6 +2235,7 @@ function puedeVer(v){
   if(!usuario) return false;
   v = VISTA_PADRE[v] || v;
   if(v === 'admin' && ajustes.modulo_admin === 'no') return false;   // módulo apagado en Ajustes
+  if(v === 'admin' && planActual() === 'basico') return false;       // el plan Básico no incluye Administración
   if(usuario.puesto === 'direccion') return true;
   if(v === 'ajustes') return false;
   if(VISTAS_CONFIG.includes(v)) return permisoTrafico(v);
@@ -1902,21 +2256,20 @@ function aplicarPermisos(){
 }
 function iniciarSesion(u){
   usuario = u;
-  try{ localStorage.setItem('carton_usuario', String(u.id)); localStorage.setItem('carton_huella', huellaPin(u.pin)); }catch(_){}
   document.body.dataset.sesion = 'si'; aplicarPermisos(); $('#login').hidden = true;
   $('#usuarioBox').innerHTML = `👤 <b>${esc(u.nombre)}</b> · ${ROL_TXT[u.puesto] || u.puesto} <button type="button" class="btn small" id="miPinBtn">Cambiar mi PIN</button> <button type="button" class="btn small" id="cambiarUsrBtn" title="Deja el cartón listo para que entre otra persona">🔄 Cambiar usuario</button> <button type="button" class="btn small" id="salirBtn">Cerrar sesión</button>`;
   arrancar();
 }
-function pinOcupado(pin, idPropio){ return personalTodos.some(p => ['trafico','direccion'].includes(p.puesto) && !p.baja && String(p.id) !== String(idPropio) && String(p.pin || '') === String(pin)); }
 function pinValido(a, b){ if(!/^\d{4,6}$/.test(a)){ $('#loginMsg').textContent = 'El PIN tiene que tener entre 4 y 6 números.'; return false; } if(a !== b){ $('#loginMsg').textContent = 'Los dos PIN no coinciden.'; return false; } return true; }
 let pendienteNuevoPin = null;
 $('#loginBtn').onclick = async () => {
   const area = $('#loginUser').value, pin = $('#loginPin').value.trim();
   if(!pin){ $('#loginMsg').textContent = 'Escribe tu PIN.'; return; }
-  const { data } = await sb.from('personal').select('*').eq('puesto', area);
-  const u = (data || []).find(x => !x.baja && x.pin && String(x.pin) === pin);
-  if(!u){ $('#loginMsg').textContent = 'PIN incorrecto. Si es la primera vez que entras, pide a Administración tu enlace de acceso.'; $('#loginPin').value = ''; return; }
+  const r = await rpcAcceso('entrar_carton', {p_area: area, p_pin: pin});
   $('#loginPin').value = '';
+  if(r.error || !r.persona){ $('#loginMsg').textContent = r.error || 'No se ha podido entrar.'; return; }
+  guardarToken(r.token);
+  const u = Object.assign(persona(r.persona.id) || {}, r.persona);
   if(u.pin_temporal){ pendienteNuevoPin = u; $('#nuevoPinTxt').textContent = 'Estás usando un PIN provisional. Elige ahora uno tuyo:'; panelLogin('loginNuevoPin'); return; }
   iniciarSesion(u);
 };
@@ -1924,22 +2277,22 @@ $('#loginPin').addEventListener('keydown', e => { if(e.key === 'Enter') $('#logi
 $('#npinBtn').onclick = async () => {
   const a = $('#npin1').value.trim(), b = $('#npin2').value.trim();
   if(!pinValido(a, b) || !pendienteNuevoPin) return;
-  await cargarMaestros();
-  if(pinOcupado(a, pendienteNuevoPin.id)){ $('#loginMsg').textContent = 'Ese PIN ya lo usa otra persona. Elige otro.'; return; }
-  const { error } = await sb.from('personal').update(pendienteNuevoPin._porEnlace ? {pin:a, pin_temporal:false, codigo_acceso:null, codigo_caduca:null} : {pin:a, pin_temporal:false}).eq('id', pendienteNuevoPin.id);
-  if(error){ $('#loginMsg').textContent = 'No se pudo guardar: ' + error.message; return; }
+  const r = await rpcAcceso('poner_pin', {p_token: tokenCarton(), p_pin: a});
+  if(r.error === 'ocupado'){ $('#loginMsg').textContent = 'Ese PIN ya lo usa otra persona. Elige otro.'; return; }
+  if(r.error){ $('#loginMsg').textContent = 'No se pudo guardar: ' + r.error; return; }
   if(pendienteNuevoPin._porEnlace){ try{ history.replaceState(null, '', location.pathname); }catch(_){} delete pendienteNuevoPin._porEnlace; }
-  pendienteNuevoPin.pin = a; pendienteNuevoPin.pin_temporal = false;
+  pendienteNuevoPin.tiene_pin = true; pendienteNuevoPin.pin_temporal = false;
   iniciarSesion(pendienteNuevoPin);
 };
 $('#primBtn').onclick = async () => {
   const nombre = $('#primNombre').value.trim(), a = $('#primPin').value.trim(), b = $('#primPin2').value.trim();
   if(!nombre){ $('#loginMsg').textContent = 'Escribe tu nombre.'; return; }
   if(!pinValido(a, b)) return;
-  const { data, error } = await sb.from('personal').insert({nombre, puesto:'direccion', pin:a, pin_temporal:false}).select('*').single();
-  if(error){ $('#loginMsg').textContent = 'No se pudo crear: ' + error.message + ' (¿has ejecutado la actualización 21?)'; return; }
+  const r = await rpcAcceso('crear_primer_usuario', {p_nombre: nombre, p_pin: a});
+  if(r.error || !r.persona){ $('#loginMsg').textContent = 'No se pudo crear: ' + (r.error || ''); return; }
+  guardarToken(r.token);
   await cargarMaestros();
-  iniciarSesion(data);
+  iniciarSesion(Object.assign(persona(r.persona.id) || {}, r.persona));
 };
 // ====== COPIA DE SEGURIDAD AUTOMÁTICA (en Supabase) ======
 // Si desde la última copia ha cambiado algo, Supabase guarda una copia nueva (se puede volver a ella con 0-volver-a-la-copia.sql)
@@ -2359,7 +2712,7 @@ async function conductoresAutonomo(autId){
       <td><select class="field" data-c="puesto">${['chofer','cargador'].map(o => `<option ${p && p.puesto === o ? 'selected' : ''}>${o}</option>`).join('')}</select></td>
       <td><input class="field" data-c="telefono" value="${esc(p ? p.telefono || '' : '')}" placeholder="Teléfono" inputmode="tel"></td>
       <td><input class="field" data-c="matricula_actual" value="${esc(p ? p.matricula_actual || '' : (a.matricula_actual || ''))}" placeholder="Matrícula actual"></td>
-      <td class="n">${p ? `<span class="pin-est">${p.pin ? '🔒 tiene PIN' : 'sin PIN'}</span> <button type="button" class="btn small wa" data-caacceso="${p.id}">Enviar acceso</button> <button type="button" class="btn small" data-caguardar="${p.id}">Guardar</button> <button type="button" class="xbtn" data-cabaja="${p.id}" title="Quitar">×</button>` : `<button type="button" class="btn small primary" data-caguardar="">Añadir</button>`}</td></tr>`;
+      <td class="n">${p ? `<span class="pin-est">${(p.tiene_pin || p.pin) ? '🔒 tiene PIN' : 'sin PIN'}</span> <button type="button" class="btn small wa" data-caacceso="${p.id}">Enviar acceso</button> <button type="button" class="btn small" data-caguardar="${p.id}">Guardar</button> <button type="button" class="xbtn" data-cabaja="${p.id}" title="Quitar">×</button>` : `<button type="button" class="btn small primary" data-caguardar="">Añadir</button>`}</td></tr>`;
   ov.innerHTML = `<div class="modal-card" style="max-width:900px">
     <h2>Conductores de ${esc(a.nombre)}</h2>
     <p class="hint" style="margin:0">Cada conductor entra en la app del conductor con su nombre y su PIN. El PIN lo elige él mismo con el enlace de «Enviar acceso» (llega por WhatsApp; nadie más lo ve). Cuando carguen en un camión de ${esc(a.nombre)}, el DeCA sale con él como transportista.</p>
@@ -2491,8 +2844,8 @@ function renderBuscar(box){
 }
 function exportarBusqueda(){
   if(typeof XLSX === 'undefined' || !busq.res) return;
-  const filas = busq.res.map(r => ({'Fecha': new Date(r.fecha).toLocaleString('es-ES'), 'Nº DeCA': r.deca_id, 'Cliente': r.cargador_nombre || '', 'NIF cliente': r.cargador_nif || '', 'Origen': r.origen || '', 'Destino': r.destino || '',
-    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
+  const filas = busq.res.map(r => ({'Fecha': new Date(r.fecha).toLocaleString('es-ES'), 'Nº DeCA': r.deca_id, 'Cliente': r.cargador_nombre || '', 'NIF cliente': r.cargador_nif || '', 'Origen': r.origen || '', 'Dirección origen': r.origen_direccion || '', 'Destino': r.destino || '', 'Dirección destino': r.destino_direccion || '',
+    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Domicilio transportista': r.transportista_domicilio || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
     'Estado': estadoDeca(r)[1], 'Cambios de matrícula': (r.matricula_historial || []).map(h => `${h.anterior || '—'} → ${h.nueva} (${h.fecha || ''})`).join(' | '), 'PDF': r.pdf_url || ''}));
   const libro = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas), 'DeCAs');
   XLSX.writeFile(libro, `decas_${busq.desde || 'todas'}_${busq.hasta || ''}.xlsx`);
@@ -2603,11 +2956,11 @@ document.addEventListener('click', async e => {
     if(b.id === 'salirBtn' || b.id === 'cambiarUsrBtn'){ if(b.id === 'salirBtn' && !confirm('¿Cerrar sesión en este ordenador?')) return;
       b.disabled = true; b.textContent = 'Guardando copia…';
       await copiaAutomatica('cierre de sesión', true);
-      try{ localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} location.reload(); return; }
+      const tk = tokenCarton(); if(tk) await sb.rpc('cerrar_sesion', {p_token: tk}); guardarToken(''); location.reload(); return; }
     if(b.id === 'miPinBtn'){ const a = prompt('Escribe tu PIN nuevo (4 a 6 números):'); if(a === null) return; const c = prompt('Repítelo:'); if(c === null) return;
       if(!/^\d{4,6}$/.test(a.trim()) || a.trim() !== c.trim()){ toast('El PIN no es válido o no coincide.', true); return; }
-      await cargarMaestros(); if(pinOcupado(a.trim(), usuario.id)){ toast('Ese PIN ya lo usa otra persona. Elige otro.', true); return; }
-      try{ await escribirComprobado(sb.from('personal').update({pin:a.trim(), pin_temporal:false}).eq('id', usuario.id), 'PIN cambiado'); usuario.pin = a.trim(); localStorage.setItem('carton_huella', huellaPin(a.trim())); }catch(_){} return; }
+      const r = await rpcAcceso('poner_pin', {p_token: tokenCarton(), p_pin: a.trim()});
+      if(r.error === 'ocupado') toast('Ese PIN ya lo usa otra persona. Elige otro.', true); else if(r.error) toast('No se pudo cambiar: ' + r.error, true); else toast('PIN cambiado'); return; }
     if(b.id === 'pasarReal'){
       if(!confirm('¿Pasar a USO REAL?\n\nA partir de ahora ningún DeCA se podrá anular desde la app. Para volver a pruebas habrá que pedírselo al administrador.')) return;
       if(!confirm('¿Seguro? Esta acción no se puede deshacer desde el cartón.')) return;
@@ -2635,9 +2988,10 @@ document.addEventListener('click', async e => {
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
+    if(b.id === 'guardarCargaMax'){ const v = Math.max(1000, parseInt($('#cargaMax').value, 10) || 24000); if(await guardarAjuste('carga_maxima_kg', String(v))){ toast('Guardado'); render(); } return; }
     if(b.id === 'guardarAlertas'){ const r = Math.max(100, parseInt($('#radioDesc').value, 10) || 1000); if(await guardarAjuste('radio_descarga_m', String(r)) && await guardarAjuste('tel_alertas', $('#telAlertas').value.trim())) toast('Guardado'); return; }
     if(b.dataset.opertodos || b.dataset.operninguno){
-      const ids = b.dataset.opertodos ? personal.filter(p => ['cargador','chofer'].includes(p.puesto) && !ausente(p.id)).map(p => String(p.id)) : [];
+      const ids = b.dataset.opertodos ? [...personal.filter(p => ['cargador','chofer'].includes(p.puesto) && !ausente(p.id)).map(p => String(p.id)), ...transportistas.filter(x => x.autonomo).map(x => 'a:' + x.id), 'a:-'] : ['a:-'];
       if(await guardarAjuste('operativos_' + fecha, JSON.stringify(ids))){ operativos = ids; render(); }
       return;
     }
@@ -2750,7 +3104,7 @@ document.addEventListener('change', async e => {
   try{
     if(s.id === 'fecha'){ fecha = s.value || hoyISO(); fechaManual = true; await refrescar(true); if(['ordenes','admin'].includes(vista)) renderFicheros(); return; }
     if(s.dataset.oper){
-      const ids = [...document.querySelectorAll('[data-oper]')].filter(x => x.checked).map(x => x.dataset.oper);
+      const ids = [...[...document.querySelectorAll('[data-oper]')].filter(x => x.checked).map(x => x.dataset.oper), 'a:-'];
       if(await guardarAjuste('operativos_' + fecha, JSON.stringify(ids))){ operativos = ids; render(); } else s.checked = !s.checked;
       return;
     }
@@ -2952,16 +3306,15 @@ document.body.dataset.sesion = 'no';
 (async () => {
   try{ await cargarMaestros(); }catch(err){ setSync(false, err.message); }
   // ¿sesión recordada en este ordenador?
-  let id = null, huella = null; try{ id = localStorage.getItem('carton_usuario'); huella = localStorage.getItem('carton_huella'); }catch(_){}
   // ¿viene de un enlace de acceso enviado por WhatsApp?
   const qs = new URLSearchParams(location.search), qp = qs.get('p'), qc = qs.get('c');
   let enlaceMalo = false;
   if(qp && qc){
-    const { data } = await sb.from('personal').select('*').eq('id', qp).limit(1);
-    const x = data && data[0];
-    if(x && x.codigo_acceso && x.codigo_acceso === qc && x.codigo_caduca && new Date(x.codigo_caduca) > new Date() && ['trafico','direccion'].includes(x.puesto) && !x.baja){
+    const r = await rpcAcceso('usar_enlace', {p_persona: qp, p_codigo: qc});   // un solo uso: después ya no vale para nadie
+    const x = r.persona && Object.assign(persona(r.persona.id) || {}, r.persona);
+    if(x && ['trafico','direccion'].includes(x.puesto)){
+      guardarToken(r.token);
       mostrarLogin();
-      await sb.from('personal').update({codigo_acceso: null, codigo_caduca: null}).eq('id', x.id);   // el enlace ya no vale para nadie más
       pendienteNuevoPin = x; x._porEnlace = true;
       panelLogin('loginNuevoPin'); $('#nuevoPinTxt').textContent = `Hola ${x.nombre}. Elige tu PIN (puede ser el mismo que tenías):`;
       return;
@@ -2969,9 +3322,11 @@ document.body.dataset.sesion = 'no';
     try{ history.replaceState(null, '', location.pathname); }catch(_){}
     enlaceMalo = true;
   }
-  const u = id && persona(id);
-  if(u && ['trafico','direccion'].includes(u.puesto) && !u.baja && u.pin && !u.pin_temporal && huellaPin(u.pin) === huella) iniciarSesion(u);
-  else { mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
+  const tk = tokenCarton();
+  const ses = tk ? await rpcAcceso('sesion_persona', {p_token: tk}) : {};
+  const u = ses.persona && Object.assign(persona(ses.persona.id) || {}, ses.persona);
+  if(u && ['trafico','direccion'].includes(u.puesto) && !u.baja && !u.pin_temporal) iniciarSesion(u);
+  else { if(tk && ses.error) guardarToken(''); mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
 })();
 })();
 </script>

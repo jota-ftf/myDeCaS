@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Conductor — DeCA</title>
+<title>myDeCaS · Conductor</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0f1420">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="DeCA">
+<meta name="apple-mobile-web-app-title" content="myDeCaS">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -95,9 +95,25 @@
 </style>
 </head>
 <body>
+<div id="gpsAviso" style="position:fixed;inset:0;z-index:110;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;padding:18px">
+  <div style="background:var(--card);border:2px solid var(--accent);border-radius:16px;padding:20px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <div style="font-size:2.2rem;text-align:center">📍</div>
+    <h2 style="margin:6px 0 12px;font-size:1.2rem;text-align:center">Tu ubicación, solo mientras trabajas</h2>
+    <div style="line-height:1.5;font-size:.97rem">
+      <div style="margin-bottom:8px">✅ Solo se usa mientras tienes <b>cargas, viaje o descargas</b> en la app.</div>
+      <div style="margin-bottom:8px">🚛 Sirve para <b>calcular los costes del camión</b> y confirmar las entregas. Nada más.</div>
+      <div style="margin-bottom:8px">🔒 <b>Se apaga sola</b> al finalizar el viaje o cerrar sesión. Fuera del trabajo, nadie sabe dónde estás.</div>
+      <div>🔔 Mientras está activa verás un aviso fijo en el móvil, para que siempre sepas cuándo se usa.</div>
+    </div>
+    <button class="btn btn-primary" id="gpsAceptar" type="button" style="margin-top:16px">Entendido, activar</button>
+    <button class="btn btn-ghost" id="gpsAhoraNo" type="button">Ahora no</button>
+    <div class="pmeta" style="text-align:center;margin-top:6px">Con «Ahora no» la app funciona igual, pero la oficina no verá dónde está el camión.</div>
+  </div>
+</div>
 <div class="wrap">
-  <h1>🚚 App del Conductor</h1>
+  <h1>🚚 myDeCaS <span style="font-weight:500;color:var(--muted);font-size:.8em">· conductor</span></h1>
   <div class="sub">Ajusta la carga real, confirma y genera el DeCA con QR</div>
+  <div id="licenciaAviso" style="display:none;background:rgba(255,92,92,.15);border:2px solid var(--bad);border-radius:12px;padding:12px;margin-bottom:12px;font-weight:700"></div>
   <div class="synctag" style="display:flex;justify-content:flex-end;align-items:center;gap:8px"><span id="syncTag">Conectando con el servidor…</span><span class="badge" id="actualizarBtn" style="cursor:pointer" title="Vuelve a leer todo del servidor">⟳ Actualizar</span></div>
 
   <div class="grid">
@@ -152,14 +168,22 @@
     <input type="text" id="ndTrans" list="ndListaTrans" placeholder="Nombre o empresa" autocomplete="off">
     <label>NIF transportista *</label>
     <input type="text" id="ndTransNif" placeholder="NIF" autocomplete="off">
+    <label>Domicilio transportista</label>
+    <input type="text" id="ndTransDom" placeholder="Calle, población" autocomplete="off">
     <label style="margin-top:10px;display:block">Origen (dónde se carga) *</label>
     <input type="text" id="ndOrigen" list="ndListaAlmacenes" placeholder="Almacén o población" autocomplete="off">
+    <div class="row" style="gap:8px;align-items:flex-end">
+      <div style="flex:1"><label>Dirección del origen</label><input type="text" id="ndOrigenDir" placeholder="Calle, población" autocomplete="off"></div>
+      <button class="btn btn-ghost" id="ndAqui" type="button" style="width:auto;margin:0 0 1px;padding:10px 12px;font-size:.85rem" title="Pone la dirección de donde estás ahora">📍 Estoy aquí</button>
+    </div>
     <label>Destino (dónde se entrega) *</label>
     <input type="text" id="ndDestino" list="ndListaDestinos" placeholder="Mercado, plataforma, población…" autocomplete="off">
+    <label>Dirección del destino</label>
+    <input type="text" id="ndDestinoDir" placeholder="Calle, población" autocomplete="off">
     <label>Mercancía *</label>
     <input type="text" id="ndMercancia" list="ndListaMercancias" placeholder="Ej.: frutas y hortalizas frescas" autocomplete="off">
     <div class="row" style="gap:8px;align-items:flex-end">
-      <div style="flex:1"><label>Peso bruto (kg) *</label><input type="text" id="ndPeso" inputmode="decimal" placeholder="Ej.: 12000" autocomplete="off"></div>
+      <div style="flex:1"><label>Peso bruto (kg)</label><input type="text" id="ndPeso" inputmode="decimal" placeholder="Vacío = se calcula con los palets" autocomplete="off"></div>
       <label class="toggle" style="margin-bottom:12px;white-space:nowrap"><input type="checkbox" id="ndPesoAprox" checked> Aproximado</label>
     </div>
     <label>Nº de pedido / referencia (opcional)</label>
@@ -253,6 +277,17 @@ const TYPES = [
   {id:'especial', name:'Bulto especial', meta:'tamaño variable, estimado', ldmUnit:0.5},
   {id:'cajas', name:'Cajas sueltas', meta:'estimado', ldmUnit:0.02},
 ];
+// Peso medio (alto) por bulto, igual que en el cartón: un camión lleno sale en unos 23-24 t, nunca por encima de lo legal
+const PESO_TIPO = {'europeo':700, 'grande (americano)':900, 'carro':250, 'box':400, 'especial':500, 'cajas':15};
+const cargaMaxima = ()=> +((typeof ajustesApp !== 'undefined' && ajustesApp.carga_maxima_kg) || 24000);
+let kgEnCamion = 0;   // kilos de los DeCAs que el chófer lleva ahora mismo sin descargar
+function pesoDeEstaCarga(){
+  if(!currentCarga) return 0;
+  if(currentCarga.manual && currentCarga.pesoAuto) return pesoEstimado();
+  const declarado = parseFloat(String(currentCarga.peso || '').replace(',', '.')) || 0;
+  return Math.max(declarado, currentCarga.manual ? 0 : pesoEstimado());
+}
+function pesoEstimado(){ return TYPES.reduce((s,t)=> s + (state[t.id].qty || 0) * (PESO_TIPO[t.id] || 0), 0); }
 const CAPACITY = 13.2;   // metros útiles del remolque (33 europalets × 0,40 m)
 let state = TYPES.reduce((a,t)=>(a[t.id]={qty:0, remontable:false}, a), {});
 let lastGeo = null;
@@ -322,6 +357,17 @@ function render(){
     resumen.style.color = 'var(--ok)';
     msg.style.color = 'var(--ok)'; confirmBtn.disabled = false;
   }
+  // ⚖️ Carga máxima: esta carga + lo que ya lleva el camión
+  const kgEsta = pesoDeEstaCarga(), kgTotal = kgEsta + (choferActual && choferActual.puesto === 'chofer' ? kgEnCamion : 0), maxKg = cargaMaxima();
+  let avisoKg = document.getElementById('avisoKg');
+  if(!avisoKg){ avisoKg = document.createElement('div'); avisoKg.id = 'avisoKg'; avisoKg.className = 'alerta-lejos'; avisoKg.style.display = 'none'; document.getElementById('confirmBtn').insertAdjacentElement('beforebegin', avisoKg); }
+  if(currentCarga && kgTotal > maxKg){
+    avisoKg.innerHTML = `⚖️ ¡OJO! ${kgTotal > kgEsta ? `Con esta carga el camión llevaría unos <b>${kgTotal.toLocaleString('es-ES')} kg</b>` : `Esta carga pesa unos <b>${kgEsta.toLocaleString('es-ES')} kg</b>`}: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg). Revisa los kilos o avisa a Tráfico.`;
+    avisoKg.style.display = 'block';
+  } else avisoKg.style.display = 'none';
+  const vivo = document.getElementById('ndPesoVivo');
+  if(vivo && currentCarga && currentCarga.pesoAuto){ const kg = pesoEstimado(); vivo.textContent = kg ? `${kg.toLocaleString('es-ES')} kg (aprox., calculado con los palets)` : 'se calcula con los palets'; }
+  if(typeof licenciaBloqueada === 'function' && licenciaBloqueada()){ confirmBtn.disabled = true; msg.textContent = '⛔ Servicio suspendido: no se pueden crear DeCAs nuevos.'; msg.style.color = 'var(--bad)'; }
 }
 
 // Pone en "Carga real" lo mismo que la orden. Así, si solo cambia un tipo de palet, los demás se quedan como en la orden.
@@ -338,6 +384,13 @@ function rellenarDesdeOrden(){
   });
   return sinReconocer;
 }
+document.addEventListener('click', e=>{
+  const det = document.getElementById('cargaRealDetails');
+  if(!det.open || !e.target.closest) return;
+  if(e.target.closest('#cargaRealDetails') || e.target.closest('#confirmBtn') || e.target.closest('#igualQueOrdenBtn') || e.target.closest('#nuevoDecaCard') || e.target.closest('#ndSeguir')) return;
+  if(!document.contains(e.target)) return;   // botones que se acaban de redibujar (+ y −)
+  det.open = false;
+});
 document.getElementById('igualQueOrdenBtn').onclick = ()=>{
   if(!currentCarga || currentCarga.manual){ alert('Primero selecciona una carga pendiente de la lista.'); return; }
   if(!(currentCarga.detalle_planificado || '').trim()){ alert('Esta orden no tiene detalle planificado con cantidades.'); return; }
@@ -375,11 +428,12 @@ let lugares = {}, ajustesApp = {};
 async function cargarLugares(){
   if(!sb) return;
   sb.from('ajustes').select('*').then(({data})=> { (data || []).forEach(x=> ajustesApp[x.clave] = x.valor); mostrarBotonNuevo(); });
+  leerLicencia();
   const [a, d, cl, tr] = await Promise.all([sb.from('almacenes').select('*').limit(5000), sb.from('destinos').select('*').limit(5000),
     sb.from('clientes').select('*').order('nombre').limit(5000), sb.from('transportistas').select('*').order('nombre').limit(5000)]);
   lugares = {};
-  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url});
-  (d.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url});
+  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || ''});
+  (d.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || ''});
   // Listas para rellenar rápido el «Nuevo DeCA»
   listaClientes = cl.data || []; listaTrans = tr.data || [];
   const opts = arr => [...new Set(arr.filter(Boolean).map(String))].map(v => `<option value="${escA(v)}">`).join('');
@@ -395,9 +449,38 @@ let listaClientes = [], listaTrans = [];
 const $e = id => document.getElementById(id);
 const escA = s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 const escH = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// ====== LICENCIA: si el servicio está suspendido no se pueden crear DeCAs nuevos (los ya hechos se siguen enseñando) ======
+let licenciaApp = null;
+async function leerLicencia(){
+  try{ const { data, error } = await sb.from('licencia').select('*').eq('id', 1).limit(1); licenciaApp = (!error && data && data[0]) || null; }catch(e){}
+  const av = $e('licenciaAviso');
+  if(licenciaBloqueada()){
+    av.innerHTML = '⛔ ' + escH((licenciaApp && licenciaApp.mensaje) || 'Servicio suspendido: no se pueden crear DeCAs nuevos. Avisa a tu empresa.') + '<div class="pmeta" style="font-weight:400;margin-top:4px">Tus DeCAs ya hechos se pueden seguir enseñando y marcando como descargados.</div>';
+    av.style.display = 'block';
+  } else av.style.display = 'none';
+  mostrarBotonNuevo(); render();
+}
+function licenciaBloqueada(){
+  if(!licenciaApp) return false;
+  const d = new Date(), hoy = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  return licenciaApp.activa === false || (!!licenciaApp.hasta && String(licenciaApp.hasta).slice(0,10) < hoy);
+}
+async function direccionDesdeGps(lat, lng){
+  try{
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=es`, {signal: ctl.signal});
+    clearTimeout(t); if(!r.ok) return null;
+    const j = await r.json(), a = j.address || {};
+    const calle = [a.road || a.pedestrian || a.industrial || a.hamlet || a.neighbourhood || '', a.house_number || ''].filter(Boolean).join(' ');
+    const pueblo = a.city || a.town || a.village || a.municipality || '';
+    const prov = a.province || a.state_district || a.state || '';
+    const txt = [calle, [a.postcode, pueblo].filter(Boolean).join(' ')].filter(Boolean).join(', ') + (prov && prov !== pueblo ? ` (${prov})` : '');
+    return txt.trim() || (j.display_name ? j.display_name.split(',').slice(0, 4).join(',').trim() : null);
+  }catch(e){ return null; }
+}
 function mostrarBotonNuevo(){
   const b = $e('nuevoDecaBtn');
-  const permitido = String(ajustesApp.app_crear_deca || '').toLowerCase() !== 'no';
+  const permitido = String(ajustesApp.app_crear_deca || '').toLowerCase() !== 'no' && !licenciaBloqueada();
   b.style.display = (choferActual && permitido) ? 'block' : 'none';
   if(!permitido && currentCarga && currentCarga.manual) salirDeNuevo();
 }
@@ -407,7 +490,7 @@ function transportistaPorDefecto(){
 }
 function salirDeNuevo(){
   $e('nuevoDecaCard').style.display = 'none';
-  $e('ndPaletsAyuda').style.display = 'none';
+  $e('ndPaletsAyuda').style.display = 'none'; $e('cargaRealDetails').open = false;
   $e('igualQueOrdenBtn').style.display = ''; $e('avisoCambiarSolo').style.display = '';
   if(currentCarga && currentCarga.manual){
     currentCarga = null; $e('trabajandoCard').style.display = 'none';
@@ -419,10 +502,10 @@ $e('nuevoDecaBtn').onclick = ()=>{
   salirDeNuevo();
   currentCarga = null; $e('trabajandoCard').style.display = 'none'; $e('resultCard').style.display = 'none';
   document.querySelectorAll('.pend-item').forEach(el=> el.classList.remove('activa'));
-  ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndDestino','ndPeso','ndRef','ndAut'].forEach(id => $e(id).value = '');
+  ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndOrigenDir','ndDestino','ndDestinoDir','ndPeso','ndRef','ndAut'].forEach(id => $e(id).value = '');
   $e('ndMercancia').value = 'Frutas y hortalizas frescas'; $e('ndPesoAprox').checked = true; $e('ndMsg').textContent = '';
   const t = transportistaPorDefecto();
-  $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : '';
+  $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : ''; $e('ndTransDom').value = t ? (t.domicilio || '') : '';
   $e('nuevoDecaCard').style.display = 'block';
   $e('nuevoDecaCard').scrollIntoView({behavior:'smooth', block:'start'});
 };
@@ -434,22 +517,34 @@ $e('ndCargador').addEventListener('input', ()=>{
 });
 $e('ndTrans').addEventListener('input', ()=>{
   const t = listaTrans.find(x => String(x.nombre || '').toLowerCase() === $e('ndTrans').value.trim().toLowerCase());
-  if(t) $e('ndTransNif').value = t.nif || '';
+  if(t){ $e('ndTransNif').value = t.nif || ''; $e('ndTransDom').value = t.domicilio || ''; }
 });
+// Al elegir un almacén o destino conocido, se pone sola su dirección (si la tiene en la ficha)
+['ndOrigen','ndDestino'].forEach(id => $e(id).addEventListener('input', ()=>{ const d = dirLugar($e(id).value.trim()); if(d) $e(id + 'Dir').value = d; }));
+// «Estoy aquí»: la dirección del sitio donde está ahora mismo el móvil
+$e('ndAqui').onclick = async ()=>{
+  const b = $e('ndAqui'); b.disabled = true; b.textContent = '📍 Buscando…';
+  const g = await capturarUbicacion();
+  const d = g ? await direccionDesdeGps(g.lat, g.lng) : null;
+  b.disabled = false; b.textContent = '📍 Estoy aquí';
+  if(d) $e('ndOrigenDir').value = d; else alert(g ? 'No he encontrado la dirección de este sitio. Escríbela a mano.' : 'No se ha podido leer tu ubicación: activa el GPS del móvil.');
+};
 $e('ndSeguir').onclick = ()=>{
   const v = id => $e(id).value.trim();
   const faltan = [['ndCargador','cargador'],['ndCargadorNif','NIF del cargador'],['ndTrans','transportista'],['ndTransNif','NIF del transportista'],
-    ['ndOrigen','origen'],['ndDestino','destino'],['ndMercancia','mercancía'],['ndPeso','peso']].filter(([id]) => !v(id)).map(([,n]) => n);
+    ['ndOrigen','origen'],['ndDestino','destino'],['ndMercancia','mercancía']].filter(([id]) => !v(id)).map(([,n]) => n);
   if(faltan.length){ $e('ndMsg').textContent = 'Falta: ' + faltan.join(', ') + '.'; return; }
   const peso = v('ndPeso').replace(/\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',', '.');
-  if(!(+peso > 0)){ $e('ndMsg').textContent = 'El peso tiene que ser un número de kilos (ej.: 12000).'; return; }
+  const pesoAuto = peso === '';   // sin peso: se calcula con los palets al confirmar
+  if(!pesoAuto && !(+peso > 0)){ $e('ndMsg').textContent = 'El peso tiene que ser un número de kilos (ej.: 12000), o déjalo vacío y se calcula con los palets.'; return; }
   $e('ndMsg').textContent = '';
   currentCarga = {
     id: null, manual: true, detalle_planificado: '',
     clientes: {nombre: v('ndCargador'), nif: v('ndCargadorNif').toUpperCase(), domicilio: v('ndCargadorDom')},
-    transportistas: {nombre: v('ndTrans'), nif: v('ndTransNif').toUpperCase()},
+    transportistas: {nombre: v('ndTrans'), nif: v('ndTransNif').toUpperCase(), domicilio: v('ndTransDom')},
     origen: v('ndOrigen'), almacen: v('ndOrigen'), destino: v('ndDestino'), mercancia: v('ndMercancia'),
-    peso: String(Math.round(+peso)), peso_aproximado: $e('ndPesoAprox').checked,
+    origen_direccion: v('ndOrigenDir'), destino_direccion: v('ndDestinoDir'),
+    peso: pesoAuto ? '' : String(Math.round(+peso)), peso_aproximado: pesoAuto || $e('ndPesoAprox').checked, pesoAuto,
     referencia: v('ndRef'), autorizacion_especial: v('ndAut')
   };
   const c = currentCarga;
@@ -457,12 +552,12 @@ $e('ndSeguir').onclick = ()=>{
   $e('trabajandoCard').style.display = 'block';
   $e('ordenDatos').innerHTML = `
     <div class="cargaGrande"><div class="cg-l">➕ Nuevo DeCA sin orden</div>
-      <div class="cg-w"><b style="color:var(--text)">${escH(c.origen)}</b> → <b style="color:var(--text)">${escH(c.destino)}</b></div></div>
+      <div class="cg-w"><b style="color:var(--text)">${escH(c.origen)}</b> → <b style="color:var(--text)">${escH(c.destino)}</b></div>${c.origen_direccion || c.destino_direccion ? `<div class="pmeta">${escH(c.origen_direccion || '—')} → ${escH(c.destino_direccion || '—')}</div>` : ''}</div>
     <b>Cargador:</b> ${escH(c.clientes.nombre)} (NIF ${escH(c.clientes.nif)})<br>
     ${c.clientes.domicilio ? `<b>Domicilio cargador:</b> ${escH(c.clientes.domicilio)}<br>` : ''}
     <b>Transportista:</b> ${escH(c.transportistas.nombre)} (NIF ${escH(c.transportistas.nif)})<br>
     <b>Mercancía:</b> ${escH(c.mercancia)}<br>
-    <b>Peso:</b> ${escH(c.peso)} kg ${c.peso_aproximado ? '(aprox.)' : ''}` +
+    <b>Peso:</b> ${c.pesoAuto ? '<span id="ndPesoVivo">se calcula con los palets</span>' : escH(c.peso) + ' kg ' + (c.peso_aproximado ? '(aprox.)' : '')}` +
     (c.referencia ? `<br><b>Nº pedido:</b> ${escH(c.referencia)}` : '') +
     (c.autorizacion_especial ? `<br><b>Autorización especial:</b> ${escH(c.autorizacion_especial)}` : '') +
     `<div style="margin-top:8px"><span class="badge" id="ndEditar" style="cursor:pointer">✏️ Cambiar estos datos</span></div>`;
@@ -496,7 +591,15 @@ function enlaceMapa(nombre, texto){
 }
 
 // ====== Selección de "quién eres" (se recuerda en este dispositivo) ======
+// Acceso seguro (actualización 34): el PIN se comprueba en la base de datos y el móvil guarda solo un «pase de sesión»
 let personalCache = [];
+const tokenApp = ()=> { try{ return localStorage.getItem('persona_token') || ''; }catch(e){ return ''; } };
+function guardarTokenApp(t){ try{ if(t) localStorage.setItem('persona_token', t); else localStorage.removeItem('persona_token'); localStorage.removeItem('persona_pin_huella'); }catch(e){} }
+async function rpcAcceso(nombre, args){
+  const { data, error } = await sb.rpc(nombre, args);
+  if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase. Avisa a la oficina.' : error.message};
+  return data || {};
+}
 async function cargarChoferes(){
   const sel = document.getElementById('choferSel');
   if(!sb){ sel.innerHTML = '<option value="">Sin conexión con el servidor</option>'; mostrarSinCobertura(); return; }
@@ -513,10 +616,10 @@ async function cargarChoferes(){
   if(desdeEnlace && codigo){
     // Enlace de acceso enviado por WhatsApp: elige su PIN sin que nadie lo haya visto
     try{ history.replaceState(null, '', location.pathname); }catch(_){}
-    const { data: fx } = await sb.from('personal').select('*').eq('id', desdeEnlace).limit(1);
-    const per = fx && fx[0];
-    if(per && per.codigo_acceso && per.codigo_acceso === codigo && per.codigo_caduca && new Date(per.codigo_caduca) > new Date() && data.some(c=>String(c.id)===String(per.id))){
-      await sb.from('personal').update({codigo_acceso: null, codigo_caduca: null}).eq('id', per.id);   // el enlace ya no vale para nadie más
+    const r = await rpcAcceso('usar_enlace', {p_persona: desdeEnlace, p_codigo: codigo});   // un solo uso: después ya no vale para nadie
+    const per = r.persona;
+    if(per && data.some(c=>String(c.id)===String(per.id))){
+      guardarTokenApp(r.token);
       sel.value = per.id;
       activarPersona(per);
       choferActual.porEnlace = true;
@@ -531,10 +634,10 @@ async function cargarChoferes(){
     aplicarChoferSeleccionado();
   } else if(guardado && verificado === guardado && data.some(c=>c.id===guardado)){
     sel.value = guardado;
-    const per = data.find(c=>c.id===guardado);
-    // Si Tráfico le ha generado un PIN provisional (o el PIN ha cambiado), en este móvil se le vuelve a pedir
-    if(per.pin && (per.pin_temporal || localStorage.getItem('persona_pin_huella') !== huellaPin(per.pin))) aplicarChoferSeleccionado();
-    else activarPersona(per);
+    // ¿Sigue valiendo el pase guardado en este móvil? Si no (o ha caducado), se le pide el PIN otra vez
+    const ses = tokenApp() ? await rpcAcceso('sesion_persona', {p_token: tokenApp()}) : {};
+    if(ses.persona && String(ses.persona.id) === String(guardado)) activarPersona(Object.assign(data.find(c=>c.id===guardado), ses.persona));
+    else { guardarTokenApp(''); aplicarChoferSeleccionado(); }
   } else {
     document.getElementById('pendientesLista').innerHTML = '<div class="empty">Elige quién eres arriba para ver tus cargas</div>';
   }
@@ -552,11 +655,10 @@ document.getElementById('pinGuardar').onclick = async ()=>{
   const a = document.getElementById('pin1').value.trim(), b = document.getElementById('pin2').value.trim(), msg = document.getElementById('pinMsg');
   if(!/^\d{4,6}$/.test(a)){ msg.textContent = 'El PIN tiene que tener entre 4 y 6 números.'; msg.style.color = 'var(--bad)'; return; }
   if(a !== b){ msg.textContent = 'Los dos PIN no coinciden.'; msg.style.color = 'var(--bad)'; return; }
-  const { error } = await sb.from('personal').update(choferActual.porEnlace ? {pin: a, pin_temporal: false, codigo_acceso: null, codigo_caduca: null} : {pin: a, pin_temporal: false}).eq('id', choferActual.id);
-  if(error){ msg.textContent = 'No se pudo guardar: ' + error.message; msg.style.color = 'var(--bad)'; return; }
-  const p = personalCache.find(x => x.id === choferActual.id); if(p){ p.pin = a; p.pin_temporal = false; }
+  const r = await rpcAcceso('poner_pin', {p_token: tokenApp(), p_pin: a});
+  if(r.error){ msg.textContent = 'No se pudo guardar: ' + r.error; msg.style.color = 'var(--bad)'; return; }
+  const p = personalCache.find(x => x.id === choferActual.id); if(p){ p.tiene_pin = true; p.pin_temporal = false; }
   choferActual.pinTemporal = false; choferActual.porEnlace = false;
-  localStorage.setItem('persona_pin_huella', huellaPin(a));
   document.getElementById('pinCard').style.display = 'none';
   alert('PIN guardado. Recuérdalo: te lo pedirá al entrar.');
 };
@@ -565,7 +667,7 @@ document.getElementById('cambiarPinBtn').onclick = ()=> mostrarPin(false);
 function activarPersona(persona){
   choferActual = {id: persona.id, nombre: persona.nombre, puesto: persona.puesto, pinTemporal: !!persona.pin_temporal};
   document.getElementById('cambiarPinBtn').style.display = 'inline-block';
-  if(!persona.pin || persona.pin_temporal) mostrarPin(true); else document.getElementById('pinCard').style.display = 'none';
+  if(!(persona.tiene_pin || persona.pin) || persona.pin_temporal) mostrarPin(true); else document.getElementById('pinCard').style.display = 'none';
   localStorage.setItem('persona_id', persona.id);
   localStorage.setItem('persona_verificada', persona.id);
   const plateInput = document.getElementById('plate');
@@ -706,6 +808,7 @@ async function pollDescargas(){
   // Descargados LEJOS del destino: tiene que llevarlos a su sitio y confirmarlo allí
   const lejos = (await decasDeMisCamiones(diasAtras(4))).filter(r=> r.entregado && r.fuera_zona && !r.anulado);
   pintarLejos(lejos);
+  kgEnCamion = data.reduce((sum, r)=> sum + (parseFloat(String(r.peso || '').replace(',', '.')) || 0), 0);
   data.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha)); // las más antiguas primero: probablemente las próximas en descargar
   const box = document.getElementById('descargasLista');
   document.getElementById('descargasBadge').textContent = String(data.length);
@@ -962,7 +1065,7 @@ function avisoSonoro(){
     });
   }catch(e){}
   try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){}
-  if(document.hidden) avisoNativo('MyDeCaS', 'Tienes cargas o avisos nuevos. Toca para abrir la app.');
+  if(document.hidden) avisoNativo('myDeCaS', 'Tienes cargas o avisos nuevos. Toca para abrir la app.');
 }
 
 // ====== APP NATIVA (Android) — todo esto solo funciona dentro de la app instalada; en el navegador no hace nada ======
@@ -980,11 +1083,12 @@ function gpsDebeIr(){
 function revisarGpsFondo(){
   const debe = gpsDebeIr();
   if(debe && gpsVigilante == null && !gpsArrancando){
+    if(!gpsAceptado()){ preguntarGps(); return; }
     gpsArrancando = true;
     try{
       gpsVigilante = CAPN.BackgroundGeolocation.addWatcher({
-        backgroundTitle: 'MyDeCaS · trabajo en curso',
-        backgroundMessage: 'Compartiendo tu ubicación con Tráfico mientras tienes cargas o viaje. Se apaga solo al terminar.',
+        backgroundTitle: 'myDeCaS · trabajo en curso',
+        backgroundMessage: 'Solo durante tu trabajo. Se apaga al finalizar el viaje o cerrar sesión.',
         requestPermissions: true, stale: false, distanceFilter: 100
       }, (pos, err)=>{
         if(err){
@@ -1009,6 +1113,21 @@ function revisarGpsFondo(){
     try{ CAPN.BackgroundGeolocation.removeWatcher({id}).catch(()=>{}); }catch(e){}
   }
 }
+// Aviso al conductor ANTES de encender el GPS (una vez por móvil; queda constancia de cuándo lo aceptó)
+let gpsAhoraNo = false;
+const claveGps = ()=> choferActual ? 'gps_ok_' + choferActual.id : '';
+function gpsAceptado(){ try{ return !!localStorage.getItem(claveGps()); }catch(e){ return false; } }
+function preguntarGps(){
+  if(gpsAhoraNo || !choferActual) return;
+  document.getElementById('gpsAviso').style.display = 'flex';
+}
+document.getElementById('gpsAceptar').onclick = ()=>{
+  document.getElementById('gpsAviso').style.display = 'none';
+  try{ localStorage.setItem(claveGps(), new Date().toISOString()); }catch(e){}
+  if(sb && choferActual) sb.from('personal').update({gps_informado: new Date().toISOString()}).eq('id', choferActual.id).then(()=>{});   // sin la actualización 31 no pasa nada
+  revisarGpsFondo();
+};
+document.getElementById('gpsAhoraNo').onclick = ()=>{ document.getElementById('gpsAviso').style.display = 'none'; gpsAhoraNo = true; };   // se vuelve a preguntar la próxima vez que entre
 function pedirPermisoAvisos(){
   if(notifPedido || !CAPN.LocalNotifications) return;
   notifPedido = true;
@@ -1083,20 +1202,25 @@ function aplicarChoferSeleccionado(){
   }
   const cache = personalCache.find(c=>c.id===sel.value);
   if(!cache) return;
-  // se leen sus datos al momento, por si Tráfico acaba de generarle un PIN provisional
-  sb.from('personal').select('*').eq('id', cache.id).limit(1).then(({data})=>{
+  // se leen sus datos al momento, por si acaba de cambiar algo
+  sb.from('personal').select('*').eq('id', cache.id).limit(1).then(async ({data})=>{
     const persona = (data && data[0]) || cache;
     Object.assign(cache, persona);
-    if(!persona.pin){ activarPersona(persona); return; }   // trabajador nuevo: entra y elige su PIN
+    if(!(persona.tiene_pin || persona.pin)){   // trabajador nuevo: entra y elige su PIN
+      const r = await rpcAcceso('entrar_sin_pin', {p_persona: String(persona.id)});
+      if(r.error){ alert(r.error); sel.value = ''; return; }
+      guardarTokenApp(r.token); activarPersona(Object.assign(cache, r.persona)); return;
+    }
     const intento = prompt(persona.pin_temporal
       ? `Hola ${persona.nombre}, introduce el PIN PROVISIONAL que te ha dado Tráfico:`
       : `Hola ${persona.nombre}, introduce tu PIN:`);
     if(intento === null) { sel.value = ''; return; }
-    if(intento.trim() === String(persona.pin)){
-      localStorage.setItem('persona_pin_huella', huellaPin(persona.pin));
-      activarPersona(persona);   // si era provisional, activarPersona le pide que elija uno suyo
+    const r = await rpcAcceso('entrar_app', {p_persona: String(persona.id), p_pin: intento.trim()});
+    if(r.persona){
+      guardarTokenApp(r.token);
+      activarPersona(Object.assign(cache, r.persona));   // si era provisional, activarPersona le pide que elija uno suyo
     } else {
-      alert('PIN incorrecto.');
+      alert(r.error || 'PIN incorrecto.');
       sel.value = '';
     }
   });
@@ -1107,9 +1231,10 @@ function limpiarPantalla(){
   currentCarga = null; cargasPendientes = []; hayCargas = false; hayViaje = false; cargadorTractoraActual = '';
   TYPES.forEach(t=>{ state[t.id] = {qty:0, remontable:false}; }); lastGeo = null; render();
   ['descargasCard','trabajandoCard','resultCard','matCard','pinCard','nuevoDecaCard','nuevoDecaBtn'].forEach(id => $i(id).style.display = 'none');
-  $i('igualQueOrdenBtn').style.display = ''; $i('avisoCambiarSolo').style.display = ''; $i('ndPaletsAyuda').style.display = 'none';
+  $i('igualQueOrdenBtn').style.display = ''; $i('avisoCambiarSolo').style.display = ''; $i('ndPaletsAyuda').style.display = 'none'; $i('cargaRealDetails').open = false;
   $i('cambiarPinBtn').style.display = 'none';
   setTimeout(revisarGpsFondo, 0);   // sin sesión, el GPS en segundo plano se apaga
+  gpsAhoraNo = false; $i('gpsAviso').style.display = 'none';
   $i('plate').value = ''; $i('plateSel').value = ''; $i('plateRemolqueSel').innerHTML = '';
   $i('viajeObs').innerHTML = ''; $i('pendientesMatricula').innerHTML = '';
   $i('descargasLista').innerHTML = ''; $i('descargasBadge').textContent = '0';
@@ -1133,19 +1258,25 @@ document.getElementById('cambiarUsuarioBtn').onclick = ()=>{
   if(choferActual && !confirm('¿Cerrar sesión en este móvil? Para volver a entrar te pedirá tu PIN.')) return;
   const quienSale = localStorage.getItem('persona_verificada');
   if(quienSale) leerMovil().then(ls=> borrarDelMovil(ls.filter(x=> !x.persona_id || String(x.persona_id) === String(quienSale)).map(x=> x.deca_id)));
-  localStorage.removeItem('persona_id'); localStorage.removeItem('persona_verificada'); localStorage.removeItem('persona_pin_huella');
+  if(sb && tokenApp()) sb.rpc('cerrar_sesion', {p_token: tokenApp()}).then(()=>{}, ()=>{});
+  guardarTokenApp('');
+  localStorage.removeItem('persona_id'); localStorage.removeItem('persona_verificada');
   document.getElementById('pinCard').style.display = 'none'; document.getElementById('cambiarPinBtn').style.display = 'none';
   document.getElementById('choferSel').value = '';
   aplicarChoferSeleccionado();
 };
 
 // ====== Polling cada 8s (mismo patrón que el TPV) — todas las cargas pendientes asignadas a esta persona ======
+let sinDomicilioTrans = false;
+const dirLugar = n => (lugares[String(n || '').toLowerCase()] || {}).direccion || '';
 async function pollCargasPendientes(){
   if(!sb || !choferActual) return;
-  const { data, error } = await sb.from('cargas_planificadas')
-    .select('*, clientes(nombre,nif,domicilio), transportistas(nombre,nif)')
+  const consulta = campos => sb.from('cargas_planificadas')
+    .select('*, clientes(nombre,nif,domicilio), transportistas(' + campos + ')')
     .eq('estado','asignada').eq('asignado_id', choferActual.id)
     .order('orden', {ascending:true, nullsFirst:false}).order('created_at', {ascending:true});
+  let { data, error } = await consulta(sinDomicilioTrans ? 'nombre,nif' : 'nombre,nif,domicilio');
+  if(error && !sinDomicilioTrans && /domicilio/.test(error.message || '')){ sinDomicilioTrans = true; ({ data, error } = await consulta('nombre,nif')); }   // falta la actualización 33
   if(error){ document.getElementById('syncTag').textContent = 'Error de sincronización'; return; }
   document.getElementById('syncTag').textContent = 'Sincronizado · ' + new Date().toLocaleTimeString('es-ES');
   cargasPendientes = data || [];
@@ -1191,6 +1322,7 @@ function seleccionarCarga(id){
   if(currentCarga && currentCarga.manual && !confirm('Estás haciendo un DeCA nuevo sin orden. ¿Dejarlo y trabajar en esta carga?')) return;
   salirDeNuevo();
   currentCarga = c;
+  document.getElementById('cargaRealDetails').open = false;   // empieza cerrado: la carga ya viene igual que la orden
   document.getElementById('resultCard').style.display = 'none'; // evita confundir un DeCA anterior con esta carga nueva
   lastGeo = null;
   const cli = c.clientes || {}, t = c.transportistas || {};
@@ -1358,8 +1490,9 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
     id: row.deca_id, driver: row.conductor, plate: nuevaLimpia, detail: row.detalle,
     ldm: row.ldm, date: new Date(row.fecha).toLocaleString('es-ES'), geo: row.geo, url: row.pdf_url,
     cargadorNombre: row.cargador_nombre, cargadorNif: row.cargador_nif, cargadorDomicilio: row.cargador_domicilio,
-    transportistaNombre: row.transportista_nombre, transportistaNif: row.transportista_nif,
+    transportistaNombre: row.transportista_nombre, transportistaNif: row.transportista_nif, transportistaDomicilio: row.transportista_domicilio || '',
     origen: row.origen, destino: row.destino, mercancia: row.mercancia, peso: row.peso,
+    origenDireccion: row.origen_direccion || '', destinoDireccion: row.destino_direccion || '',
     autorizacionEspecial: row.autorizacion_especial || '',
     matriculaHistorial: nuevoHistorial
   };
@@ -1472,19 +1605,23 @@ function buildPdf(r, qrDataUrl){
   doc.text('NIF: ' + (r.cargadorNif||'—'), M+2, y+15);
   doc.text(String(r.cargadorDomicilio||'—'), M+2, y+21, {maxWidth:wA-4});
 
-  box(M+wA, y, wB, h1); label(M+wA, y, '16  TRANSPORTISTA EFECTIVO (nombre, NIF)');
+  box(M+wA, y, wB, h1); label(M+wA, y, '16  TRANSPORTISTA EFECTIVO (nombre, NIF, domicilio)');
   negrita(String(r.transportistaNombre||'—'), M+wA+2, y+9, {maxWidth:wB-4});
   doc.text('NIF: ' + (r.transportistaNif||'—'), M+wA+2, y+15);
+  if(r.transportistaDomicilio) doc.text(doc.splitTextToSize(String(r.transportistaDomicilio), wB-4).slice(0, 1), M+wA+2, y+21);
   y += h1;
 
   // Fila 2: Lugar y fecha de carga (4) | Lugar de entrega (3)
-  const h2 = 20;
-  box(M, y, wA, h2); label(M, y, '4  LUGAR Y FECHA DE CARGA (origen)');
+  const h2 = 27;
+  const dirPdf = (txt, x, yy, w)=>{ if(!txt) return; doc.setFontSize(8); doc.text(doc.splitTextToSize(String(txt), w).slice(0, 2), x, yy); doc.setFontSize(9); };
+  box(M, y, wA, h2); label(M, y, '4  LUGAR Y FECHA DE CARGA (origen, dirección)');
   negrita(String(r.origen||'—'), M+2, y+9, {maxWidth:wA-4});
-  doc.text('Fecha: ' + r.date, M+2, y+16);
+  dirPdf(r.origenDireccion, M+2, y+14, wA-4);
+  doc.text('Fecha: ' + r.date, M+2, y+24);
 
-  box(M+wA, y, wB, h2); label(M+wA, y, '3  LUGAR DE ENTREGA (destino)');
+  box(M+wA, y, wB, h2); label(M+wA, y, '3  LUGAR DE ENTREGA (destino, dirección)');
   negrita(String(r.destino||'—'), M+wA+2, y+9, {maxWidth:wB-4});
+  dirPdf(r.destinoDireccion, M+wA+2, y+14, wB-4);
   y += h2;
 
   // Fila 3: Naturaleza mercancía (9) | Nº bultos (7) | Peso bruto (11)
@@ -1572,7 +1709,11 @@ function buildPdf(r, qrDataUrl){
 }
 
 document.getElementById('confirmBtn').onclick = async ()=>{
+  if(licenciaBloqueada()){ alert('El servicio está suspendido: no se pueden crear DeCAs nuevos. Avisa a tu empresa.'); return; }
   if(!currentCarga){ alert('Selecciona primero una carga pendiente de la lista, o pulsa «Crear nuevo DeCA».'); return; }
+  if(currentCarga.manual && currentCarga.pesoAuto){ currentCarga.peso = String(pesoEstimado()); currentCarga.peso_aproximado = true; }   // peso medio alto según los palets
+  { const kgT = pesoDeEstaCarga() + (choferActual && choferActual.puesto === 'chofer' ? kgEnCamion : 0);
+    if(kgT > cargaMaxima() && !confirm(`⚖️ El camión llevaría unos ${kgT.toLocaleString('es-ES')} kg y la carga máxima es ${cargaMaxima().toLocaleString('es-ES')} kg.\n\n¿Generar el DeCA igualmente?`)) return; }
   if(!matConfirmada()){ revisarMatricula(true); document.getElementById('matCard').scrollIntoView({behavior:'smooth', block:'center'}); alert('Antes de generar el DeCA, confirma que las matrículas son las correctas (arriba).'); return; }
   const decaId = 'DECA-' + Date.now().toString(36).toUpperCase(); // etiqueta legible
   const publicId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (decaId + '-' + Math.random().toString(36).slice(2));
@@ -1595,8 +1736,10 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   const record = {
     id: decaId, driver, plate, detail, ldm: ldm.toFixed(1), date: now.toLocaleString('es-ES'), geo, url: publicUrl,
     cargadorNombre: c.nombre, cargadorNif: c.nif, cargadorDomicilio: c.domicilio,
-    transportistaNombre: t.nombre, transportistaNif: t.nif,
+    transportistaNombre: t.nombre, transportistaNif: t.nif, transportistaDomicilio: t.domicilio || '',
     origen: currentCarga.origen, destino: currentCarga.destino, mercancia: currentCarga.mercancia,
+    origenDireccion: currentCarga.origen_direccion || dirLugar(currentCarga.almacen) || dirLugar(currentCarga.origen),
+    destinoDireccion: currentCarga.destino_direccion || dirLugar(currentCarga.destino),
     peso: currentCarga.peso + (currentCarga.peso_aproximado ? ' (aprox.)' : ''),
     autorizacionEspecial: currentCarga.autorizacion_especial || ''
   };
@@ -1623,15 +1766,21 @@ document.getElementById('confirmBtn').onclick = async ()=>{
       .upload(`${publicId}.pdf`, blob, {contentType:'application/pdf', upsert:true, cacheControl:'0'});
     if(upErr){ alert('No se pudo subir el PDF al servidor: ' + upErr.message); return; }
 
-    const { error: insErr } = await sb.from('decas').insert({
+    const filaDeca = {
       deca_id: decaId, carga_id: currentCarga && !currentCarga.manual ? currentCarga.id : null,
       conductor: driver, matricula: plate, detalle: detail, ldm: ldm.toFixed(1), geo,
       fecha: now.toISOString(), pdf_url: publicUrl,
       cargador_nombre: record.cargadorNombre, cargador_nif: record.cargadorNif, cargador_domicilio: record.cargadorDomicilio,
       transportista_nombre: record.transportistaNombre, transportista_nif: record.transportistaNif,
       origen: record.origen, destino: record.destino, mercancia: record.mercancia, peso: record.peso,
-      autorizacion_especial: record.autorizacionEspecial || null
-    });
+      autorizacion_especial: record.autorizacionEspecial || null,
+      transportista_domicilio: record.transportistaDomicilio || null, origen_direccion: record.origenDireccion || null, destino_direccion: record.destinoDireccion || null
+    };
+    let { error: insErr } = await sb.from('decas').insert(filaDeca);
+    if(insErr && /direccion|domicilio/.test(insErr.message || '')){   // falta la actualización 33: se guarda sin las direcciones (el PDF sí las lleva)
+      delete filaDeca.transportista_domicilio; delete filaDeca.origen_direccion; delete filaDeca.destino_direccion;
+      ({ error: insErr } = await sb.from('decas').insert(filaDeca));
+    }
     if(insErr){ alert('No se pudo guardar en el servidor: ' + insErr.message); return; }
 
     if(currentCarga.manual) guardarDatosNuevos(currentCarga);
@@ -1641,6 +1790,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   // Deja la app lista para la siguiente carga pendiente del mismo viaje
   const eraManual = currentCarga && currentCarga.manual;
   currentCarga = null;
+  document.getElementById('cargaRealDetails').open = false;
   if(eraManual) salirDeNuevo();
   document.getElementById('trabajandoCard').style.display = 'none';
   TYPES.forEach(t=>{ state[t.id] = {qty:0, remontable:false}; });
