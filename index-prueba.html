@@ -554,7 +554,7 @@ $e('nuevoDecaBtn').onclick = ()=>{
   document.querySelectorAll('.pend-item').forEach(el=> el.classList.remove('activa'));
   ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndOrigenDir','ndDestino','ndDestinoDir','ndPeso','ndRef','ndAut','ndContr','ndContrNif','ndContrDom'].forEach(id => $e(id).value = '');
   $e('ndContrDet').open = false;
-  $e('ndContrDet').hidden = !(licenciaApp && licenciaApp.extra_contractual);   // solo si la empresa tiene contratado el extra
+  $e('ndContrDet').hidden = !(licenciaApp && (licenciaApp.extra_contractual || (Array.isArray(licenciaApp.modulos) && licenciaApp.modulos.includes('contractual'))));   // solo si la empresa tiene contratado el extra (o su plan lo incluye)
   $e('ndMercancia').value = 'Frutas y hortalizas frescas'; $e('ndPesoAprox').checked = true; $e('ndMsg').textContent = '';
   const t = transportistaPorDefecto();
   $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : ''; $e('ndTransDom').value = t ? (t.domicilio || '') : '';
@@ -569,11 +569,22 @@ const VOZ = {
   disponible(){ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; return !!C.SpeechRecognition || !!(window.SpeechRecognition || window.webkitSpeechRecognition); },
   async hablar(txt){
     const C = (window.Capacitor && window.Capacitor.Plugins) || {};
-    try{ if(C.TextToSpeech){ await C.TextToSpeech.speak({text: txt, lang: 'es-ES', rate: 0.95}); return; } }catch(e){}
+    try{ if(C.TextToSpeech){ await C.TextToSpeech.speak({text: txt, lang: 'es-ES', rate: 0.85}); await vozPausa(500); return; } }catch(e){}
     if(!('speechSynthesis' in window)) return;
-    await new Promise(res => { let hecho = false; const fin = () => { if(!hecho){ hecho = true; res(); } };
-      try{ const u = new SpeechSynthesisUtterance(txt); u.lang = 'es-ES'; u.rate = 0.95; u.onend = fin; u.onerror = fin; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){ fin(); }
-      setTimeout(fin, 4000 + txt.length * 90); });
+    // Ritmo de conversación: un poco más despacio de lo normal, y no se sigue hasta que ha terminado de hablar del todo
+    await new Promise(res => { let hecho = false; const fin = () => { if(!hecho){ hecho = true; clearInterval(vigila); res(); } };
+      let empezado = false, vigila = null;
+      try{
+        const u = new SpeechSynthesisUtterance(txt); u.lang = 'es-ES'; u.rate = 0.85; u.pitch = 1;
+        const v = (speechSynthesis.getVoices ? speechSynthesis.getVoices() : []).find(x => /^es(-|_)ES/i.test(x.lang)) || (speechSynthesis.getVoices ? speechSynthesis.getVoices() : []).find(x => /^es/i.test(x.lang));
+        if(v) u.voice = v;
+        u.onstart = () => { empezado = true; }; u.onend = fin; u.onerror = fin;
+        speechSynthesis.cancel(); speechSynthesis.speak(u);
+        // en algunos móviles «onend» no llega: se mira cada poco si sigue hablando
+        vigila = setInterval(() => { if(speechSynthesis.speaking) empezado = true; else if(empezado) fin(); }, 250);
+      }catch(e){ fin(); }
+      setTimeout(fin, 6000 + txt.length * 120); });
+    await vozPausa(600);   // un respiro antes de escuchar, como en una conversación
   },
   async escuchar(){
     const C = (window.Capacitor && window.Capacitor.Plugins) || {};
@@ -598,6 +609,7 @@ const VOZ = {
   },
   parar(){ try{ VOZ.rec && VOZ.rec.abort(); }catch(e){} try{ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; C.SpeechRecognition && C.SpeechRecognition.stop(); C.TextToSpeech && C.TextToSpeech.stop(); }catch(e){} try{ speechSynthesis.cancel(); }catch(e){} }
 };
+const vozPausa = ms => new Promise(r => setTimeout(r, ms));
 const vozNorm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\b(s\.?\s?l\.?u?|s\.?\s?a\.?|s\.?\s?c\.?a\.?|sat|coop(erativa)?)\b/g, ' ').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
 // Busca en la lista el nombre que más se parece a lo que ha dicho (vale con decir parte del nombre)
 function vozBuscar(alts, lista){
@@ -640,13 +652,15 @@ function vozPantalla(paso, pregunta){ $e('vozCapa').hidden = false; $e('vozPaso'
 async function vozPreguntar(paso, texto, valida){
   for(let intento = 0; intento < 3 && vozActivo; intento++){
     vozPantalla(paso, texto);
-    await VOZ.hablar(intento ? 'No te he entendido bien. ' + texto : texto);
+    await VOZ.hablar(intento ? 'Perdona, no te he entendido. ' + texto : texto);
     if(!vozActivo) return null;
     $e('vozEstado').textContent = '🎤 Te escucho… habla ahora'; $e('vozEstado').classList.add('escucha');
-    const alts = await VOZ.escuchar();
+    // espera la respuesta: si el micrófono se corta sin oír nada, vuelve a escuchar sin repetir la pregunta (hasta unos 25 segundos)
+    let alts = [], desde = Date.now();
+    while(vozActivo && !alts.length && Date.now() - desde < 25000){ alts = await VOZ.escuchar(); if(!alts.length) await vozPausa(300); }
     $e('vozEstado').classList.remove('escucha'); $e('vozEstado').textContent = '';
     if(!vozActivo) return null;
-    if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined) return {valor: v, dicho: alts[0]}; }
+    if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined){ await vozPausa(700); return {valor: v, dicho: alts[0]}; } }
   }
   return null;
 }

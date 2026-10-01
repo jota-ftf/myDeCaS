@@ -666,6 +666,13 @@ table.fichero td.acc{white-space:nowrap;width:1%}
     <p style="margin:0;color:#667;font-size:.9rem">Tus datos y DeCAs se conservan. Los códigos QR de los DeCAs ya hechos siguen funcionando.</p>
   </div>
 </div>
+<div id="soporteAviso" hidden style="position:fixed;left:0;right:0;bottom:0;z-index:90;background:#3ea6ff;color:#001428;text-align:center;font-weight:700;padding:8px 10px;font-size:.95rem;box-shadow:0 -4px 12px rgba(0,0,0,.25)"></div>
+<div class="modal" id="soporteDlg" hidden role="dialog" aria-modal="true"><div class="modal-card" style="max-width:480px">
+  <h2 style="margin:0">🛟 El soporte de myDeCaS pide entrar</h2>
+  <p id="soporteTxt" style="margin:8px 0"></p>
+  <p class="hint">Solo podrá ver y usar este programa (el cartón), con los mismos permisos que dirección, durante <b>1 hora</b>. Nunca tu ordenador ni nada más. Puedes cortarlo cuando quieras.</p>
+  <div class="send-row" style="justify-content:flex-end"><button type="button" class="btn" id="soporteNo">No autorizar</button><button type="button" class="btn primary" id="soporteSi">Autorizar 1 hora</button></div>
+</div></div>
 <div id="licenciaAviso" hidden style="background:#ff9f43;color:#1a1000;text-align:center;font-weight:700;padding:6px 10px;font-size:.9rem"></div>
 <div id="printArea"></div>
 <div class="modal" id="pinDlg" hidden role="dialog" aria-modal="true" aria-labelledby="pinTit">
@@ -835,16 +842,26 @@ async function leerLicencia(){
   try{ const { data, error } = await sb.from('licencia').select('*').eq('id', 1).limit(1); licencia = (!error && data && data[0]) || null; }catch(e){ licencia = null; }
   aplicarLicencia();
 }
+// Partes del programa que tiene la empresa (las pone el maestro según su plan y sus extras). Sin dato = como antes, por el nombre del plan
+function tieneModulo(m){
+  if(!licencia) return true;
+  if(Array.isArray(licencia.modulos)) return licencia.modulos.includes(m);
+  const pl = planActual();
+  if(m === 'carton') return pl !== 'estandar';
+  if(m === 'admin') return pl !== 'basico' && pl !== 'estandar';
+  if(m === 'contractual') return !!licencia.extra_contractual;
+  return true;
+}
 function planActual(){ return String((licencia && licencia.plan) || 'pro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
 function licenciaEnRegla(){ return !licencia || (licencia.activa !== false && (!licencia.hasta || String(licencia.hasta).slice(0,10) >= hoyISO())); }
 function aplicarLicencia(){
   const caja = document.getElementById('licenciaBloqueo'), aviso = document.getElementById('licenciaAviso');
-  const enRegla = licenciaEnRegla(), soloApp = planActual() === 'estandar';
+  const enRegla = licenciaEnRegla(), soloApp = !tieneModulo('carton');
   if(!enRegla || soloApp){
     document.getElementById('licIcono').textContent = enRegla ? '📱' : '⛔';
     document.getElementById('licTitulo').textContent = enRegla ? 'Tu plan no incluye el cartón' : 'Servicio suspendido';
     document.getElementById('licTexto').textContent = (licencia && licencia.mensaje) || (enRegla
-      ? 'Tu plan Estándar incluye solo la app myDeCaS para los conductores. Para usar el cartón de Tráfico, pasa al plan Básico o Pro.'
+      ? 'Tu plan incluye solo la app myDeCaS para los conductores. Para usar el cartón de Tráfico, cambia a un plan que lo incluya.'
       : 'El acceso a myDeCaS está suspendido. Ponte en contacto con myDeCaS para reactivarlo.');
     caja.hidden = false;
   } else caja.hidden = true;
@@ -1474,7 +1491,7 @@ function render(){
 let editandoId = null;
 // ====== TRANSPORTISTA CONTRACTUAL: extra de la suscripción (se enciende desde el programa maestro) ======
 // En el DeCA sale encima del transportista efectivo (si es distinto de él)
-const hayExtraContractual = () => !!(licencia && licencia.extra_contractual);
+const hayExtraContractual = () => !!licencia && (tieneModulo('contractual') || !!licencia.extra_contractual);
 function opcionesContractual(sel, valor){
   const pr = transPropia();
   sel.innerHTML = '<option value="">Sin transportista contractual</option>' + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
@@ -2354,8 +2371,9 @@ function renderAjustes(box){
 let usuario = null, arrancado = false;
 const ROL_TXT = {trafico:'Tráfico', direccion:'Dirección'};
 // Acceso seguro (actualización 34): el PIN se comprueba en la base de datos y se guarda solo un «pase de sesión»
-const tokenCarton = () => { try{ return localStorage.getItem('carton_token') || ''; }catch(_){ return ''; } };
-function guardarToken(t){ try{ if(t) localStorage.setItem('carton_token', t); else localStorage.removeItem('carton_token'); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
+const tokenCarton = () => { try{ return sessionStorage.getItem('carton_soporte') || localStorage.getItem('carton_token') || ''; }catch(_){ return ''; } };
+function guardarToken(t){ try{ if(sessionStorage.getItem('carton_soporte')){ if(!t) sessionStorage.removeItem('carton_soporte'); else sessionStorage.setItem('carton_soporte', t); return; } }catch(_){}
+  try{ if(t) localStorage.setItem('carton_token', t); else localStorage.removeItem('carton_token'); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
 async function rpcAcceso(nombre, args){
   const { data, error } = await sb.rpc(nombre, args);
   if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
@@ -2382,7 +2400,7 @@ function puedeVer(v){
   if(!usuario) return false;
   v = VISTA_PADRE[v] || v;
   if(v === 'admin' && ajustes.modulo_admin === 'no') return false;   // módulo apagado en Ajustes
-  if(v === 'admin' && planActual() === 'basico') return false;       // el plan Básico no incluye Administración
+  if(v === 'admin' && !tieneModulo('admin')) return false;          // su plan no incluye Administración (ni la tiene como extra)
   if(usuario.puesto === 'direccion') return true;
   if(v === 'ajustes') return false;
   if(VISTAS_CONFIG.includes(v)) return permisoTrafico(v);
@@ -2404,6 +2422,11 @@ function aplicarPermisos(){
 function iniciarSesion(u){
   usuario = u;
   document.body.dataset.sesion = 'si'; aplicarPermisos(); $('#login').hidden = true;
+  if(u.soporte){
+    const hasta = u.caduca ? new Date(u.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}) : '';
+    $('#usuarioBox').innerHTML = `🛟 <b>Soporte myDeCaS</b> · con permiso de dirección${hasta ? ' hasta las ' + hasta : ''} <button type="button" class="btn small" id="salirBtn">Salir</button>`;
+    arrancar(); return;
+  }
   $('#usuarioBox').innerHTML = `👤 <b>${esc(u.nombre)}</b> · ${ROL_TXT[u.puesto] || u.puesto} <button type="button" class="btn small" id="miPinBtn">Cambiar mi PIN</button> <button type="button" class="btn small" id="cambiarUsrBtn" title="Deja el cartón listo para que entre otra persona">🔄 Cambiar usuario</button> <button type="button" class="btn small" id="salirBtn">Cerrar sesión</button>`;
   arrancar();
 }
@@ -3469,6 +3492,8 @@ document.body.dataset.sesion = 'no';
   // ¿viene de un enlace de acceso enviado por WhatsApp?
   const qs = new URLSearchParams(location.search), qp = qs.get('p'), qc = qs.get('c');
   let enlaceMalo = false;
+  // ¿entra el soporte de myDeCaS con el pase que ha autorizado dirección? (solo vale en esta pestaña y caduca solo)
+  if(qs.get('soporte')){ try{ sessionStorage.setItem('carton_soporte', qs.get('soporte')); }catch(_){} try{ history.replaceState(null, '', location.pathname); }catch(_){} }
   if(qp && qc){
     const r = await rpcAcceso('usar_enlace', {p_persona: qp, p_codigo: qc});   // un solo uso: después ya no vale para nadie
     const x = r.persona && Object.assign(persona(r.persona.id) || {}, r.persona);
@@ -3492,6 +3517,36 @@ document.body.dataset.sesion = 'no';
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-limpiar]'); if(!b) return;
   const inp = document.getElementById(b.dataset.limpiar); if(!inp) return;
   inp.value = ''; inp.dispatchEvent(new Event('input', {bubbles: true})); inp.focus(); });
+
+// ====== SOPORTE REMOTO: dirección autoriza (o no) que el soporte de myDeCaS entre en su cartón ======
+let soportePendienteVisto = null;
+async function revisarSoporte(){
+  if(!usuario || usuario.puesto !== 'direccion' || usuario.soporte) { $('#soporteAviso').hidden = true; return; }
+  const { data, error } = await sb.rpc('soporte_estado', {p_token: tokenCarton()});
+  if(error || !data) return;   // (sin la actualización 40 no hay soporte remoto)
+  const av = $('#soporteAviso');
+  if(data.abierto){ const h = new Date(data.abierto.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+    av.innerHTML = `🛟 El soporte de myDeCaS está conectado a tu cartón hasta las ${h} (lo autorizó ${esc(data.abierto.autorizado_por || 'dirección')}). <button type="button" class="btn small" id="soporteCortar" style="margin-left:8px">Cortar ahora</button>`; av.hidden = false; }
+  else av.hidden = true;
+  if(data.pendiente && soportePendienteVisto !== data.pendiente.id){
+    soportePendienteVisto = data.pendiente.id; $('#soporteDlg').dataset.id = data.pendiente.id;
+    $('#soporteTxt').textContent = 'Te piden permiso para entrar en tu cartón y ayudarte' + (data.pendiente.motivo ? ': «' + data.pendiente.motivo + '».' : '.');
+    $('#soporteDlg').hidden = false; try{ sonidoAlerta(); }catch(_){}
+  }
+}
+async function responderSoporte(ok){
+  const id = $('#soporteDlg').dataset.id; $('#soporteDlg').hidden = true;
+  const { data, error } = await sb.rpc('soporte_responder', {p_token: tokenCarton(), p_id: id, p_ok: ok});
+  if(error || (data && data.error)){ toast('No se pudo responder: ' + ((data && data.error) || error.message), true); return; }
+  toast(ok ? 'Acceso del soporte autorizado durante 1 hora.' : 'No has autorizado el acceso.'); revisarSoporte();
+}
+$('#soporteSi').onclick = () => responderSoporte(true);
+$('#soporteNo').onclick = () => responderSoporte(false);
+document.addEventListener('click', async e => { if(e.target.id !== 'soporteCortar') return;
+  if(!confirm('¿Cortar ahora el acceso del soporte de myDeCaS?')) return;
+  const { data, error } = await sb.rpc('soporte_cortar', {p_token: tokenCarton()});
+  toast(error || (data && data.error) ? 'No se pudo cortar: ' + ((data && data.error) || error.message) : 'Acceso del soporte cortado.', !!(error || (data && data.error))); revisarSoporte(); });
+setInterval(revisarSoporte, 8000);
 
 // ====== DÍA CERRADO: solo se pueden tocar los camiones que aún no han terminado el viaje ======
 (function(){

@@ -124,7 +124,7 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
       <label>Email<input class="field" id="meEmail" type="email"></label>
       <label>Teléfono<input class="field" id="meTel"></label>
       <label class="full">Dirección<input class="field" id="meDir"></label>
-      <label>Plan<select class="field" id="mePlan"><option value="estandar">Estándar (solo la app)</option><option value="basico">Básico (cartón + app)</option><option value="pro">Pro (cartón + app + administración)</option></select></label>
+      <label>Plan<select class="field" id="mePlan"></select></label>
       <label>Camiones contratados<input class="field" id="meCamiones" type="number" min="1" step="1"></label>
       <label>Situación<select class="field" id="meEstado"><option value="prueba">En prueba gratis</option><option value="activa">Activa (de pago)</option><option value="suspendida">Suspendida</option><option value="baja">Baja</option></select></label>
       <label id="meDiasL">Días de prueba<input class="field" id="meDias" type="number" min="1" step="1"></label>
@@ -133,6 +133,7 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
       <label>Precio especial por camión y mes (€)<input class="field" id="mePrecio" inputmode="decimal" placeholder="Vacío = el del plan"></label>
       <label class="full">Mensaje si se suspende (opcional)<input class="field" id="meMensaje" placeholder="Ej.: Pago pendiente. Llama al 600 000 000."></label>
       <label class="full">Notas internas<textarea class="field" id="meNotas" rows="2"></textarea></label>
+      <div class="full" id="meExtras"></div>
       <label class="full" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="meAutonomos"> Cuentan también los camiones de los autónomos que trabajan para esta empresa (para el precio). Las órdenes de carga les llegan igual en los dos casos.</label>
       <label class="full" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="mePrincipal"> Es mi empresa (la que usa ahora el cartón y la app de myDeCaS)</label>
     </div>
@@ -157,6 +158,16 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
   </div>
 </div>
 
+<!-- Conexión remota (soporte) -->
+<div class="modal" id="mRemoto" hidden>
+  <div class="modal-card" style="max-width:500px">
+    <h2 id="mrTit">🛟 Conexión remota</h2>
+    <p id="mrTxt"></p>
+    <p class="hint">Solo da acceso a su cartón (el programa), nunca a su ordenador. Dura 1 hora y dirección lo puede cortar cuando quiera.</p>
+    <div class="fila" style="justify-content:flex-end"><button class="btn" id="mrCerrar" type="button">Cerrar</button><button class="btn primary" id="mrAbrir" type="button" hidden>🖥 Abrir su cartón</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -168,8 +179,13 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const PLAN = {estandar:'Estándar', basico:'Básico', pro:'Pro'};
 let empresas = [], pagos = [], ajustes = {}, admins = [], miEmail = '', editando = null, cobrando = null, filtro = '';
+let planes = [], extrasCat = [], hay40 = false;   // planes y extras (editables con la actualización 40)
+const MODULOS = [['app','App del conductor'],['carton','Cartón de Tráfico'],['admin','Administración'],['contractual','Transportista contractual']];
+const planDe = k => planes.find(p => p.clave === k) || null;
+const nombrePlan = k => (planDe(k) || {}).nombre || k || '—';
+const extrasDe = e => Array.isArray(e.extras) ? e.extras : (e.extra_contractual ? ['contractual'] : []);
+const slug = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30);
 
 // ---- fechas (siempre día local, sin horas) ----
 function hoy(){ const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,10); }
@@ -184,8 +200,10 @@ function toast(t, error){ const el = $('#toast'); el.textContent = t; el.classNa
 
 // ---- cuentas ----
 const gracia = () => +ajustes.dias_gracia || 0;
-function precioCamion(e){ return e.precio_camion != null && e.precio_camion !== '' ? +e.precio_camion : num(ajustes['precio_' + e.plan]); }
-function mensual(e){ const p = precioCamion(e); return p == null ? null : p * (+e.camiones || 0); }
+function precioCamion(e){ if(e.precio_camion != null && e.precio_camion !== '') return +e.precio_camion; const p = planDe(e.plan); return p ? num(p.precio) : null; }
+// Extras contratados (€ por camión y mes). Si su plan ya incluye esa parte, no se cobra dos veces
+function precioExtras(e){ const inc = (planDe(e.plan) || {}).incluye || []; return extrasDe(e).reduce((t, k) => { const x = extrasCat.find(y => y.clave === k); return t + (x && !(x.modulo && inc.includes(x.modulo)) ? (num(x.precio) || 0) : 0); }, 0); }
+function mensual(e){ const p = precioCamion(e); return p == null ? null : (p + precioExtras(e)) * (+e.camiones || 0); }
 // Situación real (lo que verá el cliente), según el estado y las fechas
 function situacion(e){
   if(e.estado === 'baja') return {txt:'Baja', c:'gris', bloq:true};
@@ -231,16 +249,24 @@ $('#naCopiar').onclick = () => { navigator.clipboard && navigator.clipboard.writ
 
 // ====== DATOS ======
 async function cargar(){
-  const [e, p, a, ad] = await Promise.all([
+  const [e, p, a, ad, pl, ex] = await Promise.all([
     sb.from('maestro_empresas').select('*').order('nombre'),
     sb.from('maestro_pagos').select('*').order('fecha', {ascending:false}).limit(2000),
     sb.from('maestro_ajustes').select('*'),
-    sb.from('maestro_admins').select('*').order('email')
+    sb.from('maestro_admins').select('*').order('email'),
+    sb.from('maestro_planes').select('*').order('orden'),
+    sb.from('maestro_extras').select('*').order('orden')
   ]);
   const err = [e, p, a, ad].find(x => x.error);
   if(err){ toast('No se pudo leer: ' + err.error.message, true); }
   empresas = e.data || []; pagos = p.data || []; admins = ad.data || [];
   ajustes = {}; (a.data || []).forEach(x => ajustes[x.clave] = x.valor);
+  hay40 = !pl.error && !ex.error;
+  if(hay40){ planes = pl.data || []; extrasCat = ex.data || []; }
+  else {   // todavía sin la actualización 40: los planes de siempre con los precios de Ajustes
+    planes = [['estandar','Estándar',['app']],['basico','Básico',['app','carton']],['pro','Pro',['app','carton','admin']]].map(([clave, nombre, incluye], i) => ({clave, nombre, incluye, precio: num(ajustes['precio_' + clave]), orden: i, activo: true}));
+    extrasCat = [{clave:'contractual', nombre:'Transportista contractual', precio: num(ajustes.precio_extra_contractual), modulo:'contractual', activo:true}];
+  }
   pintar();
 }
 async function guardar(q, ok){
@@ -282,7 +308,7 @@ function pResumen(){
     <div class="card">
       <h2>⏰ Necesitan atención</h2>
       ${avisos.length ? `<div class="tabla-wrap"><table><thead><tr><th>Empresa</th><th>Situación</th><th>Plan</th><th class="num">Al mes</th><th></th></tr></thead><tbody>
-        ${avisos.map(([e, s]) => `<tr><td><b>${esc(e.nombre)}</b>${e.principal ? ' <span class="chip pen">tu empresa</span>' : ''}</td><td><span class="chip ${s.c}">${esc(s.txt)}</span></td><td>${PLAN[e.plan]}</td><td class="num">${eur(mensual(e))}</td>
+        ${avisos.map(([e, s]) => `<tr><td><b>${esc(e.nombre)}</b>${e.principal ? ' <span class="chip pen">tu empresa</span>' : ''}</td><td><span class="chip ${s.c}">${esc(s.txt)}</span></td><td>${esc(nombrePlan(e.plan))}</td><td class="num">${eur(mensual(e))}</td>
           <td><div class="acc">${s.aviso === 'prueba' ? `<button class="btn small" data-alargar="${e.id}">+ días de prueba</button>` : ''}<button class="btn small primary" data-cobrar="${e.id}">💶 Apuntar cobro</button></div></td></tr>`).join('')}
       </tbody></table></div>` : '<p class="vacio">Todo en orden: ninguna prueba ni pago a punto de vencer.</p>'}
     </div>`;
@@ -300,12 +326,13 @@ function pEmpresas(){
       ${lista.length ? `<div class="tabla-wrap"><table><thead><tr><th>Empresa</th><th>Plan</th><th class="num">Camiones</th><th>Situación</th><th class="num">Al mes</th><th>Contacto</th><th></th></tr></thead><tbody>
         ${lista.map(e => { const s = situacion(e); return `<tr>
           <td><b>${esc(e.nombre)}</b>${e.principal ? ' <span class="chip pen">tu empresa</span>' : ''}<div class="hint">${esc(e.nif || '')}</div></td>
-          <td>${PLAN[e.plan]}</td><td class="num">${e.camiones}</td>
+          <td>${esc(nombrePlan(e.plan))}</td><td class="num">${e.camiones}</td>
           <td><span class="chip ${s.c}">${esc(s.txt)}</span></td>
-          <td class="num">${e.principal ? '<span class="hint">no se cobra</span>' : eur(mensual(e))}${e.precio_camion != null && !e.principal ? '<div class="hint">precio especial</div>' : ''}</td>
+          <td class="num">${e.principal ? '<span class="hint">no se cobra</span>' : eur(mensual(e))}${e.precio_camion != null && !e.principal ? '<div class="hint">precio especial</div>' : ''}${extrasDe(e).length ? `<div class="hint">+ ${extrasDe(e).map(k => esc((extrasCat.find(x => x.clave === k) || {nombre:k}).nombre)).join(', ')}</div>` : ''}</td>
           <td>${esc(e.contacto || '')}<div class="hint">${esc(e.telefono || e.email || '')}</div></td>
           <td><div class="acc">
             <button class="btn small" data-editar="${e.id}">Editar</button>
+            <button class="btn small" data-remoto="${e.id}" title="Entrar en su cartón para ayudarles (necesita el permiso de su dirección)">🛟 Remoto</button>
             ${e.estado !== 'baja' ? `<button class="btn small" data-cobrar="${e.id}">💶 Cobro</button>` : ''}
             ${e.estado === 'prueba' ? `<button class="btn small" data-alargar="${e.id}">+ prueba</button>` : ''}
             ${e.estado === 'suspendida' || e.estado === 'baja' ? `<button class="btn small" data-reactivar="${e.id}">▶ Reactivar</button>` : `<button class="btn small peligro" data-suspender="${e.id}">⏸ Suspender</button>`}
@@ -352,17 +379,35 @@ function pAjustes(){
         <label>Días de margen si no pagan<input class="field" id="ajGracia" type="number" min="0" step="1" value="${esc(ajustes.dias_gracia || '0')}"></label>
       </div>
       <p class="hint" style="margin-top:8px">Los días de prueba se pueden cambiar también en cada empresa. Con el margen, si una empresa no paga, sigue funcionando esos días antes de bloquearse.</p>
+      <div style="margin-top:12px"><button class="btn primary" id="ajGuardar" type="button">Guardar</button></div>
+    </div>
+    ${hay40 ? `<div class="card">
+      <h2>Planes</h2>
+      <p class="hint" style="margin-bottom:8px">Precio por camión y mes, y qué partes del programa incluye cada plan. Lo que cambies aquí se aplica solo al cartón y a la app de las empresas con ese plan.</p>
+      <div class="tabla-wrap"><table id="tPlanes"><thead><tr><th>Plan</th><th class="num">€ / camión / mes</th><th>Incluye</th><th>Descripción (lo que se le cuenta al cliente)</th><th>Activo</th><th></th></tr></thead><tbody>
+        ${planes.map(p => `<tr data-plan="${esc(p.clave)}"><td><input class="field" data-k="nombre" value="${esc(p.nombre)}" style="min-width:110px"></td>
+          <td class="num"><input class="field" data-k="precio" inputmode="decimal" value="${p.precio == null ? '' : String(p.precio).replace('.', ',')}" style="width:80px;text-align:right"></td>
+          <td>${MODULOS.map(([m, n]) => `<label style="display:flex;gap:6px;align-items:center;white-space:nowrap;font-size:.85rem"><input type="checkbox" data-mod="${m}" ${(p.incluye || []).includes(m) ? 'checked' : ''}> ${n}</label>`).join('')}</td>
+          <td><textarea class="field" data-k="descripcion" rows="3" style="min-width:220px">${esc(p.descripcion || '')}</textarea></td>
+          <td><input type="checkbox" data-k="activo" ${p.activo !== false ? 'checked' : ''} title="Si lo quitas, no sale para empresas nuevas"></td>
+          <td>${empresas.some(e => e.plan === p.clave) ? '' : `<button class="btn small peligro" data-borrarplan="${esc(p.clave)}" title="Borrar este plan (ninguna empresa lo tiene)">×</button>`}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="fila" style="margin-top:10px;justify-content:space-between"><button class="btn" id="nuevoPlan" type="button">➕ Añadir plan</button><button class="btn primary" id="guardarPlanes" type="button">Guardar planes</button></div>
     </div>
     <div class="card">
-      <h2>Precio por camión y mes</h2>
-      <div class="grid2" style="max-width:520px;grid-template-columns:repeat(3,1fr)">
-        <label>Estándar (€)<input class="field" id="ajPE" inputmode="decimal" value="${esc(ajustes.precio_estandar || '')}"></label>
-        <label>Básico (€)<input class="field" id="ajPB" inputmode="decimal" value="${esc(ajustes.precio_basico || '')}"></label>
-        <label>Pro (€)<input class="field" id="ajPP" inputmode="decimal" value="${esc(ajustes.precio_pro || '')}"></label>
-      </div>
-      <p class="hint" style="margin-top:8px">A una empresa concreta (por ejemplo, una de las primeras) le puedes poner un precio especial en su ficha.</p>
-      <div style="margin-top:12px"><button class="btn primary" id="ajGuardar" type="button">Guardar ajustes</button></div>
-    </div>
+      <h2>Extras</h2>
+      <p class="hint" style="margin-bottom:8px">Se añaden a cualquier plan y se cobran aparte (€ por camión y mes). «Enciende» dice qué parte del programa se activa al contratarlo; si pones «Solo se cobra», es un servicio que se cobra pero no cambia el programa. Si el plan de la empresa ya incluye esa parte, el extra no se le cobra.</p>
+      <div class="tabla-wrap"><table id="tExtras"><thead><tr><th>Extra</th><th class="num">€ / camión / mes</th><th>Enciende</th><th>Descripción</th><th>Activo</th><th></th></tr></thead><tbody>
+        ${extrasCat.map(x => `<tr data-extrafila="${esc(x.clave)}"><td><input class="field" data-k="nombre" value="${esc(x.nombre)}" style="min-width:150px"></td>
+          <td class="num"><input class="field" data-k="precio" inputmode="decimal" value="${x.precio == null ? '' : String(x.precio).replace('.', ',')}" style="width:80px;text-align:right"></td>
+          <td><select class="field" data-k="modulo"><option value="">Solo se cobra</option>${MODULOS.map(([m, n]) => `<option value="${m}" ${x.modulo === m ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
+          <td><textarea class="field" data-k="descripcion" rows="2" style="min-width:220px">${esc(x.descripcion || '')}</textarea></td>
+          <td><input type="checkbox" data-k="activo" ${x.activo !== false ? 'checked' : ''}></td>
+          <td>${empresas.some(e => extrasDe(e).includes(x.clave)) ? '' : `<button class="btn small peligro" data-borrarextra="${esc(x.clave)}" title="Borrar este extra (ninguna empresa lo tiene)">×</button>`}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="fila" style="margin-top:10px;justify-content:space-between"><button class="btn" id="nuevoExtra" type="button">➕ Añadir extra</button><button class="btn primary" id="guardarExtras" type="button">Guardar extras</button></div>
+      <p class="hint" style="margin-top:8px">A una empresa concreta le puedes poner un precio especial del plan en su ficha.</p>
+    </div>` : `<div class="card"><h2>Planes y extras</h2><p class="hint" style="color:var(--warn)">Para poder editar los planes (incluido el Premium) y los extras, ejecuta la <b>actualización 40</b> en Supabase y recarga esta página.</p></div>`}
     <div class="card">
       <h2>Administradores del maestro</h2>
       <p class="hint" style="margin-bottom:8px">Solo estos correos pueden entrar aquí. Cada uno tiene que tener además su usuario en Supabase → Authentication → Users.</p>
@@ -371,12 +416,24 @@ function pAjustes(){
     </div>`;
   $('#ajGuardar').onclick = async () => {
     const filas = [['dias_prueba', String(Math.max(0, parseInt($('#ajPrueba').value, 10) || 0))], ['dias_gracia', String(Math.max(0, parseInt($('#ajGracia').value, 10) || 0))],
-      ['precio_estandar', $('#ajPE').value.trim()], ['precio_basico', $('#ajPB').value.trim()], ['precio_pro', $('#ajPP').value.trim()]].map(([clave, valor]) => ({clave, valor}));
+      ].map(([clave, valor]) => ({clave, valor}));
     if(await guardar(sb.from('maestro_ajustes').upsert(filas), 'Ajustes guardados')){
       // el margen cambia la fecha de bloqueo de tu empresa: se vuelve a aplicar
       const pr = empresas.find(e => e.principal); if(pr) await sb.from('maestro_empresas').update({notas: pr.notas}).eq('id', pr.id);
     }
   };
+  if(hay40){
+    const leerFilas = (sel, attr) => [...document.querySelectorAll(sel)].map((tr, i) => { const o = {clave: tr.dataset[attr], orden: i + 1};
+      tr.querySelectorAll('[data-k]').forEach(el => { o[el.dataset.k] = el.type === 'checkbox' ? el.checked : (el.dataset.k === 'precio' ? num(el.value) : (el.value.trim() || null)); });
+      if(sel.includes('data-plan')) o.incluye = [...tr.querySelectorAll('[data-mod]:checked')].map(c => c.dataset.mod);
+      return o; });
+    $('#guardarPlanes').onclick = async () => { const filas = leerFilas('#tPlanes tr[data-plan]', 'plan'); if(filas.some(f => !f.nombre)){ toast('Cada plan tiene que tener nombre.', true); return; } guardar(sb.from('maestro_planes').upsert(filas), 'Planes guardados'); };
+    $('#guardarExtras').onclick = async () => { const filas = leerFilas('#tExtras tr[data-extrafila]', 'extrafila'); if(filas.some(f => !f.nombre)){ toast('Cada extra tiene que tener nombre.', true); return; } guardar(sb.from('maestro_extras').upsert(filas), 'Extras guardados'); };
+    $('#nuevoPlan').onclick = () => { const n = (prompt('Nombre del plan nuevo:') || '').trim(); if(!n) return; let k = slug(n) || 'plan'; while(planDe(k)) k += '_2';
+      guardar(sb.from('maestro_planes').insert({clave: k, nombre: n, incluye: ['app'], orden: planes.length + 1}), 'Plan añadido: ponle precio y lo que incluye'); };
+    $('#nuevoExtra').onclick = () => { const n = (prompt('Nombre del extra nuevo:') || '').trim(); if(!n) return; let k = slug(n) || 'extra'; while(extrasCat.some(x => x.clave === k)) k += '_2';
+      guardar(sb.from('maestro_extras').insert({clave: k, nombre: n, orden: extrasCat.length + 1}), 'Extra añadido: ponle precio'); };
+  }
   $('#anadirAdmin').onclick = async () => { const em = $('#nuevoAdmin').value.trim().toLowerCase(); if(!/^\S+@\S+\.\S+$/.test(em)){ toast('Escribe un correo válido.', true); return; } guardar(sb.from('maestro_admins').insert({email: em}), 'Administrador añadido'); };
 }
 
@@ -401,6 +458,9 @@ document.addEventListener('click', async ev => {
     return guardar(sb.from('maestro_empresas').update({estado}).eq('id', e.id), 'Reactivada');
   }
   if(b.dataset.borrarpago){ if(!confirm('¿Borrar este apunte de cobro?')) return; return guardar(sb.from('maestro_pagos').delete().eq('id', b.dataset.borrarpago), 'Apunte borrado'); }
+  if(b.dataset.borrarplan){ if(!confirm('¿Borrar este plan?')) return; return guardar(sb.from('maestro_planes').delete().eq('clave', b.dataset.borrarplan), 'Plan borrado'); }
+  if(b.dataset.borrarextra){ if(!confirm('¿Borrar este extra?')) return; return guardar(sb.from('maestro_extras').delete().eq('clave', b.dataset.borrarextra), 'Extra borrado'); }
+  if(b.dataset.remoto) return pedirRemoto(empresas.find(x => x.id === b.dataset.remoto));
   if(b.dataset.quitaradmin){ if(!confirm(`¿Quitar a ${b.dataset.quitaradmin} como administrador?`)) return; return guardar(sb.from('maestro_admins').delete().eq('email', b.dataset.quitaradmin), 'Quitado'); }
 });
 
@@ -410,7 +470,10 @@ function abrirEmpresa(e){
   $('#meTit').textContent = e ? 'Editar empresa' : 'Nueva empresa';
   const v = (id, val) => $('#' + id).value = val == null ? '' : val;
   v('meNombre', e && e.nombre); v('meNif', e && e.nif); v('meContacto', e && e.contacto); v('meEmail', e && e.email); v('meTel', e && e.telefono); v('meDir', e && e.direccion);
-  v('mePlan', e ? e.plan : 'pro'); v('meCamiones', e ? e.camiones : 1); v('meEstado', e ? e.estado : 'prueba');
+  $('#mePlan').innerHTML = planes.filter(p => p.activo !== false || (e && e.plan === p.clave)).map(p => `<option value="${esc(p.clave)}">${esc(p.nombre)}${p.descripcion ? ' — ' + esc(p.descripcion).slice(0, 60) : ''}</option>`).join('');
+  v('mePlan', e ? e.plan : (planDe('pro') ? 'pro' : (planes[0] || {}).clave)); v('meCamiones', e ? e.camiones : 1); v('meEstado', e ? e.estado : 'prueba');
+  const tiene = e ? extrasDe(e) : [];
+  $('#meExtras').innerHTML = extrasCat.filter(x => x.activo !== false || tiene.includes(x.clave)).length ? '<b style="font-size:.85rem">Extras contratados</b>' + extrasCat.filter(x => x.activo !== false || tiene.includes(x.clave)).map(x => `<label style="flex-direction:row;align-items:center;gap:8px;margin-top:4px"><input type="checkbox" data-extra="${esc(x.clave)}" ${tiene.includes(x.clave) ? 'checked' : ''}> ${esc(x.nombre)}${x.precio != null && x.precio !== '' ? ` (${eur(num(x.precio))} por camión y mes)` : ''}${x.descripcion ? `<span class="hint"> · ${esc(x.descripcion)}</span>` : ''}</label>`).join('') : '';
   v('meDias', e ? '' : (ajustes.dias_prueba || 30));
   v('mePrueba', e ? e.prueba_hasta : sumarDias(hoy(), +ajustes.dias_prueba || 30)); v('mePagado', e && e.pagado_hasta);
   v('mePrecio', e && e.precio_camion != null ? String(e.precio_camion).replace('.', ',') : ''); v('meMensaje', e && e.mensaje); v('meNotas', e && e.notas);
@@ -431,7 +494,10 @@ $('#meGuardar').onclick = async () => {
     precio_camion: num($('#mePrecio').value), mensaje: $('#meMensaje').value.trim() || null, notas: $('#meNotas').value.trim() || null,
     principal: $('#mePrincipal').checked
   };
-  if(empresas.length && 'contar_autonomos' in empresas[0]) row.contar_autonomos = $('#meAutonomos').checked;   // (con la actualización 37)
+  if(empresas.some(x => 'contar_autonomos' in x)) row.contar_autonomos = $('#meAutonomos').checked;   // (con la actualización 37)
+  const extrasMarcados = [...document.querySelectorAll('#meExtras [data-extra]:checked')].map(c => c.dataset.extra);
+  if(hay40) row.extras = extrasMarcados;
+  if(empresas.some(x => 'extra_contractual' in x)) row.extra_contractual = extrasMarcados.includes('contractual');   // (con la actualización 38)
   if(row.estado === 'prueba' && !row.prueba_hasta){ $('#meMsg').textContent = 'Pon hasta qué día dura la prueba.'; return; }
   if(row.principal){ const otra = empresas.find(x => x.principal && (!editando || x.id !== editando.id)); if(otra){ if(!confirm(`Ahora la empresa principal es «${otra.nombre}». ¿Cambiarla por esta?`)) return; await sb.from('maestro_empresas').update({principal:false}).eq('id', otra.id); } }
   if(editando && editando.principal && (row.estado === 'suspendida' || row.estado === 'baja') && !confirm('Es TU empresa: si la suspendes, se bloquea tu propio cartón. ¿Seguir?')) return;
@@ -439,6 +505,38 @@ $('#meGuardar').onclick = async () => {
   if(await guardar(q, editando ? 'Guardado' : 'Empresa dada de alta')){ $('#mEmpresa').hidden = true; editando = null; }
 };
 
+// ---- conexión remota (soporte): se pide permiso y la dirección de la empresa lo autoriza desde su cartón ----
+let remoto = null;
+async function pedirRemoto(e){
+  if(!hay40){ toast('Para la conexión remota ejecuta antes la actualización 40 en Supabase.', true); return; }
+  if(!e.principal){ alert(`Por ahora solo se puede entrar en el cartón de tu empresa principal: cada empresa tiene todavía su propio sistema.\n\nCuando todas estén en el mismo sistema (fase 2), el botón «Remoto» funcionará igual con «${e.nombre}».`); return; }
+  const { data: abiertos } = await sb.from('soporte_accesos').select('*').eq('estado', 'aprobado').gt('caduca', new Date().toISOString()).order('caduca', {ascending:false}).limit(1);
+  let fila = abiertos && abiertos[0];
+  if(!fila){
+    const motivo = prompt(`¿Para qué necesitas entrar en el cartón de ${e.nombre}? (lo verá su dirección)`, 'Revisar una incidencia'); if(motivo === null) return;
+    const { data, error } = await sb.from('soporte_accesos').insert({empresa_id: e.id, pedido_por: miEmail, motivo: motivo.trim() || null}).select('*').single();
+    if(error){ toast('No se pudo pedir el acceso: ' + error.message, true); return; }
+    fila = data;
+  }
+  remoto = {fila, empresa: e, timer: null};
+  $('#mrTit').textContent = '🛟 Conexión remota · ' + e.nombre; $('#mRemoto').hidden = false; pintarRemoto();
+  remoto.timer = setInterval(async () => { if(!remoto) return; const { data } = await sb.from('soporte_accesos').select('*').eq('id', remoto.fila.id).single(); if(data && remoto){ remoto.fila = data; pintarRemoto(); } }, 3000);
+}
+function pintarRemoto(){
+  const f = remoto.fila, h = f.caduca ? new Date(f.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}) : '';
+  const caducada = f.estado === 'pendiente' && Date.now() - new Date(f.pedido).getTime() > 30 * 60000;
+  $('#mrAbrir').hidden = !(f.estado === 'aprobado' && f.token && new Date(f.caduca) > new Date());
+  $('#mrTxt').innerHTML = f.estado === 'aprobado' ? (new Date(f.caduca) > new Date() ? `✅ <b>Autorizado</b> por ${esc(f.respondido_por || 'dirección')} hasta las <b>${h}</b>. Pulsa «Abrir su cartón».` : '⌛ El acceso ya ha caducado. Cierra y vuelve a pedirlo.')
+    : f.estado === 'rechazado' ? `❌ ${esc(f.respondido_por || 'Dirección')} no ha autorizado el acceso.`
+    : f.estado === 'cerrado' ? '🔒 Dirección ha cortado el acceso (o se ha cerrado).'
+    : caducada ? '⌛ Nadie ha contestado en 30 minutos. Cierra y vuelve a pedirlo.'
+    : `⏳ Esperando permiso… A la dirección de <b>${esc(remoto.empresa.nombre)}</b> le ha salido un aviso en su cartón para autorizarlo. (Tiene que estar conectada con su usuario de dirección.)`;
+}
+$('#mrAbrir').onclick = () => { if(remoto && remoto.fila.token) window.open('carton.html?soporte=' + encodeURIComponent(remoto.fila.token), '_blank', 'noopener'); };
+$('#mrCerrar').onclick = async () => {
+  if(remoto){ clearInterval(remoto.timer); if(remoto.fila.estado === 'pendiente') await sb.from('soporte_accesos').update({estado:'cerrado'}).eq('id', remoto.fila.id); }
+  remoto = null; $('#mRemoto').hidden = true;
+};
 // ---- cobro ----
 function hastaCobro(e, meses){
   const desde = e.pagado_hasta && e.pagado_hasta >= hoy() ? sumarDias(e.pagado_hasta, 1) : hoy();
@@ -455,7 +553,7 @@ function recalcularCobro(){
   const e = cobrando, m = +$('#mcMeses').value, men = mensual(e);
   $('#mcImporte').value = men == null ? '' : String(Math.round(men * m * 100) / 100).replace('.', ',');
   $('#mcHasta').value = hastaCobro(e, m);
-  $('#mcAyuda').textContent = men == null ? 'Este plan no tiene precio: escribe el importe a mano (o pon los precios en Ajustes).' : `${e.camiones} ${e.camiones == 1 ? 'camión' : 'camiones'} × ${eur(precioCamion(e))} × ${m} mes${m === 1 ? '' : 'es'}.`;
+  $('#mcAyuda').textContent = men == null ? 'Este plan no tiene precio: escribe el importe a mano (o pon los precios en Ajustes).' : `${e.camiones} ${e.camiones == 1 ? 'camión' : 'camiones'} × ${eur(precioCamion(e) + precioExtras(e))}${precioExtras(e) ? ` (plan ${eur(precioCamion(e))} + extras ${eur(precioExtras(e))})` : ''} × ${m} mes${m === 1 ? '' : 'es'}.`;
 }
 $('#mcMeses').onchange = recalcularCobro;
 $('#mcCancelar').onclick = () => { $('#mCobro').hidden = true; cobrando = null; };
