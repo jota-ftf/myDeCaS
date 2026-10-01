@@ -279,7 +279,7 @@ table.adm input.field{width:90px;padding:3px 6px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);align-items:center}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .legend .st{width:18px;height:18px;font-size:10px;cursor:default}
-.estados-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px;color:var(--text,inherit);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 0 10px}
+.estados-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px;color:var(--text,inherit);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 0 10px;position:sticky;top:var(--alto-cab,0px);z-index:29;box-shadow:0 4px 8px -6px rgba(0,0,0,.3)}
 .estados-bar span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .estados-bar small{color:var(--muted)}
 .estados-bar .st{width:20px;height:20px;font-size:11px;cursor:default}
@@ -2222,7 +2222,7 @@ async function renderBajas(box){
   const meses = +ajustes.meses_conservacion || 12;
   const nombreTabla = {personal:'Personal', clientes:'Cliente', transportistas:'Transportista'};
   box.innerHTML = `<div class="fich-head"><div><h2>Bajas y avisos</h2><p class="hint">Quien tiene DeCAs no se puede borrar hasta que pasa el plazo de conservación. Aquí ves cuándo se podrá y, llegado el momento, descargas sus DeCAs y lo borras.</p></div>
-      <label class="ctl solo-direccion">Conservar los DeCAs durante (lo decide dirección)<span style="display:flex;gap:6px"><input class="field" id="mesesConserv" type="number" min="12" step="1" value="${meses}" style="width:90px"> meses <button type="button" class="btn small" id="guardarMeses">Guardar</button></span></label></div>
+      <span class="hint">Los DeCAs se conservan <b>${meses} meses</b>.</span></div>
     ${bajasListas.length ? `<div class="fich-cols">${bajasListas.map(b => `<div class="baja-card ${b.lista ? 'lista' : ''}">
         <b>${esc(b.fila.nombre)} <span class="pill preparando">${nombreTabla[b.tabla]}</span></b>
         <span class="hint">De baja desde ${b.fila.fecha_baja ? new Date(b.fila.fecha_baja).toLocaleDateString('es-ES') : '—'} · última orden ${b.ultima ? b.ultima.toLocaleDateString('es-ES') : '—'}</span>
@@ -2246,11 +2246,6 @@ function renderAjustes(box){
           ? 'Mientras estáis de pruebas se pueden anular DeCAs desde el cartón. Cuando empecéis a trabajar de verdad, pasa a uso real: a partir de ahí ningún DeCA se podrá anular desde la app (solo el administrador, desde Supabase).'
           : 'Uso real activado. Los DeCAs ya no se pueden anular desde la app. Para volver a pruebas hay que pedírselo al administrador.'}</span>
         ${enPruebas() ? '<button type="button" class="btn primary" id="pasarReal">Pasar a uso real</button>' : ''}
-      </div>
-      <div class="baja-card">
-        <b>Conservación de los DeCAs</b>
-        <span class="hint">Tiempo mínimo que se guardan los DeCAs antes de poder borrar a alguien dado de baja (12 meses como mínimo).</span>
-        <span style="display:flex;gap:6px;align-items:center"><input class="field" id="mesesConserv" type="number" min="12" step="1" value="${meses}" style="width:90px"> meses <button type="button" class="btn small" id="guardarMeses">Guardar</button></span>
       </div>
       <div class="baja-card">
         <b>Descargas y alertas</b>
@@ -3042,7 +3037,6 @@ document.addEventListener('click', async e => {
     if(b.dataset.volcar){ const [t, id] = b.dataset.volcar.split('|'); b.disabled = true; try{ await volcarDecas(t, id); } finally { b.disabled = false; } return; }
     if(b.dataset.borrardef){ const [t, id] = b.dataset.borrardef.split('|'); return borrarDefinitivo(t, id); }
     if(b.dataset.reactivar){ const [t, id] = b.dataset.reactivar.split('|'); try{ await escribirComprobado(sb.from(t).update({baja:false, fecha_baja:null}).eq('id', id), 'Reactivado'); await cargarMaestros(); renderFicheros(); }catch(_){} return; }
-    if(b.id === 'guardarMeses'){ const v = Math.max(12, parseInt($('#mesesConserv').value, 10) || 12); if(await guardarAjuste('meses_conservacion', String(v))){ toast('Guardado'); await comprobarBajas(); renderFicheros(); } return; }
     if(b.id === 'waAnadir'){ const nombre = $('#waNombre').value.trim(), url = $('#waUrl').value.trim(); if(!nombre || !/^https:\/\/(chat|web)\.whatsapp\.com\//.test(url)){ toast('Pon un nombre y un enlace que empiece por https://chat.whatsapp.com/', true); return; }
       const gs = gruposWa(); gs.push({nombre, url}); if(await guardarAjuste('grupos_whatsapp', JSON.stringify(gs))) renderFicheros(); return; }
     if(b.dataset.waborrar !== undefined){ const gs = gruposWa(); gs.splice(+b.dataset.waborrar, 1); if(await guardarAjuste('grupos_whatsapp', JSON.stringify(gs))) renderFicheros(); return; }
@@ -3394,6 +3388,11 @@ document.body.dataset.sesion = 'no';
   else { if(tk && ses.error) guardarToken(''); mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
 })();
 })();
+
+// La leyenda de estados se queda siempre a la vista: justo debajo de la cabecera fija, o arriba del todo si la pantalla es pequeña
+(function(){ const cab = document.querySelector('.cabecera-fija'); if(!cab) return;
+  const ajustar = () => document.documentElement.style.setProperty('--alto-cab', (getComputedStyle(cab).position === 'sticky' ? Math.max(0, cab.getBoundingClientRect().height) : 0) + 'px');
+  if(window.ResizeObserver) new ResizeObserver(ajustar).observe(cab); addEventListener('resize', ajustar); ajustar(); })();
 </script>
 </body>
 </html>
