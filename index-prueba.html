@@ -92,6 +92,12 @@
   .alerta-lejos{background:rgba(255,92,92,.15);border:2px solid var(--bad);border-radius:12px;padding:12px;margin:8px 0;font-weight:700;color:var(--text)}
   details.card summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}
   details.card summary::-webkit-details-marker{display:none}
+
+/* Cargas / descargas sin nada: la tarjeta se queda plegada (solo el título); al tocarla se abre */
+.card.plegable.vacia > :not(.row):not(#nuevoDecaBtn){display:none!important}
+.card.plegable.vacia > .row{cursor:pointer;opacity:.75}
+.card.plegable.vacia > .row strong::after{content:'  ▸ ver';font-weight:400;font-size:.8rem;color:var(--muted)}
+.card.plegable > .row{cursor:pointer}
 </style>
 </head>
 <body>
@@ -148,7 +154,7 @@
     <div class="pmeta" id="pinMsg" style="margin-top:6px"></div>
   </div>
 
-  <div class="card">
+  <div class="card plegable" id="cargasCard">
     <div class="row"><strong>📋 Cargas pendientes de este viaje</strong><span class="badge" id="pendientesBadge">0</span></div>
     <div class="pmeta" style="margin:4px 0 10px">Toca una carga para trabajar en ella — cada una genera su propio DeCA</div>
     <div id="pendientesLista"><div class="empty">Elige quién eres arriba para ver tus cargas</div></div>
@@ -203,7 +209,7 @@
     <datalist id="ndListaMercancias"><option value="Frutas y hortalizas frescas"><option value="Frutas frescas"><option value="Hortalizas frescas"><option value="Cítricos"><option value="Plantas y flores"></datalist>
   </div>
 
-  <div class="card" id="descargasCard" style="display:none">
+  <div class="card plegable" id="descargasCard" style="display:none">
     <div class="row"><strong id="descargasTitulo">🚚 Descargas pendientes</strong><span class="badge" id="descargasBadge">0</span></div>
     <div class="pmeta" id="descargasAyuda" style="margin:4px 0 10px">DeCAs que llevas en ruta ahora mismo — márcalos cuando descargues en destino</div>
     <div id="viajeObs"></div>
@@ -1919,6 +1925,21 @@ if(sb){
 }catch(e){
   document.body.innerHTML = '<div style="padding:20px;font-family:sans-serif;color:#c00">Error cargando la app: '+e.message+'</div>';
 }
+
+// ====== Tarjetas plegables: si no hay cargas o descargas, se queda solo el título (al tocarlo se abre o se cierra) ======
+(function(){
+  const pares = [['cargasCard','pendientesBadge'], ['descargasCard','descargasBadge']];
+  const aplicar = (card, badge) => { const n = Number(badge.textContent) || 0;
+    if(n > 0){ card.classList.remove('vacia'); delete card.dataset.abierta; }   // si llega algo, se abre sola
+    else card.classList.toggle('vacia', card.dataset.abierta !== '1'); };
+  pares.forEach(([c, b]) => { const card = document.getElementById(c), badge = document.getElementById(b); if(!card || !badge) return;
+    new MutationObserver(() => aplicar(card, badge)).observe(badge, {childList:true, characterData:true, subtree:true});
+    card.querySelector('.row').addEventListener('click', e => {
+      if(e.target.closest('button,a,select,input')) return;
+      if((Number(badge.textContent) || 0) > 0) return;   // con cosas dentro siempre está abierta
+      card.dataset.abierta = card.classList.contains('vacia') ? '1' : '0'; aplicar(card, badge); });
+    aplicar(card, badge); });
+})();
 </script>
 </body>
 </html>
