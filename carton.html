@@ -279,6 +279,16 @@ table.adm input.field{width:90px;padding:3px 6px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);align-items:center}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .legend .st{width:18px;height:18px;font-size:10px;cursor:default}
+.estados-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px;color:var(--text,inherit);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 12px;margin:0 0 10px;position:sticky;top:var(--alto-cab,0px);z-index:29;box-shadow:0 4px 8px -6px rgba(0,0,0,.3)}
+/* Día cerrado: no se puede añadir ni cambiar nada, salvo los camiones que aún no han terminado el viaje */
+body[data-cerrado="1"] #addLinea, body[data-cerrado="1"] #addCamion, body[data-cerrado="1"] #tray .lines.empty::after{display:none!important}
+body[data-cerrado="1"] #board aside .panel, body[data-cerrado="1"] #tray, body[data-cerrado="1"] .truck.terminado{opacity:.72}
+body[data-cerrado="1"] .truck:not(.terminado){outline:2px solid var(--accent);outline-offset:2px}
+.tray-zona-t{font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 2px;text-transform:uppercase;letter-spacing:.04em}
+.dirblock h3 .nec{font-weight:600;color:var(--muted)}.dirblock h3 .nec.falta{color:var(--bad)}
+.estados-bar span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.estados-bar small{color:var(--muted)}
+.estados-bar .st{width:20px;height:20px;font-size:11px;cursor:default}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 .tools-right{justify-content:flex-end}
 @media (max-width:760px){
@@ -307,6 +317,11 @@ table.adm input.field{width:90px;padding:3px 6px}
 
 /* ====== Desplegable con buscador ====== */
 .combo{position:relative;grid-column:1/-1}
+/* × pequeña para borrar lo escrito (solo sale si hay algo) */
+.combo > input.field{padding-right:30px}
+.limpiar{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;border:0;border-radius:50%;background:var(--line);color:var(--ink);font-size:15px;line-height:22px;padding:0;cursor:pointer;opacity:.75}
+.limpiar:hover{opacity:1;background:var(--bad);color:#fff}
+input:placeholder-shown + .limpiar{display:none}
 .combo-list{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 2px);max-height:280px;overflow-y:auto;background:var(--surface);border:1px solid var(--pen);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .combo-list div{padding:6px 10px;cursor:pointer;font-size:13.5px}
 .combo-list div.act,.combo-list div:hover{background:var(--pen-soft)}
@@ -352,9 +367,11 @@ body:not([data-modo="hoja"]) #hoja{display:none}
 .hnueva .combo{grid-column:auto}
 .hnueva .field{padding:5px 6px;font-size:13px}
 @media (max-width:700px){.hnueva{grid-template-columns:1fr 1fr}}
-.hsalen{display:grid;grid-template-columns:minmax(0,1fr) 64px 56px auto;gap:6px;align-items:end;min-height:30px;border-bottom:1px solid var(--line);font-family:var(--f-hand);font-size:15px;text-transform:uppercase;padding:2px 0}
+.hsalen{display:grid;grid-template-columns:minmax(0,1fr) 64px minmax(84px,auto) auto;gap:6px;align-items:end;min-height:30px;border-bottom:1px solid var(--line);font-family:var(--f-hand);font-size:15px;text-transform:uppercase;padding:2px 0}
 .hsalen .hdir{appearance:none;-webkit-appearance:none;border:0;border-bottom:1.5px solid var(--ink);background:transparent;font:inherit;text-align:center;text-align-last:center;color:var(--pen);font-weight:700;cursor:pointer}
 .hsalen .hpal{font-family:var(--f-mono);font-size:11.5px;text-align:right;text-transform:none;color:var(--muted)}
+.hsalen .hpal.over{color:var(--bad);font-weight:800}.hsalen .hpal.full{color:var(--ok,#2e7d32);font-weight:700}
+.hsel.over{border-color:var(--bad)!important;color:var(--bad);font-weight:700}
 .hsalen .btn{font-family:var(--f-body);text-transform:none}
 
 /* ====== Ventana de edición de un pedido ====== */
@@ -393,11 +410,11 @@ body:not([data-vista="carton"]) #board, body:not([data-vista="carton"]) #orders,
 body[data-vista="carton"] #ficheros{display:none!important}
 .fich{gap:14px}
 .fich h2{font-size:18px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:800}
-.fich-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.fich-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;position:sticky;top:var(--alto-cab,0px);z-index:20;background:var(--surface);padding:8px 0;margin-top:-8px}
 .fich-head .field{max-width:320px}
-.tabla-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
+.tabla-wrap{overflow:auto;max-height:calc(100vh - var(--alto-cab,0px) - 150px);border:1px solid var(--line);border-radius:var(--radius)}   /* la tabla se desplaza por dentro: título, botones y nombres de columna siempre a la vista */
 table.fichero{width:100%;border-collapse:collapse;font-size:13px}
-table.fichero th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 6px;background:var(--kraft-2);position:sticky;top:0}
+table.fichero th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 6px;background:var(--kraft-2);position:sticky;top:0;z-index:2}
 table.fichero td{padding:4px 6px;border-top:1px solid var(--line);vertical-align:middle}
 table.fichero td .field{padding:4px 6px}
 table.fichero tr.nuevo td{background:var(--pen-soft)}
@@ -457,6 +474,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
 <div class="login" id="login" hidden>
   <div class="login-card">
     <h1>El cartón de Tráfico</h1>
+    <p id="loginEmpresa" hidden style="margin:-6px 0 4px;font-weight:800;color:var(--accent)"></p>
     <div id="loginNormal" style="display:flex;flex-direction:column;gap:10px">
       <p class="hint" style="margin:0">Elige tu área y escribe tu PIN.</p>
       <select class="field" id="loginUser" aria-label="Área"></select>
@@ -495,8 +513,8 @@ table.fichero td.acc{white-space:nowrap;width:1%}
   <nav class="seg vistas" id="vistas" aria-label="Secciones">
     <button type="button" data-v="carton" aria-pressed="true">Cartón</button>
     <button type="button" data-v="clientes" aria-pressed="false">Clientes</button>
-    <button type="button" data-v="transportistas" aria-pressed="false">Transportistas</button>
-    <button type="button" data-v="autonomos" aria-pressed="false">Autónomos</button>
+    <button type="button" data-v="transportistas" aria-pressed="false">Transportista Contractual</button>
+    <button type="button" data-v="autonomos" aria-pressed="false">Transportista Efectivo</button>
     <button type="button" data-v="personal" aria-pressed="false">Personal</button>
     <button type="button" data-v="flota" aria-pressed="false">Flota</button>
     <button type="button" data-v="destinos" aria-pressed="false">Destinos</button>
@@ -543,6 +561,17 @@ table.fichero td.acc{white-space:nowrap;width:1%}
   </div>
   </div>
 
+  <div class="estados-bar solo-carton" aria-label="Leyenda de estados" title="Los estados cambian solos con lo que hacen cargadores y chóferes en su app. Toca el círculo de un pedido para marcar o quitar un problema.">
+    <b>Estados:</b>
+    <span><i class="st pend"></i>Sin enviar</span>
+    <span><i class="st avis">•</i>Orden enviada</span>
+    <span><i class="st reco">✓</i>DeCA hecho</span>
+    <span><i class="st hub">⌂</i>En la nave</span>
+    <span><i class="st carg">✓</i>En el camión</span>
+    <span><i class="st desc">⚑</i>Descargado</span>
+    <span><i class="st lejos">!</i>Descargado lejos</span>
+    <span><i class="st prob">✗</i>Problema <small>(toca el círculo)</small></span>
+  </div>
   <div class="alertas-bar" id="alertasBar" hidden></div>
   <div class="aviso-bajas solo-direccion" id="avisoBajas" hidden></div>
   <section class="orders" id="orders" hidden aria-live="polite"></section>
@@ -558,7 +587,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
           <select class="field full" id="camChofer" aria-label="Chófer"></select>
           <select class="field full" id="camAuto" aria-label="Autónomo"></select>
           <select class="field full" id="camAutoCond" aria-label="Conductor del autónomo" hidden></select>
-          <select class="field full" id="camDir" aria-label="Dirección"><option value="X" selected>Sin dirección aún</option><option value="V">V · Levante</option><option value="S">S · Sur</option></select>
+          <select class="field full" id="camDir" aria-label="Dirección"></select>
           <button class="btn full" type="submit">Añadir al cartón</button>
         </form>
         <button type="button" class="btn small" id="copiarAyer">Copiar «salen hoy» del día anterior</button>
@@ -576,13 +605,14 @@ table.fichero td.acc{white-space:nowrap;width:1%}
         <h2 id="h-nuevo">Apuntar pedido</h2>
         <p class="hint">Lo que entra por teléfono o correo. Va a «sin asignar».</p>
         <form class="row" id="addLinea" autocomplete="off">
-          <div class="combo"><input class="field" id="lnAlm" placeholder="Almacén — escribe o elige de la lista" data-combo="almacenes" required autocomplete="off"><div class="combo-list" hidden></div></div>
-          <div class="combo"><input class="field" id="lnCli" placeholder="Cliente (cargador contractual)" data-combo="clientes" required autocomplete="off"><div class="combo-list" hidden></div></div>
-          <div class="combo"><input class="field" id="lnDest" placeholder="Destino" data-combo="destinos" required autocomplete="off"><div class="combo-list" hidden></div></div>
-          <input class="field full" id="lnRef" placeholder="Nº pedido / referencia (opcional)">
-          <select class="field full" id="lnTrans" aria-label="Transportista efectivo"></select>
+          <div class="combo"><input class="field" id="lnAlm" placeholder="Almacén — escribe o elige de la lista" data-combo="almacenes" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnAlm" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
+          <div class="combo"><input class="field" id="lnCli" placeholder="Cliente (cargador contractual)" data-combo="clientes" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnCli" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
+          <div class="combo"><input class="field" id="lnDest" placeholder="Destino" data-combo="destinos" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnDest" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
+          <div class="combo"><input class="field" id="lnRef" placeholder="Nº pedido / referencia (opcional)"><button type="button" class="limpiar" data-limpiar="lnRef" aria-label="Borrar" title="Borrar">×</button></div>
+          <select class="field full" id="lnContr" aria-label="Transportista contractual" title="Sale en el DeCA encima del transportista efectivo" hidden></select>
+          <select class="field full" id="lnTrans" aria-label="Transportista efectivo" title="Si lo dejas en «Transportista Efectivo», se pone solo el del camión (el autónomo o tu empresa)"></select>
           <select class="field full" id="lnMerc" aria-label="Naturaleza de la mercancía"></select>
-          <input class="field full" id="lnAut" placeholder="Nº de autorización o ficha ADR — déjalo vacío si no procede">
+          <div class="combo"><input class="field" id="lnAut" placeholder="Nº de autorización o ficha ADR — déjalo vacío si no procede"><button type="button" class="limpiar" data-limpiar="lnAut" aria-label="Borrar" title="Borrar">×</button></div>
           <div class="inline full">
             <input class="field num" id="lnE" type="number" min="0" step="1" placeholder="Euro" aria-label="Europalets">
             <input class="field num" id="lnM" type="number" min="0" step="1" placeholder="Metro" aria-label="Palets de metro">
@@ -595,20 +625,6 @@ table.fichero td.acc{white-space:nowrap;width:1%}
         </form>
       </section>
 
-      <section class="panel" aria-labelledby="h-leyenda">
-        <h2 id="h-leyenda">Estados</h2>
-        <div class="legend">
-          <span><i class="st pend"></i>Sin enviar</span>
-          <span><i class="st avis">•</i>Orden enviada</span>
-          <span><i class="st reco">✓</i>DeCA hecho</span>
-          <span><i class="st hub">⌂</i>En el hub</span>
-          <span><i class="st carg">✓</i>En el camión</span>
-          <span><i class="st desc">⚑</i>Descargado</span>
-          <span><i class="st lejos">!</i>Descargado lejos</span>
-          <span><i class="st prob">✗</i>Problema</span>
-        </div>
-        <p class="hint">Los estados cambian solos con lo que hacen cargadores y chóferes en su app. Toca el círculo para marcar o quitar un problema.</p>
-      </section>
 
       <div class="fin-dia">
         <button type="button" class="linkbtn" id="finDiaBtn" title="Cierra el día y deja el cartón en blanco para el día siguiente">🌙 Fin de jornada…</button>
@@ -619,7 +635,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       <div class="carton-head"><h2>Cartón del día</h2><span class="dia-cerrado" id="diaCerrado" hidden></span><span class="date" id="fechaTxt"></span></div>
       <section class="tray" id="tray">
         <div class="section-label"><span>Pedidos sin asignar</span><span class="load" id="trayLoad"></span></div>
-        <ul class="lines" data-zone="tray"></ul>
+        <div id="trayZonas"><ul class="lines empty" data-zone="tray"></ul></div>
       </section>
       <div id="dirBlocks"></div>
       <div id="hoja" class="hoja"></div>
@@ -651,6 +667,13 @@ table.fichero td.acc{white-space:nowrap;width:1%}
     <p style="margin:0;color:#667;font-size:.9rem">Tus datos y DeCAs se conservan. Los códigos QR de los DeCAs ya hechos siguen funcionando.</p>
   </div>
 </div>
+<div id="soporteAviso" hidden style="position:fixed;left:0;right:0;bottom:0;z-index:90;background:#3ea6ff;color:#001428;text-align:center;font-weight:700;padding:8px 10px;font-size:.95rem;box-shadow:0 -4px 12px rgba(0,0,0,.25)"></div>
+<div class="modal" id="soporteDlg" hidden role="dialog" aria-modal="true"><div class="modal-card" style="max-width:480px">
+  <h2 style="margin:0">🛟 El soporte de myDeCaS pide entrar</h2>
+  <p id="soporteTxt" style="margin:8px 0"></p>
+  <p class="hint">Solo podrá ver y usar este programa (el cartón), con los mismos permisos que dirección, durante <b>1 hora</b>. Nunca tu ordenador ni nada más. Puedes cortarlo cuando quieras.</p>
+  <div class="send-row" style="justify-content:flex-end"><button type="button" class="btn" id="soporteNo">No autorizar</button><button type="button" class="btn primary" id="soporteSi">Autorizar 1 hora</button></div>
+</div></div>
 <div id="licenciaAviso" hidden style="background:#ff9f43;color:#1a1000;text-align:center;font-weight:700;padding:6px 10px;font-size:.9rem"></div>
 <div id="printArea"></div>
 <div class="modal" id="pinDlg" hidden role="dialog" aria-modal="true" aria-labelledby="pinTit">
@@ -688,8 +711,9 @@ table.fichero td.acc{white-space:nowrap;width:1%}
         </div></label>
       <label class="chk full" style="flex-direction:row;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);font-weight:500"><input type="checkbox" id="edRem"> Va a dos alturas (remonta)</label>
       <label>Camión (chófer)<select class="field" id="edCam"></select></label>
-      <label>Quién lo recoge<select class="field" id="edModo"><option value="hub">Cargador → hub</option><option value="ruta">El chófer en ruta</option></select></label>
+      <label>Quién lo recoge<select class="field" id="edModo"><option value="hub">Cargador → nave</option><option value="ruta">El chófer en ruta</option></select></label>
       <label>Cargador<select class="field" id="edCg"></select></label>
+      <label id="edContrL" hidden>Transportista contractual<select class="field" id="edContr"></select></label>
       <label>Transportista efectivo<select class="field" id="edTrans"></select></label>
       <label>Naturaleza de la mercancía<select class="field" id="edMerc"></select></label>
       <label>Autorización especial<input class="field" id="edAut" placeholder="Vacío si no procede"></label>
@@ -710,18 +734,110 @@ table.fichero td.acc{white-space:nowrap;width:1%}
 const SUPABASE_URL = 'https://abeutxnyyyaxrmhoeemv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiZXV0eG55eXlheHJtaG9lZW12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyODIyNTAsImV4cCI6MjEwNTg1ODI1MH0.qQ0q0H3HbR6Dcno35uCWFYRPhKYHbSEIZAXf-_HtTfY';
 // =======================================================================================
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const EMPRESA = (() => { let q = ''; try{ q = new URLSearchParams(location.search).get('e') || ''; if(q) localStorage.setItem('empresa_codigo', q); return q || localStorage.getItem('empresa_codigo') || ''; }catch(_){ return q; } })();
+// Cada empresa tiene su propio «usuario» de Supabase en este navegador (así se pueden abrir dos empresas sin mezclarse),
+// y el soporte que entra con permiso usa uno solo para esa pestaña (no toca la sesión normal de este ordenador)
+const MODO_SOPORTE = (() => { try{ return new URLSearchParams(location.search).has('soporte') || !!sessionStorage.getItem('carton_soporte'); }catch(_){ return false; } })();
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth: MODO_SOPORTE
+  ? {storage: window.sessionStorage, storageKey: 'mydecas-soporte', persistSession: true, autoRefreshToken: true}
+  : {storageKey: 'mydecas-' + (EMPRESA || 'principal').toLowerCase(), persistSession: true, autoRefreshToken: true}});
+// ====== FASE 2: varias empresas. Cada empresa entra por su enlace (carton.html?e=codigo); sin código = la empresa principal ======
+// Cada ordenador entra en Supabase con un usuario anónimo; al poner el PIN queda unido a su empresa y solo ve lo suyo
+let authLista = null;
+function asegurarAuth(){
+  if(!authLista) authLista = (async () => {
+    try{
+      const { data } = await sb.auth.getSession();
+      if(data && data.session) return true;
+      const { error } = await sb.auth.signInAnonymously();
+      if(error){ console.warn('Sin usuario anónimo:', error.message); return false; }
+      return true;
+    }catch(e){ return false; }
+  })();
+  return authLista;
+}
+// Llama a una función nueva (con empresa) y, si la base aún no tiene la actualización 43, a la de antes
+async function rpcConEmpresa(nombre, args){
+  let { data, error } = await sb.rpc(nombre, {p_empresa: EMPRESA, ...args});
+  if(error && /function|schema cache|not find/i.test(error.message || '')) ({ data, error } = await sb.rpc(nombre, args));
+  if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
+  return data || {};
+}
 
 // Metros de carga por unidad: los mismos valores que usa la app del conductor
-const LDM = {e_pal:0.4, m_pal:0.5, carros:0.4, box:0.5, cajas:0.02};
+const LDM = {e_pal:0.4, m_pal:0.5, carros:13.2/38, box:0.5, cajas:0.02};   // carros: en un frigo normal caben 38 (9 filas de 4 de punta + las 2 últimas de estampa)
 const CAP = 13.2;   // metros útiles del remolque: 33 europalets × 0,40 m
 // Cómo se escribe cada tipo en el "detalle planificado" (lo que la app del conductor sabe leer)
 const DETALLE_TIPO = {e_pal:'europeo', m_pal:'grande (americano)', carros:'carro', box:'box', cajas:'cajas'};
 const PESO_KG = {e_pal:700, m_pal:900, carros:250, box:400, cajas:15};   // media alta de fruta y verdura; un camión lleno sale en unos 23-24 t (nunca por encima de lo legal)
 const SLOT_EURO = CAP / 33;   // un remolque coge como máximo 33 europalets
-const MERCANCIAS = ['fruta y verdura','productos perecederos','plantas vivas','congelado','secos'];
-const DIRS = ['V','S','X'];
-const DIR_TXT = {V:'Dirección Levante', S:'Dirección Sur', X:'Sin dirección aún'};
+const MERCANCIAS_BASE = ['fruta y verdura','productos perecederos','plantas vivas','congelado','secos'];
+// Las de siempre + las que se han creado desde el cartón o la app (ajuste «mercancias_extra»)
+function mercanciasTodas(){ let extra = []; try{ extra = JSON.parse(ajustes.mercancias_extra || '[]'); }catch(_){} return [...new Set([...MERCANCIAS_BASE, ...extra])]; }
+const NUEVA_MERC = '__nueva__';
+function opcionesMerc(sel){ const t = mercanciasTodas(); if(sel && !t.includes(sel)) t.push(sel); return t.map(m => `<option ${m === sel ? 'selected' : ''}>${esc(m)}</option>`).join('') + `<option value="${NUEVA_MERC}">➕ Nueva categoría…</option>`; }
+async function crearMercancia(selEl, antes){
+  const m = (prompt('Nombre de la nueva categoría de mercancía (por ejemplo: «Hortalizas de hoja»):') || '').trim();
+  if(!m){ selEl.innerHTML = opcionesMerc(antes); return; }
+  if(!mercanciasTodas().some(x => x.toLowerCase() === m.toLowerCase())){
+    let extra = []; try{ extra = JSON.parse(ajustes.mercancias_extra || '[]'); }catch(_){}
+    extra.push(m); if(!(await guardarAjuste('mercancias_extra', JSON.stringify(extra)))){ selEl.innerHTML = opcionesMerc(antes); return; }
+    toast('Categoría «' + m + '» creada: ya sale en el cartón y en la app.');
+  }
+  const igual = mercanciasTodas().find(x => x.toLowerCase() === m.toLowerCase()) || m;
+  selEl.innerHTML = opcionesMerc(igual); selEl.value = igual;
+  if(selEl.id === 'lnMerc'){ selEl.dispatchEvent(new Event('input', {bubbles:true})); }
+}
+document.addEventListener('focusin', e => { if(e.target.id === 'lnMerc' || e.target.id === 'edMerc') e.target.dataset.antes = e.target.value; });
+document.addEventListener('change', e => { if((e.target.id === 'lnMerc' || e.target.id === 'edMerc') && e.target.value === NUEVA_MERC) crearMercancia(e.target, e.target.dataset.antes || 'fruta y verdura'); });
+// Zonas / direcciones. La de cada destino se saca de su ubicación GPS (la ciudad de referencia más cercana de la lista REF_ZONAS)
+const ZONAS = [['V','Levante'],['S','Sur'],['C','Centro'],['M','Castilla-La Mancha'],['N','Norte'],['B','Badajoz'],['P','Portugal']];
+const ZONA_NOMBRE = Object.fromEntries(ZONAS);
+const DIRS = [...ZONAS.map(z => z[0]), 'X'];
+const DIR_TXT = Object.fromEntries([...ZONAS.map(([c, n]) => [c, 'Dirección ' + n]), ['X', 'Sin dirección aún']]);
+const opcionesZona = (sel, corto) => ['X', ...DIRS.filter(d => d !== 'X')].map(d => `<option value="${d}" ${(sel || 'X') === d ? 'selected' : ''}>${d === 'X' ? (corto ? '–' : 'Sin dirección aún') : (corto ? d : d + ' · ' + ZONA_NOMBRE[d])}</option>`).join('');
+// Zona de cada destino (ficha Destinos): Levante (V) o Sur (S). Si el destino no la tiene, el pedido queda «sin zona»
+let zonasDestino = {};
+// Ciudades de referencia: cada destino va a la zona de la ciudad más cercana a su ubicación GPS (lat/lng o enlace de Google Maps)
+const REF_ZONAS = [
+  ['V',37.98,-1.13],['V',37.60,-0.98],['V',37.68,-1.70],['V',38.35,-0.48],['V',39.47,-0.38],['V',39.99,-0.05],['V',41.12,1.25],['V',41.39,2.17],['V',41.98,2.82],['V',41.62,0.62],['V',39.57,2.65],
+  ['V',42.70,2.89],['V',43.61,3.88],['V',43.30,5.37],['V',45.76,4.84],['V',48.86,2.35],['V',45.46,9.19],['V',50.11,8.68],['V',52.37,4.90],['V',51.51,-0.12],['V',50.85,4.35],['V',48.14,11.58],
+  ['S',36.84,-2.46],['S',36.75,-3.52],['S',37.18,-3.60],['S',37.77,-3.79],['S',37.89,-4.78],['S',37.39,-5.98],['S',36.72,-4.42],['S',36.53,-6.29],['S',36.13,-5.45],['S',37.26,-6.94],
+  ['C',40.42,-3.70],['C',40.30,-3.73],['C',40.48,-3.36],
+  ['M',39.86,-4.03],['M',38.99,-3.93],['M',40.07,-2.14],['M',40.63,-3.17],['M',38.99,-1.86],['M',39.96,-4.83],
+  ['B',38.88,-6.97],['B',38.92,-6.34],['B',39.47,-6.37],['B',40.03,-6.09],
+  ['P',38.72,-9.14],['P',41.15,-8.61],['P',37.02,-7.93],['P',40.21,-8.43],['P',38.57,-7.91],['P',41.55,-8.42],
+  ['N',41.65,-4.72],['N',42.34,-3.70],['N',42.60,-5.57],['N',40.97,-5.66],['N',40.95,-4.12],['N',40.66,-4.70],['N',41.76,-2.46],['N',41.50,-5.75],['N',42.01,-4.53],['N',43.26,-2.93],['N',42.85,-2.67],
+  ['N',43.32,-1.98],['N',42.81,-1.64],['N',42.47,-2.45],['N',43.46,-3.80],['N',43.36,-5.84],['N',43.53,-5.66],['N',43.36,-8.41],['N',42.24,-8.72],['N',43.01,-7.56],['N',42.34,-7.86],['N',41.65,-0.88],
+  ['N',42.14,-0.41],['N',40.34,-1.11],['N',44.84,-0.58]];
+function zonaDeCoords(lat, lng){
+  let mejor = '', dMin = Infinity;
+  REF_ZONAS.forEach(([z, la, lo]) => { const dx = (lo - lng) * Math.cos((la + lat) / 2 * Math.PI / 180), dy = la - lat, d = dx*dx + dy*dy; if(d < dMin){ dMin = d; mejor = z; } });
+  return mejor;
+}
+function zonaPorUbicacion(x){
+  let lat = x.lat != null && x.lat !== '' ? parseFloat(String(x.lat).replace(',', '.')) : NaN, lng = x.lng != null && x.lng !== '' ? parseFloat(String(x.lng).replace(',', '.')) : NaN;
+  if(isNaN(lat) || isNaN(lng)){ const c = coordsDe(x.maps_url); if(c){ lat = c.lat; lng = c.lng; } }
+  if(isNaN(lat) || isNaN(lng)) return '';
+  return zonaDeCoords(lat, lng);
+}
+const zonaDestino = d => zonasDestino[normTxt(d || '')] || '';
+// Zona de un pedido: la del camión si ya va en uno con dirección; si no, la de su destino
+function zonaLinea(l){ const cam = l.camion_id && camion(l.camion_id); if(cam && cam.direccion && cam.direccion !== 'X' && ZONA_NOMBRE[cam.direccion]) return cam.direccion; return zonaDestino(l.destino) || 'X'; }
+// Botones de zona de arriba: Todos, Levante, Sur y las demás zonas solo si hoy tienen pedidos o camiones
+function pintarFiltroZonas(conCosas){
+  const box = $('#filter'); if(!box) return;
+  const ver = ['all', ...DIRS.filter(d => d !== 'X' && (['V','S'].includes(d) || conCosas.includes(d) || filter === d))];
+  const clave = ver.join(',');
+  if(box.dataset.zonas !== clave){
+    box.dataset.zonas = clave;
+    box.innerHTML = ver.map(d => `<button type="button" data-f="${d}" aria-pressed="${filter === d}">${d === 'all' ? 'Todos' : ZONA_NOMBRE[d]} <span class="cnt" id="cnt-${d}"></span></button>`).join('');
+  }
+  const cd = $('#camDir'); if(cd && !cd.options.length) cd.innerHTML = opcionesZona('X');
+}
+// Camiones que hacen falta para un grupo de pedidos (metros de carga / 13,2 m, redondeando hacia arriba)
+const sumaBultos = list => list.reduce((t, l) => { ['e_pal','m_pal','carros','box','cajas'].forEach(k => t[k] += +l[k] || 0); return t; }, {e_pal:0, m_pal:0, carros:0, box:0, cajas:0});
+const camionesPara = list => { const m = ldmDe(list); return m > 0 ? Math.ceil(m / CAP - 1e-9) : 0; };
 let posicionesPor = {};
 let almacenesNombres = [], destinosNombres = [], lugares = {};
 function transPropia(){ return transportistas.find(x => x.propia) || null; }
@@ -747,6 +863,14 @@ let camiones = [], lineas = [], cargas = {}, decas = {}, ausencias = [];
 const ausente = id => ausencias.find(a => String(a.persona_id) === String(id)) || null;
 let operativos = null;   // quién ha marcado Tráfico como operativo hoy (null = todavía nadie marcado: todos)
 const esOperativo = id => !ausente(id) && (operativos === null || operativos.includes(String(id)));
+// Tráfico y dirección también pueden coger un camión: salen al final de la lista de chóferes (solo cuentan sus ausencias)
+const esOficina = p => ['trafico','direccion'].includes(p.puesto) && !p.transportista_id;
+function opcionesChoferPropio(){
+  const ch = personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id));   // los de los autónomos van en su lista; los que no están hoy, fuera
+  const of = personal.filter(x => esOficina(x) && !ausente(x.id));
+  return '<option value="">Chófer propio de la lista…</option>' + ch.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('')
+    + (of.length ? `<optgroup label="Oficina">${of.map(x => `<option value="${x.id}">${esc(x.nombre)} (oficina)</option>`).join('')}</optgroup>` : '');
+}
 // autónomos: van en la misma lista con «a:»; «a:-» indica que la lista ya los tiene en cuenta (si no, todos disponibles)
 const autOperativo = id => operativos === null || !operativos.includes('a:-') || operativos.includes('a:' + id);
 const MOTIVOS = {baja:'Baja', vacaciones:'Vacaciones', descanso:'Descanso', otro:'No disponible'};
@@ -762,19 +886,29 @@ const fmt = n => (Math.round(n*100)/100).toLocaleString('es-ES', {maximumFractio
 // Sin tabla o sin fila = todo activo (así funciona igual antes de la actualización 30)
 let licencia = null;
 async function leerLicencia(){
-  try{ const { data, error } = await sb.from('licencia').select('*').eq('id', 1).limit(1); licencia = (!error && data && data[0]) || null; }catch(e){ licencia = null; }
+  try{ const { data, error } = await sb.from('licencia').select('*').order('id').limit(1); licencia = (!error && data && data[0]) || null; }catch(e){ licencia = null; }   // (cada empresa solo ve la suya)
   aplicarLicencia();
+}
+// Partes del programa que tiene la empresa (las pone el maestro según su plan y sus extras). Sin dato = como antes, por el nombre del plan
+function tieneModulo(m){
+  if(!licencia) return true;
+  if(Array.isArray(licencia.modulos)) return licencia.modulos.includes(m);
+  const pl = planActual();
+  if(m === 'carton') return pl !== 'estandar';
+  if(m === 'admin') return pl !== 'basico' && pl !== 'estandar';
+  if(m === 'contractual') return !!licencia.extra_contractual;
+  return true;
 }
 function planActual(){ return String((licencia && licencia.plan) || 'pro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
 function licenciaEnRegla(){ return !licencia || (licencia.activa !== false && (!licencia.hasta || String(licencia.hasta).slice(0,10) >= hoyISO())); }
 function aplicarLicencia(){
   const caja = document.getElementById('licenciaBloqueo'), aviso = document.getElementById('licenciaAviso');
-  const enRegla = licenciaEnRegla(), soloApp = planActual() === 'estandar';
+  const enRegla = licenciaEnRegla(), soloApp = !tieneModulo('carton');
   if(!enRegla || soloApp){
     document.getElementById('licIcono').textContent = enRegla ? '📱' : '⛔';
     document.getElementById('licTitulo').textContent = enRegla ? 'Tu plan no incluye el cartón' : 'Servicio suspendido';
     document.getElementById('licTexto').textContent = (licencia && licencia.mensaje) || (enRegla
-      ? 'Tu plan Estándar incluye solo la app myDeCaS para los conductores. Para usar el cartón de Tráfico, pasa al plan Básico o Pro.'
+      ? 'Tu plan incluye solo la app myDeCaS para los conductores. Para usar el cartón de Tráfico, cambia a un plan que lo incluya.'
       : 'El acceso a myDeCaS está suspendido. Ponte en contacto con myDeCaS para reactivarlo.');
     caja.hidden = false;
   } else caja.hidden = true;
@@ -782,6 +916,7 @@ function aplicarLicencia(){
   const dias = licencia && licencia.hasta ? Math.round((new Date(String(licencia.hasta).slice(0,10)) - new Date(hoyISO())) / 864e5) : null;
   if(enRegla && dias != null && dias <= 7){ aviso.textContent = dias === 0 ? '⚠️ Tu suscripción a myDeCaS vence hoy.' : `⚠️ Tu suscripción a myDeCaS vence en ${dias} día${dias === 1 ? '' : 's'} (${new Date(String(licencia.hasta).slice(0,10)).toLocaleDateString('es-ES')}).`; aviso.hidden = false; }
   else aviso.hidden = true;
+  pintarContractual();
 }
 setTimeout(leerLicencia, 0); setInterval(()=>{ if(!usuario) leerLicencia(); }, 60000);   // también en la pantalla de entrada
 function hoyISO(d){ d = d || new Date(); const z = new Date(d.getTime() - d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
@@ -846,22 +981,42 @@ function estadoLinea(l){
   return c.estado === 'cerrada' ? 'reco' : 'avis';
 }
 const ST_TXT = {pend:'', avis:'•', reco:'✓', hub:'⌂', carg:'✓', desc:'⚑', lejos:'!', prob:'✗'};
-const ST_NAME = {pend:'Sin enviar', avis:'Orden enviada, esperando carga', reco:'DeCA generado (el cargador aún no lo ha dejado en el hub)', hub:'Entregado en el hub', carg:'Cargado en el camión', desc:'Descargado en destino', lejos:'Descargado LEJOS del destino (revisar)', prob:'Problema'};
+const ST_NAME = {pend:'Sin enviar', avis:'Orden enviada, esperando carga', reco:'DeCA generado (el cargador aún no lo ha dejado en la nave)', hub:'Entregado en la nave', carg:'Cargado en el camión', desc:'Descargado en destino', lejos:'Descargado LEJOS del destino (revisar)', prob:'Problema'};
 const HECHA = e => ['reco','hub','carg','desc','lejos'].includes(e);
 function ordenar(ls){ return ls.slice().sort((a,b) => ((a.orden ?? 1e9) - (b.orden ?? 1e9)) || String(a.created_at).localeCompare(String(b.created_at))); }
 function enviada(l){ const c = l.carga_id && cargas[l.carga_id]; return !!(c && c.estado !== 'cancelada'); }
 
 // ====== CARGA DE DATOS ======
+// Supabase devuelve como mucho 1000 filas por consulta: las listas largas (clientes, destinos…) se leen por tandas
+async function leerTodo(hacer){
+  let todo = [], desde = 0;
+  while(true){
+    const { data, error } = await hacer().range(desde, desde + 999);
+    if(error) return {data: todo.length ? todo : null, error};
+    todo = todo.concat(data || []);
+    if(!data || data.length < 1000 || desde > 100000) break;
+    desde += 1000;
+  }
+  return {data: todo, error: null};
+}
+// Toda una tabla, por tandas (ordenada por su clave para no saltarse filas); si esa columna no existe, se lee como antes
+async function leerTabla(t){
+  const clave = {ajustes:'clave', remolques:'matricula'}[t] || 'id';
+  const r = await leerTodo(() => sb.from(t).select('*').order(clave));
+  if(!r.error) return r;
+  return await sb.from(t).select('*').limit(5000);
+}
 async function cargarMaestros(){
   const [p, c, t, tr, re, de] = await Promise.all([
-    sb.from('personal').select('*').order('puesto').order('nombre'),
-    sb.from('clientes').select('*').order('nombre'),
-    sb.from('transportistas').select('*').order('nombre'),
-    sb.from('tractoras').select('*').order('matricula'),
-    sb.from('remolques').select('*').order('matricula'),
-    sb.from('destinos').select('*').order('nombre'),
+    leerTodo(() => sb.from('personal').select('*').order('puesto').order('nombre').order('id')),
+    leerTodo(() => sb.from('clientes').select('*').order('nombre').order('id')),
+    leerTodo(() => sb.from('transportistas').select('*').order('nombre').order('id')),
+    leerTodo(() => sb.from('tractoras').select('*').order('matricula')),
+    leerTodo(() => sb.from('remolques').select('*').order('matricula')),
+    leerTodo(() => sb.from('destinos').select('*').order('nombre').order('id')),
   ]);
   destinosNombres = (de.data || []).map(x => x.nombre);
+  zonasDestino = {}; (de.data || []).forEach(x => { const z = zonaPorUbicacion(x); if(z) zonasDestino[normTxt(x.nombre)] = z; });
   (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url});
   personalTodos = p.data || []; clientesTodos = c.data || []; transportistasTodos = t.data || [];
   // en los desplegables solo salen los que no están de baja
@@ -875,21 +1030,21 @@ async function cargarMaestros(){
   $('#clientesList').innerHTML = clientes.map(x => `<option value="${esc(x.nombre)}">`).join('');
   $('#destinosList').innerHTML = (de.data || []).map(x => `<option value="${esc(x.nombre)}">`).join('');
   // Almacenes: si hay tabla en Supabase se usa; si no, los que ya se han apuntado alguna vez
-  const al = await sb.from('almacenes').select('*').order('nombre').limit(5000);
+  const al = await leerTodo(() => sb.from('almacenes').select('*').order('nombre').order('id'));
   (al.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url});
   const hist = await sb.from('carton_lineas').select('almacen').limit(1000);
   const nombres = new Set([...(al.data||[]).map(x => x.nombre), ...(hist.data||[]).map(x => x.almacen)].filter(Boolean));
   almacenesNombres = [...nombres].sort((a,b) => a.localeCompare(b,'es'));
   // Selects fijos
   const tv = $('#lnTrans').value, pr = transPropia();
-  $('#lnTrans').innerHTML = (pr ? '' : '<option value="">Transportista efectivo — marca tu empresa como «propia» en Transportistas</option>') +
-    transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
-  $('#lnTrans').value = tv || (pr ? pr.id : '');
+  $('#lnTrans').innerHTML = '<option value="">Transportista Efectivo</option>' +
+    transportistas.map(x => `<option value="${x.id}">Efectivo: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
+  $('#lnTrans').value = tv || '';   // vacío = el del camión (autónomo o tu empresa)
+  pintarContractual();
   pintarCamAuto();
   actualizarCondAut();
-  if(!$('#lnMerc').options.length) $('#lnMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join('');
-  const ch = personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id));   // los de los autónomos van en su lista; los que no están hoy, fuera
-  $('#camChofer').innerHTML = '<option value="">Chófer propio de la lista…</option>' + ch.map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+  { const v = $('#lnMerc').value || 'fruta y verdura'; if(document.activeElement !== $('#lnMerc')){ $('#lnMerc').innerHTML = opcionesMerc(v === NUEVA_MERC ? 'fruta y verdura' : v); } }
+  $('#camChofer').innerHTML = opcionesChoferPropio();
 }
 // Desplegable de autónomos de «Salen hoy»: solo los que trabajan hoy
 function pintarCamAuto(){
@@ -995,15 +1150,19 @@ async function proponerDeca(l, cam){
 // ====== ACCIONES ======
 async function enviarLinea(l, silencioso){
   const cam = camion(l.camion_id);
-  const trans = l.transportista_id || (l.modo === 'ruta' && cam && cam.tipo === 'autonomo' && cam.transportista_id) || (transPropia() || {}).id;
   const asignado = l.modo === 'hub' ? l.cargador_id : (cam && cam.chofer_id);
-  if(!trans){ toast('Falta el transportista efectivo: marca tu empresa como «propia» en la pestaña Transportistas.', true); return false; }
+  // Transportista efectivo = para quien trabaja el conductor que hace este tramo (cargador hasta la nave, chófer hasta el destino):
+  // si está vinculado a un autónomo, ese autónomo; si no, tu empresa. Al salir de la nave, la app del chófer lo cambia por el suyo.
+  const conductor = persona(asignado);
+  const trans = l.transportista_id || (conductor && conductor.transportista_id) || (l.modo === 'ruta' && cam && cam.tipo === 'autonomo' && cam.transportista_id) || (transPropia() || {}).id;
+  if(!trans){ toast('Falta el transportista efectivo: marca tu empresa como «propia» en la pestaña Transportista Contractual.', true); return false; }
   if(!l.cliente_id){ toast(`«${l.almacen}»: el cliente no está en la lista de clientes.`, true); return false; }
   if(!l.destino){ toast(`«${l.almacen}»: falta el destino.`, true); return false; }
   if(!asignado){ toast(l.modo === 'hub' ? `«${l.almacen}»: elige el cargador.` : `«${l.almacen}»: el camión no tiene chófer de la lista.`, true); return false; }
   const payload = {
     almacen: l.almacen, detalle_planificado: detalleDe(l), estado: 'asignada',
     cliente_id: l.cliente_id, transportista_id: trans, asignado_id: asignado,
+    ...(hayExtraContractual() && l.transportista_contractual_id ? {transportista_contractual_id: l.transportista_contractual_id} : {}),   // con el extra, el contractual sale siempre (encima del efectivo)
     origen: l.almacen, destino: l.destino, mercancia: l.mercancia || 'fruta y verdura',
     autorizacion_especial: l.autorizacion_especial || null, orden: l.orden ?? null,
     peso: String(pesoDe(l) || ''), peso_aproximado: true,
@@ -1040,7 +1199,7 @@ async function enviarCamion(cam){
   await run(sb.from('carton_camiones').update({estado:'enviado'}).eq('id', cam.id));
   await refrescar(true);
   if(fallos) return;
-  toast(`Enviado a ${cam.nombre}.` + (sinDeca ? ` ${sinDeca} recogida(s) aún no están en el hub: le llegarán solas cuando el cargador las entregue allí.` : ''));
+  toast(`Enviado a ${cam.nombre}.` + (sinDeca ? ` ${sinDeca} recogida(s) aún no están en la nave: le llegarán solas cuando el cargador las entregue allí.` : ''));
 }
 
 function telefonoWa(t){
@@ -1050,7 +1209,8 @@ function telefonoWa(t){
 }
 function appUrl(personaId){
   const base = location.href.replace(/[^/]*([?#].*)?$/, '') + 'index.html';
-  return personaId ? `${base}?p=${encodeURIComponent(personaId)}` : base;
+  const e = EMPRESA ? `e=${encodeURIComponent(EMPRESA)}` : '';
+  return personaId ? `${base}?p=${encodeURIComponent(personaId)}${e ? '&' + e : ''}` : (e ? `${base}?${e}` : base);
 }
 function abrirWhatsApp(telefono, texto){
   const n = telefonoWa(telefono);
@@ -1067,7 +1227,7 @@ function textoCamion(cam){
   const ls = lineas.filter(l => l.camion_id === cam.id);
   const ida = ls.filter(l => !l.retorno), vuelta = ls.filter(l => l.retorno);
   let t = `Carga ${fechaBonita(fecha)} — ${cam.nombre}\nDestino: ${cam.destino || '—'}\nMatrícula: ${cam.matricula || '—'}\n\n`;
-  t += ida.map(l => `• ${l.almacen} → ${l.cliente_nombre}: ${qtyLargo(l)}${l.modo === 'ruta' ? ' (recoges tú)' : ' (en el hub)'}`).join('\n');
+  t += ida.map(l => `• ${l.almacen} → ${l.cliente_nombre}: ${qtyLargo(l)}${l.modo === 'ruta' ? ' (recoges tú)' : ' (en la nave)'}`).join('\n');
   if(vuelta.length) t += `\n\nRetorno (termina en ${cam.fin_retorno || 'Nave'}):\n` + vuelta.map(l => `• ${l.almacen} → ${l.cliente_nombre}: ${qtyLargo(l)}`).join('\n');
   const rp = reglaPunta(cam.id);
   if(rp && rp.hayRuta) t += `\n\n⚠️ Al cargar el camión: ${TXT_PUNTA(rp)}`;
@@ -1142,7 +1302,7 @@ function reglaPunta(camId){
   const ida = ordenar(lineas.filter(l => l.camion_id === camId && !l.retorno));
   const h = huecoCamion(ida);
   if(!h.obs) return null;
-  // Quién coloca los palets en el camión: el chófer si recoge por los almacenes; en el hub, el cargador (o cargadores) de ese camión
+  // Quién coloca los palets en el camión: el chófer si recoge por los almacenes; en la nave, el cargador (o cargadores) de ese camión
   const primeraRuta = ida.find(l => l.modo === 'ruta') || null;
   const primeraPorCargador = {};
   ida.filter(l => l.modo !== 'ruta' && l.cargador_id).forEach(l => { if(!primeraPorCargador[l.cargador_id]) primeraPorCargador[l.cargador_id] = l.id; });
@@ -1161,7 +1321,7 @@ async function sincronizarAvisos(){
     const tareas = [];
     camiones.forEach(cam => {
       const r = reglaPunta(cam.id);
-      const avisoCam = r && r.hayRuta ? TXT_PUNTA(r) : null;   // al chófer solo si carga él por los almacenes (si le llega cargado del hub, le sobra)
+      const avisoCam = r && r.hayRuta ? TXT_PUNTA(r) : null;   // al chófer solo si carga él por los almacenes (si le llega cargado de la nave, le sobra)
       if((cam.aviso_carga || null) !== avisoCam && 'aviso_carga' in cam){ cam.aviso_carga = avisoCam; tareas.push(sb.from('carton_camiones').update({aviso_carga: avisoCam}).eq('id', cam.id)); }
       lineas.filter(l => l.camion_id === cam.id && l.carga_id && cargas[l.carga_id] && cargas[l.carga_id].estado === 'asignada').forEach(l => {
         const c = cargas[l.carga_id];
@@ -1176,6 +1336,13 @@ async function sincronizarAvisos(){
 }
 
 // ====== PINTAR ======
+// Hueco que le queda a un camión (para la vista Hoja): lo mismo que dice la caja del camión en la vista Cajas
+function huecoTxt(camId){
+  const h = huecoCamion(lineas.filter(l => l.camion_id === camId && !l.retorno));
+  if(h.over) return {cls:'over', txt:'⛔ No entra', h};
+  if(h.libresE === 0 && h.libresG === 0) return {cls:'full', txt:'Lleno ✓', h};
+  return {cls:'', txt:`quedan ${h.libresE}E${h.libresG ? ' / ' + h.libresG + ' gr.' : ''}`, h};
+}
 function capBlock(list, label){
   const ldm = ldmDe(list), h = huecoCamion(list), pct = h.pct;
   let cls = '', verdict;
@@ -1200,18 +1367,18 @@ function opcionesCargador(sel){
   return `<option value="">¿Cargador?</option>` + g('Cargadores', personal.filter(p => p.puesto === 'cargador')) + g('Chóferes', personal.filter(p => p.puesto === 'chofer'));
 }
 
-const BLOQUEADA = e => ['hub','carg','desc','lejos'].includes(e);   // ya en el hub (o más allá): la orden no se toca
+const BLOQUEADA = e => ['hub','carg','desc','lejos'].includes(e);   // ya en la nave (o más allá): la orden no se toca
 function lineHTML(l, idx, total){
   const est = estadoLinea(l), sent = enviada(l), bloq = BLOQUEADA(est);
   const enCamion = !!l.camion_id && typeof idx === 'number';
   const cam = camion(l.camion_id);
   const camOpts = `<option value="">→ Sin asignar</option>` + camiones.map(t => `<option value="${t.id}" ${t.id === l.camion_id ? 'selected' : ''}>→ ${esc(t.nombre)}</option>`).join('');
   const modoSel = l.retorno ? '' : `<select data-act="modo" aria-label="Quién lo recoge" ${sent ? 'disabled' : ''}>
-      <option value="hub" ${l.modo === 'hub' ? 'selected' : ''}>Cargador → hub</option>
+      <option value="hub" ${l.modo === 'hub' ? 'selected' : ''}>Cargador → nave</option>
       <option value="ruta" ${l.modo === 'ruta' ? 'selected' : ''}>Chófer en ruta</option></select>`;
   const cgSel = (l.modo === 'hub' && !l.retorno) ? `<select data-act="cargador" aria-label="Cargador" class="${!l.cargador_id ? 'bad' : ''}" ${HECHA(est) ? 'disabled' : ''}>${opcionesCargador(l.cargador_id)}</select>` : '';
   let envio = '';
-  if(sent) envio = `<span class="sent" title="${ST_NAME[est]}">${est === 'avis' ? 'Enviada' : est === 'hub' ? 'En hub' : 'DeCA ✓'}</span>`;
+  if(sent) envio = `<span class="sent" title="${ST_NAME[est]}">${est === 'avis' ? 'Enviada' : est === 'hub' ? 'En la nave' : 'DeCA ✓'}</span>`;
   else if(l.modo === 'hub' && !l.retorno) envio = `<button type="button" class="btn small primary" data-act="enviar" ${l.cargador_id ? '' : 'disabled'}>Enviar</button>`;
   else if(cam && cam.estado === 'enviado') envio = `<button type="button" class="btn small primary" data-act="enviar">Enviar</button>`;
   const d = decas[l.carga_id];
@@ -1238,7 +1405,7 @@ function truckHTML(t){
   const opt = (arr, sel, ph) => `<option value="">${ph}</option>` + arr.map(x => `<option ${x.matricula === sel ? 'selected' : ''}>${esc(x.matricula)}</option>`).join('')
     + (sel && sel !== '—' && !arr.some(x => x.matricula === sel) ? `<option selected>${esc(sel)}</option>` : '') + '<option value="__otra__">Otra matrícula…</option>';
   const autoNombre = t.tipo === 'autonomo' ? ((transportistas.find(x => String(x.id) === String(t.transportista_id)) || {}).nombre || t.nombre) : '';
-  const chofSel = `<select class="chofer" data-cam="${t.id}" data-f="chofer_id" aria-label="Chófer en la app"><option value="">${t.tipo === 'autonomo' ? esc(autoNombre) + ' (sin app)' : '¿Chófer en la app?'}</option>${personal.filter(p => p.puesto === 'chofer' && (t.tipo === 'autonomo' ? String(p.transportista_id || '') === String(t.transportista_id) : !p.transportista_id) || String(p.id) === String(t.chofer_id)).map(p => `<option value="${p.id}" ${String(p.id) === String(t.chofer_id) ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select>`;
+  const chofSel = `<select class="chofer" data-cam="${t.id}" data-f="chofer_id" aria-label="Chófer en la app"><option value="">${t.tipo === 'autonomo' ? esc(autoNombre) + ' (sin app)' : '¿Chófer en la app?'}</option>${personal.filter(p => p.puesto === 'chofer' && (t.tipo === 'autonomo' ? String(p.transportista_id || '') === String(t.transportista_id) : !p.transportista_id) || (t.tipo !== 'autonomo' && esOficina(p) && !ausente(p.id)) || String(p.id) === String(t.chofer_id)).map(p => `<option value="${p.id}" ${String(p.id) === String(t.chofer_id) ? 'selected' : ''}>${esc(p.nombre)}${esOficina(p) ? ' (oficina)' : ''}</option>`).join('')}</select>`;
   const estTxt = {preparando:'Preparando', confirmado:'Confirmado' + (t.confirmado_por ? ' por ' + t.confirmado_por : ' por dirección'), enviado:'Enviado al chófer'}[t.estado] || t.estado;
   const pendientesEnvio = ida.concat(vuelta).filter(l => (l.modo === 'ruta' && !enviada(l)) || (l.modo === 'hub' && decas[l.carga_id] && decas[l.carga_id].entregado_hub && !l.propuesta_enviada)).length;
   let motivo = '';
@@ -1257,7 +1424,7 @@ function truckHTML(t){
         ${motivo ? `<span class="why">${motivo}</span>` : ''}
       </div>`;
   }
-  return `<article class="truck" data-truck="${t.id}">
+  return `<article class="truck${t.finalizado ? ' terminado' : ''}" data-truck="${t.id}">
     <div class="truck-top">
       <span class="nametag" title="${esc(t.nombre)}">${esc(t.nombre)}</span>${(() => {
         const ds = ida.concat(vuelta).map(l => decas[l.carga_id]).filter(d => d && !d.anulado);
@@ -1265,8 +1432,8 @@ function truckHTML(t){
         const suyos = ds.filter(d => d.conductor && normTxt(d.conductor) === normTxt((persona(t.chofer_id) || {}).nombre || t.nombre)).length;
         return `<details class="decas-cam"><summary title="DeCAs de este camión">📄 ${ds.length} DeCA${ds.length === 1 ? '' : 's'}${suyos ? ` · ${suyos} hecho${suyos === 1 ? '' : 's'} por él` : ''}</summary><ul>${ds.map(d => `<li>${d.pdf_url ? `<a href="${esc(d.pdf_url)}" target="_blank" rel="noopener">${esc(d.deca_id)}</a>` : esc(d.deca_id)} · ${esc(d.origen || '')}${d.entregado ? ' · ⚑ descargado' : ''}</li>`).join('')}</ul></details>`;
       })()}
-      <div class="truck-meta"><select class="dir-sel" data-cam="${t.id}" data-f="direccion" aria-label="Dirección del camión">${['X','V','S'].map(d => `<option value="${d}" ${(t.direccion || 'X') === d ? 'selected' : ''}>${d === 'X' ? 'Sin dirección aún' : d + ' · ' + (d === 'V' ? 'Levante' : 'Sur')}</option>`).join('')}</select>${gps}
-        <span class="pill ${t.estado}">${estTxt}</span>${t.tipo === 'autonomo' ? '<span class="pill preparando">Autónomo</span>' : ''}</div>
+      <div class="truck-meta"><select class="dir-sel" data-cam="${t.id}" data-f="direccion" aria-label="Dirección del camión">${opcionesZona(t.direccion)}</select>${gps}
+        <span class="pill ${t.estado}">${estTxt}</span>${t.finalizado ? '<span class="pill enviado" title="El chófer ha dejado el camión en la nave">🏁 Terminado</span>' : ''}${t.tipo === 'autonomo' ? '<span class="pill preparando">Autónomo</span>' : ''}</div>
     </div>
     <div class="veh">${chofSel}
       <select data-cam="${t.id}" data-f="tractora" aria-label="Tractora">${opt(tractoras, tSel, 'Tractora')}</select>
@@ -1276,7 +1443,7 @@ function truckHTML(t){
       if(!kg) return '';
       return kg > maxKg ? `<div class="aviso-punta" style="background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">⚖️ Unos ${kg.toLocaleString('es-ES')} kg: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg)</div>`
                         : `<div class="hint" style="margin:2px 0" title="Kilos apuntados, o calculados con el peso medio de cada palet">⚖️ ~${kg.toLocaleString('es-ES')} kg de ${maxKg.toLocaleString('es-ES')}</div>`; })()}
-    ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en el hub)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
+    ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en la nave)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
     <div class="section-label"><span>Ida · ${ida.length} recogidas</span></div>
     <ul class="lines ${ida.length ? '' : 'empty'}" data-zone="${t.id}" data-ret="0">${ida.map((l,i) => lineHTML(l, i, ida.length)).join('')}</ul>
     <div class="retorno">
@@ -1308,7 +1475,7 @@ function renderDispo(){
     ${cgs.length ? `<div class="dispo-g"><b>Cargadores</b>${cgs.map(fila).join('')}</div>` : ''}${chs.length ? `<div class="dispo-g"><b>Chóferes</b>${chs.map(fila).join('')}</div>` : ''}${auts.length ? `<div class="dispo-g"><b>Autónomos</b>${auts.map(filaAut).join('')}</div>` : ''}` : '<p class="hint">No hay personal dado de alta.</p>';
   // la lista de «Salen hoy» también se actualiza con quién está hoy
   const sel = $('#camChofer'), v = sel.value;
-  sel.innerHTML = '<option value="">Chófer propio de la lista…</option>' + personal.filter(x => x.puesto === 'chofer' && !x.transportista_id && esOperativo(x.id)).map(x => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('');
+  sel.innerHTML = opcionesChoferPropio();
   if(v && [...sel.options].some(o => o.value === v)) sel.value = v;
   pintarCamAuto();
   actualizarCondAut();
@@ -1335,9 +1502,16 @@ function render(){
   renderDispo();
   const cierre = ajustes['cierre_' + fecha];
   $('#diaCerrado').hidden = !cierre;
-  if(cierre) $('#diaCerrado').textContent = '🔒 Día cerrado' + (cierre.split('|')[0] ? ' por ' + cierre.split('|')[0] : '') + ' · solo para consultar';
+  document.body.dataset.cerrado = cierre ? '1' : '';
+  if(cierre) $('#diaCerrado').textContent = '🔒 Día cerrado' + (cierre.split('|')[0] ? ' por ' + cierre.split('|')[0] : '') + ' · solo se pueden tocar los viajes sin terminar';
   const asignadas = lineas.filter(l => l.camion_id && !l.retorno);
   const tray = lineas.filter(l => !l.camion_id);
+  const ida = lineas.filter(l => !l.retorno);
+  const nec = {}; DIRS.forEach(d => nec[d] = camionesPara(ida.filter(l => zonaLinea(l) === d)));
+  nec.total = DIRS.reduce((t, d) => t + nec[d], 0);
+  const conCosas = DIRS.filter(d => d !== 'X' && (nec[d] || camiones.some(t => t.direccion === d)));   // zonas que hoy tienen pedidos o camiones
+  pintarFiltroZonas(conCosas);
+  $('#h-salen').textContent = `Salen hoy · ${camiones.length} ${camiones.length === 1 ? 'camión' : 'camiones'}`;
   const sinCg = lineas.filter(l => l.camion_id && l.modo === 'hub' && !l.cargador_id && !l.retorno).length;
   const sinEnviar = lineas.filter(l => l.modo === 'hub' && l.cargador_id && !enviada(l)).length;
   const cuadrados = camiones.filter(t => { const h = huecoCamion(lineas.filter(l => l.camion_id === t.id && !l.retorno)); return !h.over && h.libresE === 0 && h.libresG === 0; }).length;
@@ -1347,7 +1521,8 @@ function render(){
     <div class="stat ${tray.length ? 'alert' : ''}"><b>${fmt(paletsDe(tray))}</b><span>Sin asignar</span></div>
     <div class="stat"><b>${cuadrados}/${camiones.length}</b><span>Cuadrados</span></div>
     <div class="stat ${sinCg ? 'alert' : ''}"><b>${sinCg}</b><span>Sin cargador</span></div>
-    <div class="stat ${sinEnviar ? 'alert' : ''}"><b>${sinEnviar}</b><span>Órdenes sin enviar</span></div>`;
+    <div class="stat ${sinEnviar ? 'alert' : ''}"><b>${sinEnviar}</b><span>Órdenes sin enviar</span></div>
+    <div class="stat ${nec.total > camiones.length ? 'alert' : ''}" title="Con todos los pedidos del día (en camiones y sin asignar): metros de carga ÷ 13,2 m por camión. Carros: 38 por camión."><b>${nec.total}</b><span>Camiones necesarios${DIRS.filter(d => nec[d]).map(d => ' · ' + (d === 'X' ? 'sin zona' : ZONA_NOMBRE[d]) + ' ' + nec[d]).join('')}</span></div>`;
 
   $('#roster').innerHTML = camiones.length ? camiones.map(t => {
     const pct = Math.round(ldmDe(lineas.filter(l => l.camion_id === t.id && !l.retorno))/CAP*100);
@@ -1358,18 +1533,21 @@ function render(){
   }).join('') : '<li class="hint">Aún no has apuntado a nadie.</li>';
 
   // palets por dirección en los botones de arriba (lo que va en los camiones, sin contar el retorno)
-  const palDir = d => fmt(paletsDe(lineas.filter(l => l.camion_id && !l.retorno && (d === 'all' || ((camion(l.camion_id) || {}).direccion || 'X') === d))));
-  ['all','V','S'].forEach(d => { const el = document.getElementById('cnt-' + d); if(el) el.textContent = palDir(d); });
-  const trayUl = $('#tray .lines');
-  trayUl.innerHTML = tray.map(l => lineHTML(l)).join('');
-  trayUl.classList.toggle('empty', !tray.length);
+  const palDir = d => fmt(paletsDe(ida.filter(l => d === 'all' || zonaLinea(l) === d)));   // todos los pedidos del día, por su zona
+  ['all', ...DIRS].forEach(d => { const el = document.getElementById('cnt-' + d); if(el) el.textContent = palDir(d); });
+  // Pedidos sin asignar, ya separados por la zona de su destino (Levante, Sur o sin zona si el destino no la tiene)
+  const ZT = {...ZONA_NOMBRE, X:'Sin zona (el destino no tiene ubicación en su ficha)'};
+  const zonasVer = filter === 'all' ? DIRS : [filter, 'X'];
+  $('#trayZonas').innerHTML = zonasVer.map(z => { const ls = tray.filter(l => zonaLinea(l) === z);
+    if(!ls.length && !(z === 'X' && !tray.length)) return '';
+    return `<div class="tray-zona">${tray.length ? `<div class="tray-zona-t">${ZT[z]} · ${ls.length} pedido${ls.length === 1 ? '' : 's'} · ${qtyHTML(sumaBultos(ls))} · ${camionesPara(ls)} ${camionesPara(ls) === 1 ? 'camión' : 'camiones'}</div>` : ''}<ul class="lines ${ls.length ? '' : 'empty'}" data-zone="tray">${ls.map(l => lineHTML(l)).join('')}</ul></div>`; }).join('');
   $('#trayLoad').textContent = tray.length ? `${tray.length} líneas · ${fmt(ldmDe(tray))} m de carga` : '';
 
   const dirs = filter === 'all' ? DIRS : [filter];
   $('#dirBlocks').innerHTML = dirs.map(d => {
     const ts = camiones.filter(t => (t.direccion || 'X') === d);
-    if(d === 'X' && !ts.length) return '';
-    return `<section class="dirblock"><h3>${DIR_TXT[d]} · ${ts.length} camiones</h3>
+    if(!ts.length && !nec[d] && !['V','S'].includes(d)) return '';   // las zonas sin nada hoy no salen (Levante y Sur siempre)
+    return `<section class="dirblock"><h3>${DIR_TXT[d]} · ${ts.length} camiones${d !== 'X' && nec[d] ? ` <span class="nec ${nec[d] > ts.length ? 'falta' : ''}">· hacen falta ${nec[d]}${nec[d] > ts.length ? ` (faltan ${nec[d] - ts.length})` : ''}</span>` : ''}</h3>
       <div class="trucks">${ts.map(truckHTML).join('') || '<p class="hint">Nadie sale en esta dirección.</p>'}</div></section>`;
   }).join('');
   if(modoVista === 'hoja') renderHoja();
@@ -1378,6 +1556,21 @@ function render(){
 
 // ====== EDITAR UN PEDIDO YA APUNTADO ======
 let editandoId = null;
+// ====== TRANSPORTISTA CONTRACTUAL: extra de la suscripción (se enciende desde el programa maestro) ======
+// En el DeCA sale encima del transportista efectivo (si es distinto de él)
+const hayExtraContractual = () => !!licencia && (tieneModulo('contractual') || !!licencia.extra_contractual);
+function opcionesContractual(sel, valor){
+  const pr = transPropia();
+  sel.innerHTML = '<option value="">Sin transportista contractual</option>' + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
+  sel.value = valor !== undefined && valor !== null ? valor : (pr ? pr.id : '');
+}
+function pintarContractual(){
+  const sel = $('#lnContr'); if(!sel) return;
+  const ver = hayExtraContractual();
+  if(ver) opcionesContractual(sel, sel.dataset.listo ? sel.value : undefined);
+  sel.dataset.listo = '1';
+  sel.hidden = !ver;
+}
 function abrirEdicion(l){
   editandoId = l.id;
   const d = decas[l.carga_id];
@@ -1390,14 +1583,16 @@ function abrirEdicion(l){
   $('#edModo').value = l.modo || 'hub';
   $('#edCg').innerHTML = opcionesCargador(l.cargador_id).replace('¿Cargador?', '— Sin cargador —');
   const pr = transPropia();
-  $('#edTrans').innerHTML = transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
-  $('#edTrans').value = l.transportista_id || (pr ? pr.id : '');
-  $('#edMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join(''); $('#edMerc').value = l.mercancia || 'fruta y verdura';
+  $('#edTrans').innerHTML = '<option value="">Según el camión</option>' + transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
+  $('#edTrans').value = l.transportista_id || '';
+  const conContr = hayExtraContractual() || !!l.transportista_contractual_id;
+  $('#edContrL').hidden = !conContr; if(conContr) opcionesContractual($('#edContr'), l.transportista_contractual_id || '');
+  $('#edMerc').innerHTML = opcionesMerc(l.mercancia || 'fruta y verdura'); $('#edMerc').value = l.mercancia || 'fruta y verdura';
   $('#edAut').value = l.autorizacion_especial || '';
   $('#edKilos').value = l.kilos ?? ''; $('#edPrecio').value = l.precio_manual ?? '';
   // Con DeCA ya generado, los datos que salen en el DeCA no se tocan desde aquí
   const bloqueado = !!d;
-  ['#edAlm','#edCli','#edDest','#edE','#edM','#edC','#edB','#edK','#edModo','#edCg','#edTrans','#edMerc','#edAut'].forEach(id => $(id).disabled = bloqueado);
+  ['#edAlm','#edCli','#edDest','#edE','#edM','#edC','#edB','#edK','#edModo','#edCg','#edTrans','#edContr','#edMerc','#edAut'].forEach(id => $(id).disabled = bloqueado);
   const av = $('#edAviso');
   if(bloqueado){ av.hidden = false; av.textContent = `Este pedido ya tiene el DeCA ${d.deca_id}: sus datos (almacén, cliente, destino, cantidades…) ya no se pueden cambiar desde aquí. Sí puedes cambiar el nº de pedido, la remonta o el camión.`; }
   else if(enviada(l)){ av.hidden = false; av.textContent = 'La orden ya se envió: al guardar, el cambio le llega también a la app de quien la tiene.'; }
@@ -1420,6 +1615,8 @@ async function guardarEdicion(){
       e_pal: q('#edE'), m_pal: q('#edM'), carros: q('#edC'), box: q('#edB'), cajas: q('#edK'),
       modo: $('#edModo').value, cargador_id: $('#edCg').value || null, transportista_id: $('#edTrans').value || null,
       mercancia: $('#edMerc').value || 'fruta y verdura', autorizacion_especial: $('#edAut').value.trim() || null});
+    if(!$('#edContrL').hidden) patch.transportista_contractual_id = $('#edContr').value || null;
+    else if(l.transportista_contractual_id) patch.transportista_contractual_id = null;
     if(!patch.almacen || !patch.destino){ toast('Almacén y destino no pueden quedar vacíos.', true); return; }
     if(!(patch.e_pal + patch.m_pal + patch.carros + patch.box + patch.cajas)){ toast('La cantidad no puede quedar a cero. Si ya no va, anula el pedido con la ×.', true); return; }
     const nombreCli = $('#edCli').value.trim();
@@ -1499,7 +1696,7 @@ function renderHoja(){
         <span title="${esc(l.cliente_nombre)}">${esc(l.cliente_nombre)}</span>
         <span class="halm" title="${esc(l.almacen)}"><span class="halm-n">${esc(l.almacen)}</span>${cgMini}${l.modo === 'hub' && !l.retorno ? (enviada(l) ? '<span class="hcg-txt" title="Orden enviada">✓ enviada</span>' : `<button type="button" class="btn small primary hsend" data-act="enviar" ${l.cargador_id ? '' : 'disabled'} title="Enviar la orden al cargador">Enviar</button>`) : ''}</span>
         <span class="hsub" title="Nº de pedido">${esc(l.referencia || '')}</span>
-        <select class="hsel ${l.camion_id ? '' : 'vacio'}" data-hmover="1" aria-label="Chófer">${opts}</select>
+        <select class="hsel ${l.camion_id ? '' : 'vacio'} ${l.camion_id && huecoTxt(l.camion_id).cls === 'over' ? 'over' : ''}" data-hmover="1" aria-label="Chófer" ${l.camion_id && huecoTxt(l.camion_id).cls === 'over' ? 'title="Este camión ya va lleno: no entra"' : ''}>${opts}</select>
         <span class="hq">${qtyHTML(l)}${l.remonta ? '<span class="x2">×2</span>' : ''}</span>
         <button type="button" class="st ${est}" data-act="problema" title="${ST_NAME[est]}" aria-label="Estado: ${ST_NAME[est]}">${ST_TXT[est]}</button>
         <button type="button" class="edit-btn" data-act="editar" title="Editar el pedido" aria-label="Editar el pedido">✏️</button>
@@ -1521,8 +1718,8 @@ function renderHoja(){
       : t.estado === 'confirmado' ? `<button type="button" class="btn small primary" data-camact="enviar" data-cam="${t.id}" title="Enviar la carga al chófer">Enviar</button>`
       : '<span class="sent">Enviado</span>';
     return `<div class="hsalen"><span title="${esc(t.nombre)}">${esc(t.nombre)}</span>
-      <select class="hdir" data-cam="${t.id}" data-f="direccion" aria-label="Dirección">${['X','V','S'].map(d => `<option value="${d}" ${(t.direccion || 'X') === d ? 'selected' : ''}>${d === 'X' ? '–' : d}</option>`).join('')}</select>
-      <span class="hpal">${fmt(pal)}/33</span>${acc}</div>`;
+      <select class="hdir" data-cam="${t.id}" data-f="direccion" aria-label="Dirección">${opcionesZona(t.direccion, true)}</select>
+      <span class="hpal ${huecoTxt(t.id).cls}" title="Lo mismo que en la vista Cajas">${huecoTxt(t.id).txt}</span>${acc}</div>`;
   }).join('');
   box.innerHTML = `<div class="hoja-izq">${nueva}
       <div class="hoja-cols">${Object.entries(grupos).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista)}</div>`).join('') || '<p class="hint">Aún no hay pedidos. Apúntalos en la fila de arriba: almacén, cliente, destino y cantidad (por ejemplo 4+1E).</p>'}</div>
@@ -1583,7 +1780,7 @@ function renderOrders(){
     const rows = ls.map(l => {
       const est = estadoLinea(l);
       const cam = camion(l.camion_id), rp = l.camion_id && reglaPunta(l.camion_id);
-      return `<tr class="${BLOQUEADA(est) ? 'orden-bloq' : ''}" title="${BLOQUEADA(est) ? 'Ya está en el hub: esta orden está cerrada y no se puede modificar' : ''}"><td>${BLOQUEADA(est) ? '🔒 ' : ''}<b>${esc(l.almacen)}</b> – ${esc(l.cliente_nombre)}${l.referencia ? ` <span class="ref num">${esc(l.referencia)}</span>` : ''}<span class="to">→ ${esc(l.destino || '—')} · ${cam ? 'camión de ' + esc(cam.nombre) + (cam.matricula ? ' (' + esc(cam.matricula) + ')' : '') : 'sin camión aún'} · ${ST_NAME[est]}</span></td><td class="n">${qtyHTML(l)}</td></tr>`;
+      return `<tr class="${BLOQUEADA(est) ? 'orden-bloq' : ''}" title="${BLOQUEADA(est) ? 'Ya está en la nave: esta orden está cerrada y no se puede modificar' : ''}"><td>${BLOQUEADA(est) ? '🔒 ' : ''}<b>${esc(l.almacen)}</b> – ${esc(l.cliente_nombre)}${l.referencia ? ` <span class="ref num">${esc(l.referencia)}</span>` : ''}<span class="to">→ ${esc(l.destino || '—')} · ${cam ? 'camión de ' + esc(cam.nombre) + (cam.matricula ? ' (' + esc(cam.matricula) + ')' : '') : 'sin camión aún'} · ${ST_NAME[est]}</span></td><td class="n">${qtyHTML(l)}</td></tr>`;
     }).join('');
     return `<div class="order">
       <h3>${esc(p.nombre)} <small>${ls.length} recogidas · ${nuevas.length ? nuevas.length + ' sin enviar' : 'todo enviado'}</small></h3>
@@ -1606,10 +1803,12 @@ function renderOrders(){
 // ====== ACCESO POR ENLACE: el trabajador elige su PIN sin que nadie lo vea ======
 let pinPendiente = null;
 function codigoAleatorio(){ const a = new Uint8Array(12); crypto.getRandomValues(a); return Array.from(a, x => 'abcdefghjkmnpqrstuvwxyz23456789'[x % 31]).join(''); }
+let empresaEnlace = '';   // código de empresa que devuelve la base al crear el enlace
 function enlaceAcceso(p, codigo){
   const esCarton = ['trafico','direccion'].includes(p.puesto);
   const base = location.href.replace(/[^/]*([?#].*)?$/, '') + (esCarton ? 'carton.html' : 'index.html');
-  return `${base}?p=${encodeURIComponent(p.id)}&c=${codigo}`;
+  const emp = empresaEnlace || EMPRESA;
+  return `${base}?p=${encodeURIComponent(p.id)}&c=${codigo}${emp ? '&e=' + encodeURIComponent(emp) : ''}`;
 }
 function textoAcceso(p, codigo){
   const esCarton = ['trafico','direccion'].includes(p.puesto);
@@ -1634,7 +1833,7 @@ async function enviarPinWa(){
   const ventana = window.open('about:blank', '_blank');
   const r = await rpcAcceso('crear_enlace', {p_token: tokenCarton(), p_persona: String(p.id)});
   if(r.error || !r.codigo){ if(ventana) ventana.close(); toast(r.error || 'No se pudo crear el enlace.', true); return; }
-  const codigo = r.codigo, caduca = r.caduca;
+  const codigo = r.codigo, caduca = r.caduca; empresaEnlace = r.empresa || '';
   const patch = {codigo_caduca: caduca};
   if(tel !== (p.telefono || '')){ patch.telefono = tel; await sb.from('personal').update({telefono: tel}).eq('id', p.id); }
   const url = `https://wa.me/${telefonoWa(tel)}?text=${encodeURIComponent(textoAcceso(p, codigo))}`;
@@ -1662,17 +1861,17 @@ async function escribirComprobado(query, okMsg){
 const FICHEROS = {
   clientes: {titulo:'Clientes (cargador contractual)', aviso:'El NIF y el domicilio salen en el DeCA: complétalos siempre.', tablas:[
     {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax']]}]},
-  transportistas: {titulo:'Transportistas efectivos', aviso:'Su nombre y NIF salen en el DeCA. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
+  transportistas: {titulo:'Transportista contractual', aviso:'Empresas con las que el cliente contrata el transporte (incluida la tuya). Si tu empresa tiene contratado el extra «Transportista contractual», al apuntar el pedido se elige y sale en el DeCA encima del transportista efectivo. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
-  autonomos: {titulo:'Autónomos', aviso:'Camioneros autónomos que trabajan para vosotros. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
+  autonomos: {titulo:'Transportista efectivo', aviso:'Camioneros autónomos que hacen el transporte: son el transportista efectivo del DeCA. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},
-  personal: {titulo:'Personal (cargadores y chóferes)', aviso:'Puesto: cargador y chofer usan la app del conductor; trafico y direccion entran en este cartón. El PIN lo elige cada uno. Si lo olvida, pulsa «Enviar acceso»: le llega por WhatsApp un enlace para elegir uno nuevo, sin que nadie más lo vea.', tablas:[
+  personal: {titulo:'Personal (cargadores y chóferes)', aviso:'Puesto: cargador y chofer usan la app del conductor; trafico y direccion entran en este cartón y también pueden entrar en la app del conductor (por si cogen un camión). El PIN lo elige cada uno. Si lo olvida, pulsa «Enviar acceso»: le llega por WhatsApp un enlace para elegir uno nuevo, sin que nadie más lo vea.', tablas:[
     {tabla:'personal', orden:'nombre', campos:[['nombre','Nombre'],['puesto','Puesto',['cargador','chofer','trafico','direccion']],['telefono','Teléfono'],['matricula_actual','Matrícula actual (tractora / remolque)'],['transportista_id','De qué autónomo (vacío = propio)','autonomo'],['pin','PIN','pin']]}]},
   flota: {titulo:'Flota', aviso:'Al elegir una tractora en el cartón se pone sola su pareja habitual; luego se pueden combinar libremente.', tablas:[
     {tabla:'tractoras', subtitulo:'Tractoras', orden:'matricula', campos:[['matricula','Matrícula'],['remolque_habitual','Remolque habitual']]},
     {tabla:'remolques', subtitulo:'Remolques', orden:'matricula', campos:[['matricula','Matrícula']]}]},
   destinos: {titulo:'Destinos', aviso:'', tablas:[
-    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
+    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de descarga'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
   tarifas_cli: {titulo:'Tarifas de clientes', aviso:'Una fila por cliente y destino. Deja el destino vacío para la tarifa general de ese cliente (se usa cuando no hay una más concreta). «Cobro por»: palet (rellena el precio de cada tipo), viaje (precio por camión completo para ese cliente) o kilo.', tablas:[
     {tabla:'tarifas_cliente', orden:'created_at', ordenar:(a,b) => nombreCliente(a.cliente_id).localeCompare(nombreCliente(b.cliente_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['cliente_id','Cliente','cliente'],['destino','Destino (vacío = todos)','destino'],['tipo','Cobro por',['palet','viaje','kilo']],['precio_e','€ europalet','num'],['precio_m','€ palet grande','num'],['precio_c','€ carro','num'],['precio_b','€ box','num'],['precio_k','€ caja','num'],['precio_kilo','€ / kilo','num'],['precio_viaje','€ / viaje','num']]}]},
@@ -1680,7 +1879,7 @@ const FICHEROS = {
     {tabla:'tarifas_autonomo', orden:'created_at', ordenar:(a,b) => nombreTrans(a.transportista_id).localeCompare(nombreTrans(b.transportista_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['transportista_id','Autónomo','autonomo'],['destino','Destino (vacío = todos)','destino'],['tipo','Pago por',['viaje','porcentaje','palet']],['precio','Importe (€ viaje · % · € palet)','num']]}]},
   almacenes: {titulo:'Almacenes (puntos de recogida)', aviso:'Borra los que ya no trabajáis y añade los nuevos: esta es la lista del desplegable del cartón.', tablas:[
-    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
+    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de carga / descarga'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
 };
 function cambiarVista(v){
   if(usuario && !puedeVer(v)){ toast('No tienes permiso para ver esta sección.', true); v = 'carton'; }
@@ -1737,7 +1936,7 @@ async function renderFicherosBase(){
   if(vista === 'admin') return renderAdmin(box);
   if(vista === 'buscar') return renderBuscar(box);
   const cfg = FICHEROS[vista]; if(!cfg) return;
-  const datos = await Promise.all(cfg.tablas.map(t => sb.from(t.tabla).select('*').order(t.orden).limit(5000)));
+  const datos = await Promise.all(cfg.tablas.map(t => leerTodo(() => t.tabla === 'remolques' ? sb.from(t.tabla).select('*').order(t.orden) : sb.from(t.tabla).select('*').order(t.orden).order('id'))));
   if(vista === 'transportistas'){ const pr = (datos[0].data || []).find(x => x.propia); propiaActualId = pr ? pr.id : null; }
   const bloques = cfg.tablas.map((t, i) => {
     const filas = (datos[i].data || []).filter(t.filtro || (() => true));
@@ -1753,9 +1952,40 @@ async function renderFicherosBase(){
       </tbody></table></div></div>`;
   }).join('');
   box.innerHTML = `<div class="fich-head"><div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2>${cfg.titulo}</h2></div>${cfg.aviso ? `<p class="hint">${cfg.aviso}</p>` : ''}</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Busca la dirección de los destinos y almacenes que no la tienen: la copia del otro listado si es el mismo sitio, o la saca de su ubicación GPS">📍 Rellenar direcciones</button>` : ''}<input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${camposImportables(cfg).length ? botonImportar(cfg.tablas[0].tabla) : ''}${['destinos','almacenes'].includes(vista) ? `<button type="button" class="btn small" data-dirgps="todas" title="Busca la dirección de los destinos y almacenes que no la tienen: la copia del otro listado si es el mismo sitio, o la saca de su ubicación GPS">📍 Rellenar direcciones</button>` : ''}<button type="button" class="btn small solo-dir" data-expficha="${vista}" title="Solo dirección: descarga esta ficha completa en una hoja de Excel">⬇️ Exportar a Excel</button><input class="field" id="fichBuscar" placeholder="Buscar…" aria-label="Buscar"></div></div>
     <div class="${cfg.tablas.length > 1 ? 'fich-cols' : ''}">${bloques}</div>`;
 }
+// ====== EXPORTAR A EXCEL (solo dirección): descarga la ficha tal como se ve, con los nombres en vez de números internos ======
+function exportarFicha(v){
+  const cfg = FICHEROS[v]; if(!cfg || !usuario || usuario.puesto !== 'direccion') return;
+  if(typeof XLSX === 'undefined'){ alert('No se ha podido cargar la herramienta de Excel. Revisa la conexión y vuelve a intentarlo.'); return; }
+  const libro = XLSX.utils.book_new();
+  cfg.tablas.forEach(t => {
+    const tabla = document.querySelector(`#ficheros [data-ftabla="${t.tabla}"] table`); if(!tabla) return;
+    const cols = t.campos.map((c, i) => ({c, i})).filter(x => x.c[2] !== 'pin');   // el PIN nunca sale
+    const filas = [...tabla.querySelectorAll('tbody tr[data-id]')].map(tr => {
+      const tds = tr.children, o = {};
+      cols.forEach(({c, i}) => {
+        const td = tds[i]; let val = '';
+        if(td){
+          const sel = td.querySelector('select'), chk = td.querySelector('input[type="checkbox"]'), inp = td.querySelector('input,textarea');
+          if(sel) val = sel.value === '' ? '' : (sel.options[sel.selectedIndex] || {}).text || '';
+          else if(chk) val = chk.checked ? 'Sí' : 'No';
+          else if(inp) val = inp.value;
+          else val = td.textContent.trim();
+        }
+        o[c[1]] = val;
+      });
+      if(tr.classList.contains('de-baja')) o['De baja'] = 'Sí';
+      return o;
+    });
+    const nombre = (t.subtitulo || cfg.titulo || t.tabla).replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31);
+    XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas.length ? filas : [{vacío:''}]), nombre);
+  });
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  XLSX.writeFile(libro, `${v}_${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}.xlsx`);
+}
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-expficha]'); if(b) exportarFicha(b.dataset.expficha); });
 // ====== IMPORTAR DESDE EXCEL (todas las fichas: clientes, transportistas, autónomos, personal, flota, destinos, almacenes y tarifas) ======
 // Lee la primera hoja, reconoce las columnas por su título, enseña cómo quedará y no repite lo que ya existe.
 const SINONIMOS = {
@@ -1771,6 +2001,7 @@ const SINONIMOS = {
   remolque_habitual: ['remolque','remolque habitual','semirremolque'],
   puesto: ['puesto','cargo','categoria'],
   matricula_actual: ['matricula','matricula actual'],
+  horario: ['horario','horario de descarga','horario de carga','horas','horario descarga','hora de descarga'],
   maps_url: ['ubicacion','mapa','google maps','enlace google maps','enlace mapa','maps','coordenadas','localizacion'],
   cliente_id: ['cliente','nombre cliente','razon social','empresa','cargador'],
   transportista_id: ['autonomo','nombre autonomo','transportista','de que autonomo'],
@@ -1825,7 +2056,7 @@ async function abrirImportar(archivo, tabla){
   campos.forEach((c, k) => { let i = conTitulos ? columnaPara(cab, c) : (k < titulos.length ? k : -1); if(usadas.has(i)) i = -1; mapa[c[0]] = i; if(i >= 0) usadas.add(i); });
   const extras = {}; if(campos.some(c => c[0] === 'domicilio') && conTitulos) EXTRA_DOMICILIO.forEach(([k, syn]) => { const i = cab.findIndex(h => syn.map(normT).includes(h)); if(i >= 0 && i !== mapa.domicilio) extras[k] = i; });
   const latlng = conTitulos && campos.some(c => c[2] === 'mapa') ? {lat: cab.findIndex(h => SIN_LAT.includes(h)), lng: cab.findIndex(h => SIN_LNG.includes(h))} : null;
-  const { data: existentes } = await sb.from(t.tabla).select('*').limit(5000);
+  const { data: existentes } = await leerTabla(t.tabla);
   imp = {cfg, t, campos, titulos, datos, mapa, extras, latlng: latlng && latlng.lat >= 0 && latlng.lng >= 0 ? latlng : null, usarExtra: Object.fromEntries(Object.keys(extras).map(k => [k, true])), existentes: (existentes || []).filter(t.filtro || (() => true))};
   const que = (t.subtitulo || cfg.titulo).split('(')[0].trim().toLowerCase();
   $('#impTit').textContent = `Importar ${que} desde «${archivo.name}»`;
@@ -1958,7 +2189,7 @@ async function rellenarDireccionesGps(_, boton){
   const filas = [];
   for(const tabla of Object.keys(FICH)){
     if((await columnasQueFaltan(tabla)).includes('direccion')){ toast('Primero ejecuta la actualización 33 en Supabase.', true); return; }
-    const { data, error } = await sb.from(tabla).select('*').limit(5000);
+    const { data, error } = await leerTabla(tabla);
     if(error){ toast('No se pudo leer ' + tabla + ': ' + error.message, true); return; }
     (data || []).forEach(x => {
       const lngK = FICH[tabla].lng;
@@ -2015,7 +2246,7 @@ async function rellenarDireccionesGps(_, boton){
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-dirgps]'); if(b) rellenarDireccionesGps(b.dataset.dirgps, b); });
 // Columnas nuevas que todavía no existen en Supabase (si falta ejecutar una actualización)
-const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax'], transportistas:['domicilio'], almacenes:['direccion']};
+const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax'], transportistas:['domicilio'], almacenes:['direccion','horario'], destinos:['horario']};
 const columnasCache = {};
 async function columnasQueFaltan(tabla){
   if(!COLUMNAS_NUEVAS[tabla]) return [];
@@ -2158,7 +2389,7 @@ async function renderBajas(box){
   const meses = +ajustes.meses_conservacion || 12;
   const nombreTabla = {personal:'Personal', clientes:'Cliente', transportistas:'Transportista'};
   box.innerHTML = `<div class="fich-head"><div><h2>Bajas y avisos</h2><p class="hint">Quien tiene DeCAs no se puede borrar hasta que pasa el plazo de conservación. Aquí ves cuándo se podrá y, llegado el momento, descargas sus DeCAs y lo borras.</p></div>
-      <label class="ctl solo-direccion">Conservar los DeCAs durante (lo decide dirección)<span style="display:flex;gap:6px"><input class="field" id="mesesConserv" type="number" min="12" step="1" value="${meses}" style="width:90px"> meses <button type="button" class="btn small" id="guardarMeses">Guardar</button></span></label></div>
+      <span class="hint">Los DeCAs se conservan <b>${meses} meses</b>.</span></div>
     ${bajasListas.length ? `<div class="fich-cols">${bajasListas.map(b => `<div class="baja-card ${b.lista ? 'lista' : ''}">
         <b>${esc(b.fila.nombre)} <span class="pill preparando">${nombreTabla[b.tabla]}</span></b>
         <span class="hint">De baja desde ${b.fila.fecha_baja ? new Date(b.fila.fecha_baja).toLocaleDateString('es-ES') : '—'} · última orden ${b.ultima ? b.ultima.toLocaleDateString('es-ES') : '—'}</span>
@@ -2184,16 +2415,18 @@ function renderAjustes(box){
         ${enPruebas() ? '<button type="button" class="btn primary" id="pasarReal">Pasar a uso real</button>' : ''}
       </div>
       <div class="baja-card">
-        <b>Conservación de los DeCAs</b>
-        <span class="hint">Tiempo mínimo que se guardan los DeCAs antes de poder borrar a alguien dado de baja (12 meses como mínimo).</span>
-        <span style="display:flex;gap:6px;align-items:center"><input class="field" id="mesesConserv" type="number" min="12" step="1" value="${meses}" style="width:90px"> meses <button type="button" class="btn small" id="guardarMeses">Guardar</button></span>
-      </div>
-      <div class="baja-card">
         <b>Descargas y alertas</b>
         <span class="hint">Si el chófer marca una descarga más lejos del destino que esta distancia (o sin GPS), le suena una alarma a él y salta una alerta aquí en el cartón. Pon el WhatsApp de la persona que debe enterarse.</span>
         <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Distancia máxima <input class="field" id="radioDesc" type="number" min="100" step="100" value="${+ajustes.radio_descarga_m || 1000}" style="width:100px"> metros</span>
         <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">WhatsApp del responsable <input class="field" id="telAlertas" inputmode="tel" value="${esc(ajustes.tel_alertas || '')}" placeholder="600 000 000" style="width:150px"></span>
         <button type="button" class="btn small" id="guardarAlertas">Guardar</button>
+      </div>
+      <div class="baja-card">
+        <b>Alarma por tiempo de espera</b>
+        <span class="hint">Si un chófer lleva en su destino más tiempo del máximo sin poder descargar, salta una alerta aquí (y se puede avisar por WhatsApp al responsable de alertas). Funciona con la app del chófer abierta y el GPS encendido. El destino tiene que tener su ubicación en la ficha Destinos.</span>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="esperaActiva" ${ajustes.espera_activa === 'si' ? 'checked' : ''}> Activada</label>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Tiempo máximo de espera <input class="field" id="esperaMax" type="number" min="10" step="5" value="${+ajustes.espera_max || 120}" style="width:80px"> minutos</span>
+        <button type="button" class="btn small" id="guardarEspera">Guardar</button>
       </div>
       <div class="baja-card">
         <b>Carga máxima del camión</b>
@@ -2207,14 +2440,16 @@ function renderAjustes(box){
 let usuario = null, arrancado = false;
 const ROL_TXT = {trafico:'Tráfico', direccion:'Dirección'};
 // Acceso seguro (actualización 34): el PIN se comprueba en la base de datos y se guarda solo un «pase de sesión»
-const tokenCarton = () => { try{ return localStorage.getItem('carton_token') || ''; }catch(_){ return ''; } };
-function guardarToken(t){ try{ if(t) localStorage.setItem('carton_token', t); else localStorage.removeItem('carton_token'); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
+const tokenCarton = () => { try{ return sessionStorage.getItem('carton_soporte') || localStorage.getItem('carton_token') || ''; }catch(_){ return ''; } };
+function guardarToken(t){ try{ if(sessionStorage.getItem('carton_soporte')){ if(!t) sessionStorage.removeItem('carton_soporte'); else sessionStorage.setItem('carton_soporte', t); return; } }catch(_){}
+  try{ if(t) localStorage.setItem('carton_token', t); else localStorage.removeItem('carton_token'); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
 async function rpcAcceso(nombre, args){
   const { data, error } = await sb.rpc(nombre, args);
   if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
   return data || {};
 }
-function usuariosCarton(){ return personalTodos.filter(p => ['trafico','direccion'].includes(p.puesto) && !p.baja); }
+let personasEmpresa = null;   // lista de la empresa del enlace (antes de entrar no se ven los datos)
+function usuariosCarton(){ return (personasEmpresa || personalTodos).filter(p => ['trafico','direccion'].includes(p.puesto) && !p.baja); }
 function panelLogin(cual){ ['loginNormal','loginPrimero','loginNuevoPin'].forEach(id => $('#' + id).hidden = id !== cual); $('#loginMsg').textContent = ''; }
 function mostrarLogin(){
   document.body.dataset.sesion = 'no'; $('#login').hidden = false;
@@ -2235,7 +2470,7 @@ function puedeVer(v){
   if(!usuario) return false;
   v = VISTA_PADRE[v] || v;
   if(v === 'admin' && ajustes.modulo_admin === 'no') return false;   // módulo apagado en Ajustes
-  if(v === 'admin' && planActual() === 'basico') return false;       // el plan Básico no incluye Administración
+  if(v === 'admin' && !tieneModulo('admin')) return false;          // su plan no incluye Administración (ni la tiene como extra)
   if(usuario.puesto === 'direccion') return true;
   if(v === 'ajustes') return false;
   if(VISTAS_CONFIG.includes(v)) return permisoTrafico(v);
@@ -2257,7 +2492,12 @@ function aplicarPermisos(){
 function iniciarSesion(u){
   usuario = u;
   document.body.dataset.sesion = 'si'; aplicarPermisos(); $('#login').hidden = true;
-  $('#usuarioBox').innerHTML = `👤 <b>${esc(u.nombre)}</b> · ${ROL_TXT[u.puesto] || u.puesto} <button type="button" class="btn small" id="miPinBtn">Cambiar mi PIN</button> <button type="button" class="btn small" id="cambiarUsrBtn" title="Deja el cartón listo para que entre otra persona">🔄 Cambiar usuario</button> <button type="button" class="btn small" id="salirBtn">Cerrar sesión</button>`;
+  if(u.soporte){
+    const hasta = u.caduca ? new Date(u.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}) : '';
+    $('#usuarioBox').innerHTML = `🛟 <b>Soporte myDeCaS</b> · con permiso de dirección${hasta ? ' hasta las ' + hasta : ''} <button type="button" class="btn small" id="salirBtn">Salir</button>`;
+    arrancar(); return;
+  }
+  $('#usuarioBox').innerHTML = `👤 <b>${esc(u.nombre)}</b> · ${ROL_TXT[u.puesto] || u.puesto} <button type="button" class="btn small" id="miPinBtn">Cambiar mi PIN</button>${u.puesto === 'direccion' ? ' <button type="button" class="btn small" id="ayudaRemotaBtn" title="Deja entrar al soporte de myDeCaS en este cartón durante 1 hora para que te ayude">🛟 Ayuda remota</button>' : ''} <button type="button" class="btn small" id="cambiarUsrBtn" title="Deja el cartón listo para que entre otra persona">🔄 Cambiar usuario</button> <button type="button" class="btn small" id="salirBtn">Cerrar sesión</button>`;
   arrancar();
 }
 function pinValido(a, b){ if(!/^\d{4,6}$/.test(a)){ $('#loginMsg').textContent = 'El PIN tiene que tener entre 4 y 6 números.'; return false; } if(a !== b){ $('#loginMsg').textContent = 'Los dos PIN no coinciden.'; return false; } return true; }
@@ -2265,7 +2505,8 @@ let pendienteNuevoPin = null;
 $('#loginBtn').onclick = async () => {
   const area = $('#loginUser').value, pin = $('#loginPin').value.trim();
   if(!pin){ $('#loginMsg').textContent = 'Escribe tu PIN.'; return; }
-  const r = await rpcAcceso('entrar_carton', {p_area: area, p_pin: pin});
+  await asegurarAuth();
+  const r = await rpcConEmpresa('entrar_carton', {p_area: area, p_pin: pin});
   $('#loginPin').value = '';
   if(r.error || !r.persona){ $('#loginMsg').textContent = r.error || 'No se ha podido entrar.'; return; }
   guardarToken(r.token);
@@ -2288,7 +2529,8 @@ $('#primBtn').onclick = async () => {
   const nombre = $('#primNombre').value.trim(), a = $('#primPin').value.trim(), b = $('#primPin2').value.trim();
   if(!nombre){ $('#loginMsg').textContent = 'Escribe tu nombre.'; return; }
   if(!pinValido(a, b)) return;
-  const r = await rpcAcceso('crear_primer_usuario', {p_nombre: nombre, p_pin: a});
+  await asegurarAuth();
+  const r = await rpcConEmpresa('crear_primer_usuario', {p_nombre: nombre, p_pin: a});
   if(r.error || !r.persona){ $('#loginMsg').textContent = 'No se pudo crear: ' + (r.error || ''); return; }
   guardarToken(r.token);
   await cargarMaestros();
@@ -2332,6 +2574,11 @@ async function finDeJornada(){
     if(r.trim().toUpperCase() !== 'CERRAR'){ alert('No has escrito CERRAR. El día sigue abierto.'); return; }
     if(!(await guardarAjuste('cierre_' + fecha, `${usuario ? usuario.nombre : ''}|${new Date().toISOString()}`))) return;
     if(!ajustes.ultimo_dia_cerrado || fecha > ajustes.ultimo_dia_cerrado){ if(!(await guardarAjuste('ultimo_dia_cerrado', fecha))) return; }
+    // al cerrar: se imprime el cartón completo del día (todas las direcciones) y se descarga la copia de seguridad en Excel
+    const filtroAntes = filter; filter = 'all'; if(vista !== 'carton') cambiarVista('carton'); render();
+    try{ imprimir(); }catch(_){}
+    filter = filtroAntes; render();
+    try{ await copiaSeguridad(); }catch(_){}
   }
   await copiaAutomatica('fin de jornada', true);
   // cartón en blanco: día siguiente y formularios vacíos
@@ -2344,6 +2591,7 @@ async function finDeJornada(){
 }
 async function arrancar(){
   if(arrancado) return; arrancado = true;
+  try{ await cargarMaestros(); }catch(_){}   // ya con su empresa: ahora sí se ven sus datos
   setTimeout(() => copiaAutomatica('al abrir el cartón'), 20000);   // por si el día anterior no se cerró sesión
   ajustarFechaInicial();
   await refrescar(true);
@@ -2375,7 +2623,7 @@ async function copiaSeguridad(){
   const tablas = ['carton_camiones','carton_lineas','cargas_planificadas','decas','clientes','transportistas','personal','tractoras','remolques','destinos','almacenes','ajustes','tarifas_cliente','tarifas_autonomo','posiciones'];
   const libro = XLSX.utils.book_new();
   for(const t of tablas){
-    const { data } = await sb.from(t).select('*').limit(20000);
+    const { data } = await leerTabla(t);
     const filas = (data || []).map(r => { const o = {}; Object.entries(r).forEach(([k, v]) => o[k] = (v && typeof v === 'object') ? JSON.stringify(v) : v); return o; });
     XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas.length ? filas : [{vacio:''}]), t.slice(0, 31));
   }
@@ -2395,7 +2643,7 @@ async function renderEnRuta(box){
     sb.from('decas').select('*').eq('entregado', false).order('fecha', {ascending:false}).limit(500),
     sb.from('decas').select('*').not('matricula_pendiente', 'is', null).order('fecha', {ascending:false}).limit(200),
   ]);
-  const cams = (camsR.data || []).filter(c => !c.finalizado);   // hasta que el chófer confirma que el camión está en el hub
+  const cams = (camsR.data || []).filter(c => !c.finalizado);   // hasta que el chófer confirma que el camión está en la nave
   const { data: lins } = cams.length ? await sb.from('carton_lineas').select('camion_id,carga_id,destino').in('camion_id', cams.map(c => c.id)).limit(3000) : {data: []};
   const cargaIds = [...new Set((lins || []).map(l => l.carga_id).filter(Boolean))];
   const { data: dsCam } = cargaIds.length ? await sb.from('decas').select('*').in('carga_id', cargaIds).limit(3000) : {data: []};
@@ -2412,13 +2660,13 @@ async function renderEnRuta(box){
     const hechos = ds.filter(d => d.entregado).length;
     return `<div class="ruta-grupo"><h3>🚚 ${esc(c.nombre)} · ${fechaBonita(c.fecha)} · ${esc(c.matricula || '')} <small style="font-weight:500">${hechos}/${ds.length} descargados</small></h3>
       <ul>${ds.map(li).join('') || '<li class="hint">Aún no lleva DeCAs.</li>'}</ul>
-      <button type="button" class="btn small" data-finviaje="${c.id}" title="Si el chófer se olvida de marcarlo en su app">🏁 Marcar viaje finalizado (camión en el hub)</button></div>`;
+      <button type="button" class="btn small" data-finviaje="${c.id}" title="Si el chófer se olvida de marcarlo en su app">🏁 Marcar viaje finalizado (camión en la nave)</button></div>`;
   };
-  box.innerHTML = `<div class="fich-head"><div><h2>DeCAs en ruta</h2><p class="hint">Cada camión sale aquí hasta que su chófer marca «Viaje finalizado» (camión de vuelta en el hub). Se actualiza solo.</p></div></div>
+  box.innerHTML = `<div class="fich-head"><div><h2>DeCAs en ruta</h2><p class="hint">Cada camión sale aquí hasta que su chófer marca «Viaje finalizado» (camión de vuelta en la nave). Se actualiza solo.</p></div></div>
     ${pend.length ? `<div class="ruta-grupo" style="border-color:var(--warn)"><h3>Esperando matrícula del chófer · ${pend.length}</h3><ul>${pend.map(r => `<li>${esc(r.deca_id)} → <b>${esc((persona(r.chofer_destino_id)||{}).nombre || '—')}</b> · ${esc(r.matricula_pendiente)}</li>`).join('')}</ul></div>` : ''}
     <div class="fich-cols">${cams.map(grupoCam).join('')}</div>
-    ${conCargador.length ? `<div class="ruta-grupo"><h3>Con el cargador, camino del hub · ${conCargador.length}</h3><ul>${conCargador.map(li).join('')}</ul></div>` : ''}
-    ${enHub.length ? `<div class="ruta-grupo"><h3>⌂ En el hub, esperando camión · ${enHub.length}</h3><ul>${enHub.map(li).join('')}</ul></div>` : ''}
+    ${conCargador.length ? `<div class="ruta-grupo"><h3>Con el cargador, camino de la nave · ${conCargador.length}</h3><ul>${conCargador.map(li).join('')}</ul></div>` : ''}
+    ${enHub.length ? `<div class="ruta-grupo"><h3>⌂ En la nave, esperando camión · ${enHub.length}</h3><ul>${enHub.map(li).join('')}</ul></div>` : ''}
     ${!cams.length && !vivos.length ? '<p class="hint">No hay nada en ruta ahora mismo.</p>' : ''}
     <p class="hint">${enPruebas() ? '«Anular» solo existe mientras estáis de pruebas: los DeCAs no se borran, pero dejan de salir aquí y en las apps.' : 'Uso real: los DeCAs ya no se pueden anular desde aquí. Si dirección decide que alguno no vale, avisa al administrador.'}</p>`;
 }
@@ -2554,10 +2802,10 @@ async function renderAdmin(box){
   const [desde, hasta] = periodoAdm();
   box.innerHTML = '<p class="hint">Calculando…</p>';
   const [li, ca, tc, ta] = await Promise.all([
-    sb.from('carton_lineas').select('*').gte('fecha', desde).lte('fecha', hasta).order('fecha').limit(20000),
-    sb.from('carton_camiones').select('*').gte('fecha', desde).lte('fecha', hasta).order('fecha').limit(5000),
-    sb.from('tarifas_cliente').select('*').limit(5000),
-    sb.from('tarifas_autonomo').select('*').limit(5000),
+    leerTodo(() => sb.from('carton_lineas').select('*').gte('fecha', desde).lte('fecha', hasta).order('fecha').order('id')),
+    leerTodo(() => sb.from('carton_camiones').select('*').gte('fecha', desde).lte('fecha', hasta).order('fecha').order('id')),
+    leerTabla('tarifas_cliente'),
+    leerTabla('tarifas_autonomo'),
   ]);
   if(vista !== 'admin') return;
   const faltaSql = [tc, ta].some(x => x.error);
@@ -2758,7 +3006,7 @@ const busq = {num:'', desde:'', hasta:'', mat:'', cond:'', cli:'', trans:'', ori
 function estadoDeca(r){
   if(r.anulado) return ['anulado', 'Anulado'];
   if(r.entregado) return r.fuera_zona ? ['lejos', 'Descargado lejos'] : ['desc', 'Descargado'];
-  if(r.entregado_hub) return ['hub', 'En el hub / en ruta'];
+  if(r.entregado_hub) return ['hub', 'En la nave / en ruta'];
   return ['ruta', 'Con el cargador'];
 }
 function qrDe(url){ try{ const q = qrcode(0, 'M'); q.addData(url); q.make(); return `<img src="${q.createDataURL(4, 6)}" width="140" height="140" alt="QR del DeCA" style="background:#fff;padding:4px;border-radius:6px">`; }catch(_){ return '<span class="hint">(no se pudo dibujar el QR)</span>'; } }
@@ -2809,7 +3057,7 @@ function pintarResultadosBusqueda(){
           <div>${r.pdf_url ? qrDe(r.pdf_url) : ''}</div>
           <div style="flex:1;min-width:260px"><b>Detalle:</b> ${esc(r.detalle || '—')} · ${esc(r.peso || '—')} kg · ${esc(r.mercancia || '')}<br>
             <b>Cliente:</b> ${esc(r.cargador_nombre || '—')} (NIF ${esc(r.cargador_nif || '—')}) · <b>Transportista:</b> ${esc(r.transportista_nombre || '—')} (NIF ${esc(r.transportista_nif || '—')})<br>
-            <b>GPS al generarlo:</b> ${esc(r.geo || '—')}${r.fecha_entrega_hub ? ` · <b>En el hub:</b> ${new Date(r.fecha_entrega_hub).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}` : ''}${r.fecha_entrega ? ` · <b>Descargado:</b> ${new Date(r.fecha_entrega).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${r.distancia_entrega_m != null ? ` (a ${Math.round(r.distancia_entrega_m)} m del destino)` : ''}` : ''}<br>
+            <b>GPS al generarlo:</b> ${esc(r.geo || '—')}${r.fecha_entrega_hub ? ` · <b>En la nave:</b> ${new Date(r.fecha_entrega_hub).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}` : ''}${r.fecha_entrega ? ` · <b>Descargado:</b> ${new Date(r.fecha_entrega).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${r.distancia_entrega_m != null ? ` (a ${Math.round(r.distancia_entrega_m)} m del destino)` : ''}` : ''}<br>
             <b>Historial de matrícula:</b> ${(r.matricula_historial || []).length ? `<ul style="margin:4px 0">${r.matricula_historial.map(h => `<li>${esc(h.fecha || '')}: ${esc(h.anterior || '—')} → <b>${esc(h.nueva || '')}</b> · ${esc(h.cambiado_por || '')}</li>`).join('')}</ul>` : 'sin cambios.'}
             <div id="bqv-${r.id}" class="hint">Buscando versiones anteriores del PDF…</div></div></div></td></tr>` : ''}`; }).join('')}
     </tbody></table></div>${res.length > 500 ? '<p class="hint">Se enseñan los 500 primeros; el Excel lleva todos.</p>' : ''}`;
@@ -2834,7 +3082,7 @@ function renderBuscar(box){
       <label class="ctl">Transportista<input class="field" id="bq_trans" list="bqNombres" value="${esc(busq.trans)}"></label>
       <label class="ctl">Origen<input class="field" id="bq_orig" list="almacenesList" value="${esc(busq.orig)}"></label>
       <label class="ctl">Destino<input class="field" id="bq_dest" list="destinosList" value="${esc(busq.dest)}"></label>
-      <label class="ctl">Estado<select class="field" id="bq_estado">${[['', 'Todos'], ['ruta', 'Con el cargador'], ['hub', 'En el hub / en ruta'], ['desc', 'Descargado'], ['lejos', 'Descargado lejos'], ['anulado', 'Anulado']].map(([v, t]) => `<option value="${v}" ${busq.estado === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="ctl">Estado<select class="field" id="bq_estado">${[['', 'Todos'], ['ruta', 'Con el cargador'], ['hub', 'En la nave / en ruta'], ['desc', 'Descargado'], ['lejos', 'Descargado lejos'], ['anulado', 'Anulado']].map(([v, t]) => `<option value="${v}" ${busq.estado === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <div class="bq-btns"><button type="submit" class="btn primary" data-bqbuscar="1">🔎 Buscar</button><button type="button" class="btn" data-bqlimpiar="1">Limpiar</button></div>
     </form>
     <datalist id="bqNombres">${nombres.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
@@ -2845,7 +3093,7 @@ function renderBuscar(box){
 function exportarBusqueda(){
   if(typeof XLSX === 'undefined' || !busq.res) return;
   const filas = busq.res.map(r => ({'Fecha': new Date(r.fecha).toLocaleString('es-ES'), 'Nº DeCA': r.deca_id, 'Cliente': r.cargador_nombre || '', 'NIF cliente': r.cargador_nif || '', 'Origen': r.origen || '', 'Dirección origen': r.origen_direccion || '', 'Destino': r.destino || '', 'Dirección destino': r.destino_direccion || '',
-    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Domicilio transportista': r.transportista_domicilio || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
+    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista contractual': r.transportista_contractual_nombre || '', 'NIF contractual': r.transportista_contractual_nif || '', 'Transportista': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Domicilio transportista': r.transportista_domicilio || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
     'Estado': estadoDeca(r)[1], 'Cambios de matrícula': (r.matricula_historial || []).map(h => `${h.anterior || '—'} → ${h.nueva} (${h.fecha || ''})`).join(' | '), 'PDF': r.pdf_url || ''}));
   const libro = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas), 'DeCAs');
   XLSX.writeFile(libro, `decas_${busq.desde || 'todas'}_${busq.hasta || ''}.xlsx`);
@@ -2875,11 +3123,11 @@ function prLineas(ls){
 // Cabecera común a las dos formas de imprimir
 function prCabecera(cams){
   const trans = transPropia();
-  return `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (filter === 'V' ? 'Dirección Levante' : 'Dirección Sur')}</h1>
+  return `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (DIR_TXT[filter] || '')}</h1>
     <span class="pr-meta">${trans ? 'Transportista: ' + esc(trans.nombre) + ' · ' : ''}Impreso ${new Date().toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</span>
     <span class="pr-date">${fechaBonita(fecha)}</span></div>`;
 }
-const PR_LEYENDA = `<div class="pr-legend">• orden enviada · ✓ DeCA hecho · ⌂ en el hub · ✓✓ cargado en el camión · ✗ problema · número solo = palet grande · E europalet · C carros · B box · K cajas · ×2 remonta</div>`;
+const PR_LEYENDA = `<div class="pr-legend">• orden enviada · ✓ DeCA hecho · ⌂ en la nave · ✓✓ cargado en el camión · ✗ problema · número solo = palet grande · E europalet · C carros · B box · K cajas · ×2 remonta</div>`;
 // Imprimir tal como se ve la vista Hoja: pedidos por destino a la izquierda, «Salen hoy» a la derecha
 function imprimirHoja(){
   const dirOk = l => !l.camion_id || filter === 'all' || ((camion(l.camion_id) || {}).direccion || 'X') === filter;
@@ -2915,7 +3163,7 @@ function imprimir(){
   const cams = camiones.filter(t => dirs.includes(t.direccion || 'X'));
   const estTxt = {preparando:'preparando', confirmado:'confirmado', enviado:'enviado'};
   const trans = transPropia();
-  let h = `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (filter === 'V' ? 'Dirección Levante' : 'Dirección Sur')}</h1>
+  let h = `<div class="pr-head"><h1>Cartón de Tráfico${filter === 'all' ? '' : ' · ' + (DIR_TXT[filter] || '')}</h1>
     <span class="pr-meta">${trans ? 'Transportista: ' + esc(trans.nombre) + ' · ' : ''}Impreso ${new Date().toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</span>
     <span class="pr-date">${fechaBonita(fecha)}</span></div>`;
   h += `<div class="pr-salen"><b>Salen hoy (${cams.length})</b>${cams.map(t => `<span>${t.direccion === 'X' ? '–' : t.direccion} · ${esc(t.nombre)}${t.tipo === 'autonomo' ? ' (aut.)' : ''}</span>`).join('') || 'nadie apuntado'}</div>`;
@@ -2978,16 +3226,18 @@ document.addEventListener('click', async e => {
     if(b.dataset.volcar){ const [t, id] = b.dataset.volcar.split('|'); b.disabled = true; try{ await volcarDecas(t, id); } finally { b.disabled = false; } return; }
     if(b.dataset.borrardef){ const [t, id] = b.dataset.borrardef.split('|'); return borrarDefinitivo(t, id); }
     if(b.dataset.reactivar){ const [t, id] = b.dataset.reactivar.split('|'); try{ await escribirComprobado(sb.from(t).update({baja:false, fecha_baja:null}).eq('id', id), 'Reactivado'); await cargarMaestros(); renderFicheros(); }catch(_){} return; }
-    if(b.id === 'guardarMeses'){ const v = Math.max(12, parseInt($('#mesesConserv').value, 10) || 12); if(await guardarAjuste('meses_conservacion', String(v))){ toast('Guardado'); await comprobarBajas(); renderFicheros(); } return; }
     if(b.id === 'waAnadir'){ const nombre = $('#waNombre').value.trim(), url = $('#waUrl').value.trim(); if(!nombre || !/^https:\/\/(chat|web)\.whatsapp\.com\//.test(url)){ toast('Pon un nombre y un enlace que empiece por https://chat.whatsapp.com/', true); return; }
       const gs = gruposWa(); gs.push({nombre, url}); if(await guardarAjuste('grupos_whatsapp', JSON.stringify(gs))) renderFicheros(); return; }
     if(b.dataset.waborrar !== undefined){ const gs = gruposWa(); gs.splice(+b.dataset.waborrar, 1); if(await guardarAjuste('grupos_whatsapp', JSON.stringify(gs))) renderFicheros(); return; }
     if(b.dataset.decaanular){ if(!confirm(`¿Anular el DeCA ${b.dataset.decaid}?\n\nNo se borra (se conserva por la norma), pero queda marcado como ANULADO y deja de salir en ruta y en las apps.`)) return; await anularDeca(b.dataset.decaanular, 'Anulado desde DeCAs en ruta'); toast('DeCA anulado'); return renderFicheros(); }
-    if(b.dataset.finviaje){ if(!confirm('¿Marcar este viaje como finalizado (camión de vuelta en el hub)? Dejará de salir en «DeCAs en ruta».')) return;
+    if(b.dataset.finviaje){ if(!confirm('¿Marcar este viaje como finalizado (camión de vuelta en la nave)? Dejará de salir en «DeCAs en ruta».')) return;
       try{ await escribirComprobado(sb.from('carton_camiones').update({finalizado:true, fecha_fin:new Date().toISOString()}).eq('id', b.dataset.finviaje), 'Viaje finalizado'); }catch(_){ }
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
+    if(b.id === 'guardarEspera'){ let ok = await guardarAjuste('espera_activa', $('#esperaActiva').checked ? 'si' : 'no');
+      if(ok) ok = await guardarAjuste('espera_max', String(Math.max(10, parseInt($('#esperaMax').value, 10) || 120)));
+      if(ok) toast($('#esperaActiva').checked ? 'Alarma de espera activada' : 'Guardado (alarma desactivada)'); return; }
     if(b.id === 'guardarCargaMax'){ const v = Math.max(1000, parseInt($('#cargaMax').value, 10) || 24000); if(await guardarAjuste('carga_maxima_kg', String(v))){ toast('Guardado'); render(); } return; }
     if(b.id === 'guardarAlertas'){ const r = Math.max(100, parseInt($('#radioDesc').value, 10) || 1000); if(await guardarAjuste('radio_descarga_m', String(r)) && await guardarAjuste('tel_alertas', $('#telAlertas').value.trim())) toast('Guardado'); return; }
     if(b.dataset.opertodos || b.dataset.operninguno){
@@ -3154,7 +3404,12 @@ document.addEventListener('change', async e => {
       if(enviada(l) && s.value) await run(sb.from('cargas_planificadas').update({asignado_id: s.value}).eq('id', l.carga_id), 'Orden pasada al nuevo cargador');
       return refrescar(true);
     }
-    if(s.dataset.hmover){ const l = lineas.find(x => x.id === s.closest('.hrow').dataset.id); if(l) await moverLinea(l, s.value || null, false); return; }
+    if(s.dataset.hmover){ const l = lineas.find(x => x.id === s.closest('.hrow').dataset.id); if(!l) return;
+      await moverLinea(l, s.value || null, false);
+      if(s.value){ const t = camion(s.value), r = huecoTxt(s.value);   // contador de lo que le queda y aviso si ya no entra
+        if(r.cls === 'over'){ toast(`⛔ Ya no entra en ${t ? t.nombre : 'el camión'}: se pasa de lo que cabe. Quita algo o pásalo a otro camión.`, true); try{ sonidoAlerta(); }catch(_){} }
+        else toast(`${t ? t.nombre : 'Camión'}: ${r.cls === 'full' ? 'lleno, cuadrado ✓' : `le caben ${r.h.libresE} europalet${r.h.libresE === 1 ? '' : 's'} más${r.h.libresG ? ` o ${r.h.libresG} palet${r.h.libresG === 1 ? '' : 's'} grande${r.h.libresG === 1 ? '' : 's'}` : ''}`}`); }
+      return; }
     const li = s.closest('.line'); if(!li) return;
     const l = lineas.find(x => x.id === li.dataset.id);
     if(s.dataset.act === 'mover'){ await moverLinea(l, s.value || null, false); return; }
@@ -3249,6 +3504,7 @@ $('#addLinea').addEventListener('submit', async e => {
     e_pal: q('#lnE'), m_pal: q('#lnM'), carros: q('#lnC'), box: q('#lnB'), cajas: q('#lnK'), remonta: $('#lnRem').checked,
     cargador_id: null, transportista_id: $('#lnTrans').value || null,
     mercancia: $('#lnMerc').value || 'fruta y verdura', autorizacion_especial: $('#lnAut').value.trim() || null};
+  if(hayExtraContractual() && $('#lnContr').value) row.transportista_contractual_id = $('#lnContr').value;
   if(!(row.e_pal + row.m_pal + row.carros + row.box + row.cajas)){ toast('Pon cuántos palets, carros o cajas son.', true); $('#lnE').focus(); return; }
   const nombreCli = $('#lnCli').value.trim();
   let cli = clientes.find(c => c.nombre.trim().toLowerCase() === nombreCli.toLowerCase());
@@ -3267,7 +3523,7 @@ $('#addLinea').addEventListener('submit', async e => {
     ['#lnAlm','#lnCli','#lnRef','#lnE','#lnM','#lnC','#lnB','#lnK','#lnAut'].forEach(id => $(id).value = '');
     $('#lnMerc').value = 'fruta y verdura';
     guardarBorrador('pedido', null);
-    const pr = transPropia(); if(pr) $('#lnTrans').value = pr.id;
+    $('#lnTrans').value = '';   // el contractual se queda como estaba
     $('#lnRem').checked = false; $('#lnAlm').focus();
     refrescar(true);
   }catch(_){}
@@ -3304,11 +3560,16 @@ if('serviceWorker' in navigator) window.addEventListener('load', () => navigator
 
 document.body.dataset.sesion = 'no';
 (async () => {
+  await asegurarAuth();
+  try{ const { data, error } = await sb.rpc('personal_para_entrar', {p_empresa: EMPRESA}); if(!error && Array.isArray(data)) personasEmpresa = data; }catch(_){}
+  try{ const { data } = await sb.rpc('empresa_nombre', {p_empresa: EMPRESA}); if(data){ const el = document.getElementById('loginEmpresa'); if(el){ el.textContent = data; el.hidden = false; } } }catch(_){}
   try{ await cargarMaestros(); }catch(err){ setSync(false, err.message); }
   // ¿sesión recordada en este ordenador?
   // ¿viene de un enlace de acceso enviado por WhatsApp?
   const qs = new URLSearchParams(location.search), qp = qs.get('p'), qc = qs.get('c');
   let enlaceMalo = false;
+  // ¿entra el soporte de myDeCaS con el pase que ha autorizado dirección? (solo vale en esta pestaña y caduca solo)
+  if(qs.get('soporte')){ try{ sessionStorage.setItem('carton_soporte', qs.get('soporte')); }catch(_){} try{ history.replaceState(null, '', location.pathname); }catch(_){} }
   if(qp && qc){
     const r = await rpcAcceso('usar_enlace', {p_persona: qp, p_codigo: qc});   // un solo uso: después ya no vale para nadie
     const x = r.persona && Object.assign(persona(r.persona.id) || {}, r.persona);
@@ -3328,7 +3589,73 @@ document.body.dataset.sesion = 'no';
   if(u && ['trafico','direccion'].includes(u.puesto) && !u.baja && !u.pin_temporal) iniciarSesion(u);
   else { if(tk && ses.error) guardarToken(''); mostrarLogin(); if(enlaceMalo) $('#loginMsg').textContent = 'Este enlace ya se ha usado o ha caducado. Pide otro a dirección.'; }
 })();
+// × de los campos del pedido: borra lo escrito y deja el cursor ahí para escribir de nuevo
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-limpiar]'); if(!b) return;
+  const inp = document.getElementById(b.dataset.limpiar); if(!inp) return;
+  inp.value = ''; inp.dispatchEvent(new Event('input', {bubbles: true})); inp.focus(); });
+
+// ====== SOPORTE REMOTO: dirección autoriza (o no) que el soporte de myDeCaS entre en su cartón ======
+let soportePendienteVisto = null;
+async function revisarSoporte(){
+  if(!usuario || usuario.puesto !== 'direccion' || usuario.soporte) { $('#soporteAviso').hidden = true; return; }
+  const { data, error } = await sb.rpc('soporte_estado', {p_token: tokenCarton()});
+  if(error || !data) return;   // (sin la actualización 40 no hay soporte remoto)
+  const av = $('#soporteAviso');
+  if(data.abierto){ const h = new Date(data.abierto.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+    av.innerHTML = `🛟 El soporte de myDeCaS está conectado a tu cartón hasta las ${h} (lo autorizó ${esc(data.abierto.autorizado_por || 'dirección')}). <button type="button" class="btn small" id="soporteCortar" style="margin-left:8px">Cortar ahora</button>`; av.hidden = false; }
+  else av.hidden = true;
+  if(data.pendiente && soportePendienteVisto !== data.pendiente.id){
+    soportePendienteVisto = data.pendiente.id; $('#soporteDlg').dataset.id = data.pendiente.id;
+    $('#soporteTxt').textContent = 'Te piden permiso para entrar en tu cartón y ayudarte' + (data.pendiente.motivo ? ': «' + data.pendiente.motivo + '».' : '.');
+    $('#soporteDlg').hidden = false; try{ sonidoAlerta(); }catch(_){}
+  }
+}
+async function responderSoporte(ok){
+  const id = $('#soporteDlg').dataset.id; $('#soporteDlg').hidden = true;
+  const { data, error } = await sb.rpc('soporte_responder', {p_token: tokenCarton(), p_id: id, p_ok: ok});
+  if(error || (data && data.error)){ toast('No se pudo responder: ' + ((data && data.error) || error.message), true); return; }
+  toast(ok ? 'Acceso del soporte autorizado durante 1 hora.' : 'No has autorizado el acceso.'); revisarSoporte();
+}
+$('#soporteSi').onclick = () => responderSoporte(true);
+$('#soporteNo').onclick = () => responderSoporte(false);
+document.addEventListener('click', async e => { if(e.target.id !== 'soporteCortar') return;
+  if(!confirm('¿Cortar ahora el acceso del soporte de myDeCaS?')) return;
+  const { data, error } = await sb.rpc('soporte_cortar', {p_token: tokenCarton()});
+  toast(error || (data && data.error) ? 'No se pudo cortar: ' + ((data && data.error) || error.message) : 'Acceso del soporte cortado.', !!(error || (data && data.error))); revisarSoporte(); });
+setInterval(revisarSoporte, 8000);
+
+// Dirección pide ayuda: el soporte de myDeCaS puede entrar en este cartón durante 1 hora (solo en el cartón)
+document.addEventListener('click', async e => { if(e.target.id !== 'ayudaRemotaBtn') return;
+  if(!confirm('¿Pedir ayuda remota al soporte de myDeCaS?\n\nPodrán entrar en este cartón durante 1 hora para ayudarte, con tus mismos permisos. Solo en el cartón, nunca en tu ordenador. Lo puedes cortar cuando quieras.')) return;
+  const motivo = prompt('Cuéntales en pocas palabras qué te pasa (opcional):', '') ;
+  if(motivo === null) return;
+  const { data, error } = await sb.rpc('soporte_invitar', {p_token: tokenCarton(), p_motivo: motivo});
+  if(error){ toast(/soporte_invitar|schema cache|function/i.test(error.message || '') ? 'Falta ejecutar la actualización 41 en Supabase.' : 'No se pudo pedir la ayuda: ' + error.message, true); return; }
+  if(data && data.error){ toast(data.error, true); return; }
+  toast(data && data.ya ? 'El soporte ya tiene el acceso abierto.' : 'Hecho: el soporte de myDeCaS ya puede entrar durante 1 hora. Avísales por teléfono o WhatsApp.');
+  revisarSoporte(); });
+
+// ====== DÍA CERRADO: solo se pueden tocar los camiones que aún no han terminado el viaje ======
+(function(){
+  const cerrado = () => !!ajustes['cierre_' + fecha];
+  let ultimoAviso = 0;
+  const bloquear = e => {
+    if(!cerrado()) return;
+    const t = e.target; if(!t || !t.closest || !t.closest('#board')) return;
+    if(t.closest('.truck:not(.terminado)')) return;   // viaje sin terminar: se puede seguir trabajando
+    if(t.closest('a, summary, details.decas-cam, #finDiaBtn, [data-camact="ret"]')) return;   // mirar sí se puede
+    if(e.type === 'keydown' && !t.closest('input, select, textarea')) return;
+    e.preventDefault(); e.stopPropagation();
+    if((e.type === 'click' || e.type === 'dragstart') && Date.now() - ultimoAviso > 1500){ ultimoAviso = Date.now(); toast('Día cerrado: solo se pueden tocar los viajes que aún no han terminado.', true); }
+  };
+  ['mousedown','click','change','input','dragstart','drop','submit','keydown','focusin'].forEach(ev => document.addEventListener(ev, e => { if(ev === 'focusin'){ if(cerrado() && e.target.closest && e.target.closest('#board') && !e.target.closest('.truck:not(.terminado)') && e.target.matches('input, textarea')) e.target.blur(); return; } bloquear(e); }, true));
 })();
+})();
+
+// La leyenda de estados se queda siempre a la vista: justo debajo de la cabecera fija, o arriba del todo si la pantalla es pequeña
+(function(){ const cab = document.querySelector('.cabecera-fija'); if(!cab) return;
+  const ajustar = () => document.documentElement.style.setProperty('--alto-cab', (getComputedStyle(cab).position === 'sticky' ? Math.max(0, cab.getBoundingClientRect().height) : 0) + 'px');
+  if(window.ResizeObserver) new ResizeObserver(ajustar).observe(cab); addEventListener('resize', ajustar); ajustar(); })();
 </script>
 </body>
 </html>
