@@ -583,7 +583,7 @@ const VOZ = {
   esAppSinMicro(){ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) && !C.SpeechRecognition; },
   // Pide permiso del micrófono al pulsar el botón (así el móvil enseña su aviso «¿Permitir micrófono?»)
   // En iPhone la voz solo arranca si la primera frase sale justo al tocar el botón: se «despierta» con una frase vacía
-  despertar(){ try{ if('speechSynthesis' in window && !(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech)){ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } }catch(e){} },
+  despertar(){ try{ if('speechSynthesis' in window && !(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech)){ speechSynthesis.getVoices(); const u = new SpeechSynthesisUtterance('Vale'); u.lang = 'es-ES'; u.volume = 1; speechSynthesis.speak(u); } }catch(e){} },
   async prepararMicro(){
     VOZ.despertar();
     VOZ.errorMic = '';
@@ -602,22 +602,23 @@ const VOZ = {
   disponible(){ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; return !!C.SpeechRecognition || !!(window.SpeechRecognition || window.webkitSpeechRecognition); },
   async hablar(txt){
     const C = (window.Capacitor && window.Capacitor.Plugins) || {};
-    try{ if(C.TextToSpeech){ await C.TextToSpeech.speak({text: txt, lang: 'es-ES', rate: 0.85}); await vozPausa(500); return; } }catch(e){}
+    try{ if(C.TextToSpeech){ await C.TextToSpeech.speak({text: txt, lang: 'es-ES', rate: 1.0}); await vozPausa(250); return; } }catch(e){}
     if(!('speechSynthesis' in window)) return;
-    // Ritmo de conversación: un poco más despacio de lo normal, y no se sigue hasta que ha terminado de hablar del todo
-    await new Promise(res => { let hecho = false; const fin = () => { if(!hecho){ hecho = true; clearInterval(vigila); res(); } };
-      let empezado = false, vigila = null;
+    // Ritmo de conversación normal; no se sigue hasta que ha terminado de hablar
+    { const t1 = Date.now(); while((speechSynthesis.speaking || speechSynthesis.pending) && Date.now() - t1 < 1500) await vozPausa(100); }   // deja terminar el «Vale» del principio (en iPhone, cortar la voz la deja muda)
+    await new Promise(res => { let hecho = false, vigila = null, empezado = false; const t0 = Date.now();
+      const fin = () => { if(!hecho){ hecho = true; clearInterval(vigila); res(); } };
       try{
-        const u = new SpeechSynthesisUtterance(txt); u.lang = 'es-ES'; u.rate = 0.85; u.pitch = 1;
-        const v = (speechSynthesis.getVoices ? speechSynthesis.getVoices() : []).find(x => /^es(-|_)ES/i.test(x.lang)) || (speechSynthesis.getVoices ? speechSynthesis.getVoices() : []).find(x => /^es/i.test(x.lang));
-        if(v) u.voice = v;
+        const u = new SpeechSynthesisUtterance(txt); u.lang = 'es-ES'; u.rate = 1.0; u.pitch = 1; u.volume = 1;
+        const vs = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
+        const v = vs.find(x => /^es(-|_)ES/i.test(x.lang)) || vs.find(x => /^es/i.test(x.lang)); if(v) u.voice = v;
         u.onstart = () => { empezado = true; }; u.onend = fin; u.onerror = fin;
-        speechSynthesis.cancel(); speechSynthesis.speak(u);
-        // en algunos móviles «onend» no llega: se mira cada poco si sigue hablando
-        vigila = setInterval(() => { if(speechSynthesis.speaking) empezado = true; else if(empezado) fin(); }, 250);
+        speechSynthesis.speak(u);
+        // en algunos móviles «onend» no llega: se mira cada poco si sigue hablando; si no ha empezado a hablar en 2 s, no se espera más
+        vigila = setInterval(() => { if(speechSynthesis.speaking) empezado = true; else if(empezado || Date.now() - t0 > 2000) fin(); }, 200);
       }catch(e){ fin(); }
-      setTimeout(fin, 6000 + txt.length * 120); });
-    await vozPausa(600);   // un respiro antes de escuchar, como en una conversación
+      setTimeout(fin, 3000 + txt.length * 80); });
+    await vozPausa(250);   // un pequeño respiro antes de escuchar
   },
   async escuchar(){
     const C = (window.Capacitor && window.Capacitor.Plugins) || {};
@@ -724,10 +725,10 @@ async function vozPreguntar(paso, texto, valida){
     let alts = [], desde = Date.now();
     while(vozActivo && vozTocado === undefined && !alts.length && !VOZ.errorMic && Date.now() - desde < 25000){ alts = await VOZ.escuchar(); if(!alts.length && vozTocado === undefined) await vozPausa(300); }
     $e('vozEstado').classList.remove('escucha'); $e('vozEstado').textContent = '';
-    if(vozTocado !== undefined){ $e('vozBotones').innerHTML = ''; await vozPausa(300); return {valor: vozTocado, dicho: vozTocado ? 'sí' : 'no'}; }
+    if(vozTocado !== undefined){ $e('vozBotones').innerHTML = ''; return {valor: vozTocado, dicho: vozTocado ? 'sí' : 'no'}; }
     if(VOZ.errorMic){ await vozAvisoMicro(); return null; }
     if(!vozActivo) return null;
-    if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined){ $e('vozBotones').innerHTML = ''; await vozPausa(700); return {valor: v, dicho: alts[0]}; } }
+    if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined){ $e('vozBotones').innerHTML = ''; await vozPausa(300); return {valor: v, dicho: alts[0]}; } }
   }
   return null;
 }
