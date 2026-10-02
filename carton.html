@@ -2508,7 +2508,7 @@ let pendienteNuevoPin = null;
 $('#loginBtn').onclick = async () => {
   const area = $('#loginUser').value, pin = $('#loginPin').value.trim();
   if(!pin){ $('#loginMsg').textContent = 'Escribe tu PIN.'; return; }
-  if(!(await asegurarAuth())){ authLista = null; $('#loginMsg').textContent = 'Supabase no deja entrar a este ordenador' + (authFallo ? ' (dice: «' + authFallo + '»)' : '') + '. Revisa en Supabase → Authentication → Sign In / Providers → «Allow anonymous sign-ins».'; return; }
+  if(!(await asegurarAuth())) authLista = null;   // sin usuario anónimo se entra igual; si la base lo exige, el aviso sale arriba
   const r = await rpcConEmpresa('entrar_carton', {p_area: area, p_pin: pin});
   $('#loginPin').value = '';
   if(r.error || !r.persona){ $('#loginMsg').textContent = r.error || 'No se ha podido entrar.'; return; }
