@@ -742,7 +742,25 @@ const CAP = 13.2;   // metros útiles del remolque: 33 europalets × 0,40 m
 const DETALLE_TIPO = {e_pal:'europeo', m_pal:'grande (americano)', carros:'carro', box:'box', cajas:'cajas'};
 const PESO_KG = {e_pal:700, m_pal:900, carros:250, box:400, cajas:15};   // media alta de fruta y verdura; un camión lleno sale en unos 23-24 t (nunca por encima de lo legal)
 const SLOT_EURO = CAP / 33;   // un remolque coge como máximo 33 europalets
-const MERCANCIAS = ['fruta y verdura','productos perecederos','plantas vivas','congelado','secos'];
+const MERCANCIAS_BASE = ['fruta y verdura','productos perecederos','plantas vivas','congelado','secos'];
+// Las de siempre + las que se han creado desde el cartón o la app (ajuste «mercancias_extra»)
+function mercanciasTodas(){ let extra = []; try{ extra = JSON.parse(ajustes.mercancias_extra || '[]'); }catch(_){} return [...new Set([...MERCANCIAS_BASE, ...extra])]; }
+const NUEVA_MERC = '__nueva__';
+function opcionesMerc(sel){ const t = mercanciasTodas(); if(sel && !t.includes(sel)) t.push(sel); return t.map(m => `<option ${m === sel ? 'selected' : ''}>${esc(m)}</option>`).join('') + `<option value="${NUEVA_MERC}">➕ Nueva categoría…</option>`; }
+async function crearMercancia(selEl, antes){
+  const m = (prompt('Nombre de la nueva categoría de mercancía (por ejemplo: «Hortalizas de hoja»):') || '').trim();
+  if(!m){ selEl.innerHTML = opcionesMerc(antes); return; }
+  if(!mercanciasTodas().some(x => x.toLowerCase() === m.toLowerCase())){
+    let extra = []; try{ extra = JSON.parse(ajustes.mercancias_extra || '[]'); }catch(_){}
+    extra.push(m); if(!(await guardarAjuste('mercancias_extra', JSON.stringify(extra)))){ selEl.innerHTML = opcionesMerc(antes); return; }
+    toast('Categoría «' + m + '» creada: ya sale en el cartón y en la app.');
+  }
+  const igual = mercanciasTodas().find(x => x.toLowerCase() === m.toLowerCase()) || m;
+  selEl.innerHTML = opcionesMerc(igual); selEl.value = igual;
+  if(selEl.id === 'lnMerc'){ selEl.dispatchEvent(new Event('input', {bubbles:true})); }
+}
+document.addEventListener('focusin', e => { if(e.target.id === 'lnMerc' || e.target.id === 'edMerc') e.target.dataset.antes = e.target.value; });
+document.addEventListener('change', e => { if((e.target.id === 'lnMerc' || e.target.id === 'edMerc') && e.target.value === NUEVA_MERC) crearMercancia(e.target, e.target.dataset.antes || 'fruta y verdura'); });
 // Zonas / direcciones. La de cada destino se saca de su ubicación GPS (la ciudad de referencia más cercana de la lista REF_ZONAS)
 const ZONAS = [['V','Levante'],['S','Sur'],['C','Centro'],['M','Castilla-La Mancha'],['N','Norte'],['B','Badajoz'],['P','Portugal']];
 const ZONA_NOMBRE = Object.fromEntries(ZONAS);
@@ -977,7 +995,7 @@ async function cargarMaestros(){
   pintarContractual();
   pintarCamAuto();
   actualizarCondAut();
-  if(!$('#lnMerc').options.length) $('#lnMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join('');
+  { const v = $('#lnMerc').value || 'fruta y verdura'; if(document.activeElement !== $('#lnMerc')){ $('#lnMerc').innerHTML = opcionesMerc(v === NUEVA_MERC ? 'fruta y verdura' : v); } }
   $('#camChofer').innerHTML = opcionesChoferPropio();
 }
 // Desplegable de autónomos de «Salen hoy»: solo los que trabajan hoy
@@ -1520,7 +1538,7 @@ function abrirEdicion(l){
   $('#edTrans').value = l.transportista_id || '';
   const conContr = hayExtraContractual() || !!l.transportista_contractual_id;
   $('#edContrL').hidden = !conContr; if(conContr) opcionesContractual($('#edContr'), l.transportista_contractual_id || '');
-  $('#edMerc').innerHTML = MERCANCIAS.map(m => `<option>${m}</option>`).join(''); $('#edMerc').value = l.mercancia || 'fruta y verdura';
+  $('#edMerc').innerHTML = opcionesMerc(l.mercancia || 'fruta y verdura'); $('#edMerc').value = l.mercancia || 'fruta y verdura';
   $('#edAut').value = l.autorizacion_especial || '';
   $('#edKilos').value = l.kilos ?? ''; $('#edPrecio').value = l.precio_manual ?? '';
   // Con DeCA ya generado, los datos que salen en el DeCA no se tocan desde aquí
@@ -2427,7 +2445,7 @@ function iniciarSesion(u){
     $('#usuarioBox').innerHTML = `🛟 <b>Soporte myDeCaS</b> · con permiso de dirección${hasta ? ' hasta las ' + hasta : ''} <button type="button" class="btn small" id="salirBtn">Salir</button>`;
     arrancar(); return;
   }
-  $('#usuarioBox').innerHTML = `👤 <b>${esc(u.nombre)}</b> · ${ROL_TXT[u.puesto] || u.puesto} <button type="button" class="btn small" id="miPinBtn">Cambiar mi PIN</button> <button type="button" class="btn small" id="cambiarUsrBtn" title="Deja el cartón listo para que entre otra persona">🔄 Cambiar usuario</button> <button type="button" class="btn small" id="salirBtn">Cerrar sesión</button>`;
+  $('#usuarioBox').innerHTML = `👤 <b>${esc(u.nombre)}</b> · ${ROL_TXT[u.puesto] || u.puesto} <button type="button" class="btn small" id="miPinBtn">Cambiar mi PIN</button>${u.puesto === 'direccion' ? ' <button type="button" class="btn small" id="ayudaRemotaBtn" title="Deja entrar al soporte de myDeCaS en este cartón durante 1 hora para que te ayude">🛟 Ayuda remota</button>' : ''} <button type="button" class="btn small" id="cambiarUsrBtn" title="Deja el cartón listo para que entre otra persona">🔄 Cambiar usuario</button> <button type="button" class="btn small" id="salirBtn">Cerrar sesión</button>`;
   arrancar();
 }
 function pinValido(a, b){ if(!/^\d{4,6}$/.test(a)){ $('#loginMsg').textContent = 'El PIN tiene que tener entre 4 y 6 números.'; return false; } if(a !== b){ $('#loginMsg').textContent = 'Los dos PIN no coinciden.'; return false; } return true; }
@@ -3547,6 +3565,17 @@ document.addEventListener('click', async e => { if(e.target.id !== 'soporteCorta
   const { data, error } = await sb.rpc('soporte_cortar', {p_token: tokenCarton()});
   toast(error || (data && data.error) ? 'No se pudo cortar: ' + ((data && data.error) || error.message) : 'Acceso del soporte cortado.', !!(error || (data && data.error))); revisarSoporte(); });
 setInterval(revisarSoporte, 8000);
+
+// Dirección pide ayuda: el soporte de myDeCaS puede entrar en este cartón durante 1 hora (solo en el cartón)
+document.addEventListener('click', async e => { if(e.target.id !== 'ayudaRemotaBtn') return;
+  if(!confirm('¿Pedir ayuda remota al soporte de myDeCaS?\n\nPodrán entrar en este cartón durante 1 hora para ayudarte, con tus mismos permisos. Solo en el cartón, nunca en tu ordenador. Lo puedes cortar cuando quieras.')) return;
+  const motivo = prompt('Cuéntales en pocas palabras qué te pasa (opcional):', '') ;
+  if(motivo === null) return;
+  const { data, error } = await sb.rpc('soporte_invitar', {p_token: tokenCarton(), p_motivo: motivo});
+  if(error){ toast(/soporte_invitar|schema cache|function/i.test(error.message || '') ? 'Falta ejecutar la actualización 41 en Supabase.' : 'No se pudo pedir la ayuda: ' + error.message, true); return; }
+  if(data && data.error){ toast(data.error, true); return; }
+  toast(data && data.ya ? 'El soporte ya tiene el acceso abierto.' : 'Hecho: el soporte de myDeCaS ya puede entrar durante 1 hora. Avísales por teléfono o WhatsApp.');
+  revisarSoporte(); });
 
 // ====== DÍA CERRADO: solo se pueden tocar los camiones que aún no han terminado el viaje ======
 (function(){

@@ -106,6 +106,7 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
       <button data-t="pagos" aria-pressed="false">💶 Cobros</button>
       <button data-t="ajustes" aria-pressed="false">⚙️ Ajustes</button>
     </nav>
+    <div id="avisoAyuda" hidden style="background:var(--info-soft);color:var(--info);border:1px solid var(--info);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-weight:700;display:flex;gap:10px;align-items:center;flex-wrap:wrap"></div>
     <section id="tResumen"></section>
     <section id="tEmpresas" hidden></section>
     <section id="tPagos" hidden></section>
@@ -267,7 +268,7 @@ async function cargar(){
     planes = [['estandar','Estándar',['app']],['basico','Básico',['app','carton']],['pro','Pro',['app','carton','admin']]].map(([clave, nombre, incluye], i) => ({clave, nombre, incluye, precio: num(ajustes['precio_' + clave]), orden: i, activo: true}));
     extrasCat = [{clave:'contractual', nombre:'Transportista contractual', precio: num(ajustes.precio_extra_contractual), modulo:'contractual', activo:true}];
   }
-  pintar();
+  pintar(); revisarAyudas();
 }
 async function guardar(q, ok){
   const { error } = await q;
@@ -537,6 +538,18 @@ $('#mrCerrar').onclick = async () => {
   if(remoto){ clearInterval(remoto.timer); if(remoto.fila.estado === 'pendiente') await sb.from('soporte_accesos').update({estado:'cerrado'}).eq('id', remoto.fila.id); }
   remoto = null; $('#mRemoto').hidden = true;
 };
+// ---- avisos de «Ayuda remota» pedida desde un cartón (se mira cada 30 segundos) ----
+async function revisarAyudas(){
+  if(!hay40 || $('#vApp').hidden) return;
+  const { data } = await sb.from('soporte_accesos').select('*').eq('estado', 'aprobado').gt('caduca', new Date().toISOString()).order('caduca', {ascending:false}).limit(3);
+  const av = $('#avisoAyuda');
+  if(!data || !data.length){ av.hidden = true; return; }
+  const f = data[0], h = new Date(f.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}), pr = empresas.find(e => e.principal) || {};
+  av.innerHTML = `🛟 <span>${/^Dirección/.test(f.pedido_por || '') ? `${esc(f.pedido_por)} de <b>${esc(pr.nombre || 'tu empresa')}</b> pide ayuda remota` : `Acceso remoto abierto en <b>${esc(pr.nombre || 'tu empresa')}</b>`}${f.motivo ? ': «' + esc(f.motivo) + '»' : ''} · hasta las ${h}</span> <button class="btn small primary" type="button" id="abrirAyuda">🖥 Abrir su cartón</button>`;
+  av.hidden = false;
+  $('#abrirAyuda').onclick = () => window.open('carton.html?soporte=' + encodeURIComponent(f.token), '_blank', 'noopener');
+}
+setInterval(revisarAyudas, 30000);
 // ---- cobro ----
 function hastaCobro(e, meses){
   const desde = e.pagado_hasta && e.pagado_hasta >= hoy() ? sumarDias(e.pagado_hasta, 1) : hoy();

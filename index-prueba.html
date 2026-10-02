@@ -217,7 +217,7 @@
     <input type="text" id="ndDestino" list="ndListaDestinos" placeholder="Mercado, plataforma, población…" autocomplete="off">
     <label>Dirección del destino</label>
     <input type="text" id="ndDestinoDir" placeholder="Calle, población" autocomplete="off">
-    <label>Mercancía *</label>
+    <label>Mercancía * <span class="pmeta">(elige de la lista o escribe una nueva: se guarda para la próxima vez)</span></label>
     <input type="text" id="ndMercancia" list="ndListaMercancias" placeholder="Ej.: frutas y hortalizas frescas" autocomplete="off">
     <div class="row" style="gap:8px;align-items:flex-end">
       <div style="flex:1"><label>Peso bruto (kg)</label><input type="text" id="ndPeso" inputmode="decimal" placeholder="Vacío = se calcula con los palets" autocomplete="off"></div>
@@ -239,7 +239,7 @@
       <div id="pinCapaTxt" style="font-size:1.15rem;font-weight:700;margin-bottom:12px"></div>
       <input type="password" id="pinCapaIn" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" style="font-size:1.6rem;text-align:center;letter-spacing:.4em">
       <div id="pinCapaMsg" style="color:var(--bad);min-height:1.3em;margin-top:6px"></div>
-      <div class="row" style="gap:8px;margin-top:6px"><button class="btn btn-ghost" id="pinCapaNo" type="button" style="margin:0">Cancelar</button><button class="btn btn-primary" id="pinCapaSi" type="button" style="margin:0">Aceptar</button></div>
+      <div class="row" style="gap:8px;margin-top:6px"><button class="btn btn-ghost" id="pinCapaNo" type="button" style="margin:0" title="Cancelar o elegir otra persona">Cancelar</button><button class="btn btn-primary" id="pinCapaSi" type="button" style="margin:0">Aceptar</button></div>
     </div>
   </div>
 
@@ -277,6 +277,7 @@
   <div class="card">
     <strong>✏️ Carga real</strong>
     <button class="btn btn-ghost" id="igualQueOrdenBtn" type="button" style="margin-top:8px">✅ Carga real = igual que la orden</button>
+    <button class="btn btn-ghost" id="cargaVozBtn" type="button" style="display:none;margin-top:8px;font-size:1.05rem">🎤 Cambiar la carga hablando</button>
     <div class="pmeta" id="ndPaletsAyuda" style="display:none;margin-top:6px;color:var(--accent);font-weight:700">Pon con + y − los palets que llevas de este porte.</div>
     <div class="pmeta" id="cargaResumenCompacto" style="margin-top:8px">Sin ajustar todavía — pulsa el botón de arriba o ajusta manualmente abajo</div>
     <details id="cargaRealDetails">
@@ -491,7 +492,7 @@ function capturarUbicacion(){
 let lugares = {}, ajustesApp = {};
 async function cargarLugares(){
   if(!sb) return;
-  sb.from('ajustes').select('*').then(({data})=> { (data || []).forEach(x=> ajustesApp[x.clave] = x.valor); mostrarBotonNuevo(); });
+  sb.from('ajustes').select('*').then(({data})=> { (data || []).forEach(x=> ajustesApp[x.clave] = x.valor); mostrarBotonNuevo(); pintarMercancias(); });
   leerLicencia();
   const [a, d, cl, tr] = await Promise.all([sb.from('almacenes').select('*').limit(5000), sb.from('destinos').select('*').limit(5000),
     sb.from('clientes').select('*').order('nombre').limit(5000), sb.from('transportistas').select('*').order('nombre').limit(5000)]);
@@ -551,6 +552,19 @@ function mostrarBotonNuevo(){
 function transportistaPorDefecto(){
   const yo = (personalCache || []).find(p => choferActual && String(p.id) === String(choferActual.id)) || {};
   return listaTrans.find(t => yo.transportista_id && String(t.id) === String(yo.transportista_id)) || listaTrans.find(t => t.propia) || null;
+}
+// Categorías de mercancía: las de siempre + las que se han creado desde el cartón o la app
+const MERC_BASE = ['Frutas y hortalizas frescas','Frutas frescas','Hortalizas frescas','Cítricos','Plantas y flores','Productos perecederos','Congelado'];
+function mercanciasExtra(){ try{ return JSON.parse(ajustesApp.mercancias_extra || '[]'); }catch(e){ return []; } }
+function pintarMercancias(){ const todas = [...new Set([...MERC_BASE, ...mercanciasExtra()])]; $e('ndListaMercancias').innerHTML = todas.map(m => `<option value="${escA(m)}">`).join(''); }
+async function guardarMercanciaNueva(m){
+  m = String(m || '').trim(); if(!m || !sb) return;
+  const ya = [...MERC_BASE, ...mercanciasExtra()].some(x => x.toLowerCase() === m.toLowerCase()); if(ya) return;
+  const { data } = await sb.from('ajustes').select('valor').eq('clave', 'mercancias_extra').limit(1);
+  let lista = []; try{ lista = JSON.parse((data && data[0] && data[0].valor) || '[]'); }catch(e){}
+  if(lista.some(x => x.toLowerCase() === m.toLowerCase())) return;
+  lista.push(m); ajustesApp.mercancias_extra = JSON.stringify(lista);
+  await sb.from('ajustes').upsert({clave: 'mercancias_extra', valor: ajustesApp.mercancias_extra, updated_at: new Date().toISOString()}); pintarMercancias();
 }
 function salirDeNuevo(){
   $e('nuevoDecaCard').style.display = 'none';
@@ -824,6 +838,33 @@ async function asistenteMatricula(dentroDeOtro){
   }catch(e){ vozCerrar(); return false; }
 }
 $e('matVoz').onclick = async () => { if(!(await VOZ.prepararMicro())){ await vozAvisoMicro(); return; } asistenteMatricula(false); };
+// ====== CAMBIAR LA CARGA HABLANDO (cuando no se carga lo mismo que dice la orden) ======
+async function asistenteCarga(){
+  if(!currentCarga){ alert('Primero toca la carga en la que vas a trabajar.'); return; }
+  if(!(await VOZ.prepararMicro())){ await vozAvisoMicro(); return; }
+  vozActivo = true;
+  const nombrePal = (t, n) => ({'europeo': n === 1 ? 'europeo' : 'europeos', 'grande (americano)': n === 1 ? 'grande' : 'grandes', 'carro': n === 1 ? 'carro' : 'carros', 'box': 'box', 'cajas': n === 1 ? 'caja' : 'cajas', 'especial': n === 1 ? 'bulto especial' : 'bultos especiales'})[t];
+  try{
+    for(let vuelta = 0; vuelta < 3 && vozActivo; vuelta++){
+      const r = await vozPreguntar('Carga real', '¿Qué llevas de verdad? Dímelo todo junto. Por ejemplo: veinte europeos y cuatro grandes.', vozPalets);
+      if(!r){ return vozCerrar(); }
+      const pal = Object.entries(r.valor).map(([t, n]) => n + ' ' + nombrePal(t, n)).join(' y ');
+      const ok = await vozPreguntar('Carga real', `He entendido: ${pal}. ¿Está bien?`, vozSiNo);
+      if(!ok){ return vozCerrar(); }
+      if(!ok.valor) continue;
+      TYPES.forEach(t => { state[t.id] = {qty: r.valor[t.id] || 0, remontable: false}; });
+      $e('cargaRealDetails').open = true; render();
+      if($e('confirmBtn').disabled){ await VOZ.hablar(totalLdm() > CAPACITY + 1e-9 ? 'Cuidado: eso no cabe en el camión. Revísalo en la pantalla.' : 'Revisa la carga en la pantalla.'); return vozCerrar(); }
+      const g = await vozPreguntar('Último paso', '¿Genero el DeCA ahora?', vozSiNo);
+      vozCerrar();
+      if(g && g.valor){ $e('confirmBtn').click(); VOZ.hablar('Generando el DeCA.'); }
+      else VOZ.hablar('Vale. Cuando quieras, pulsa el botón azul: Confirmar carga y generar DeCA.');
+      return;
+    }
+    vozCerrar();
+  }catch(e){ vozCerrar(); }
+}
+$e('cargaVozBtn').onclick = asistenteCarga;
 $e('nuevoCancelar').onclick = salirDeNuevo;
 // Al elegir un cargador o transportista conocido, se rellenan solos su NIF y domicilio
 $e('ndCargador').addEventListener('input', ()=>{
@@ -853,6 +894,7 @@ $e('ndSeguir').onclick = ()=>{
   const faltan = [['ndCargador','cargador'],['ndCargadorNif','NIF del cargador'],['ndTrans','transportista'],['ndTransNif','NIF del transportista'],
     ['ndOrigen','origen'],['ndDestino','destino'],['ndMercancia','mercancía']].filter(([id]) => !v(id)).map(([,n]) => n);
   if(faltan.length){ $e('ndMsg').textContent = 'Falta: ' + faltan.join(', ') + '.'; return; }
+  guardarMercanciaNueva(v('ndMercancia'));   // si es una categoría nueva, queda guardada para todos
   const peso = v('ndPeso').replace(/\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',', '.');
   const pesoAuto = peso === '';   // sin peso: se calcula con los palets al confirmar
   if(!pesoAuto && !(+peso > 0)){ $e('ndMsg').textContent = 'El peso tiene que ser un número de kilos (ej.: 12000), o déjalo vacío y se calcula con los palets.'; return; }
@@ -960,7 +1002,10 @@ async function cargarChoferes(){
     if(ses.persona && String(ses.persona.id) === String(guardado)) activarPersona(Object.assign(data.find(c=>c.id===guardado), ses.persona));
     else { guardarTokenApp(''); aplicarChoferSeleccionado(); }
   } else {
-    document.getElementById('pendientesLista').innerHTML = '<div class="empty">Elige quién eres arriba para ver tus cargas</div>';
+    // ¿Es el mismo de la última vez en este móvil? Se le pide solo el PIN (con «Cancelar» puede elegir otra persona)
+    let ultimo = null; try{ ultimo = localStorage.getItem('ultimo_conductor'); }catch(e){}
+    if(ultimo && data.some(c=>String(c.id)===String(ultimo))){ sel.value = data.find(c=>String(c.id)===String(ultimo)).id; aplicarChoferSeleccionado(); }
+    else document.getElementById('pendientesLista').innerHTML = '<div class="empty">Elige quién eres arriba para ver tus cargas</div>';
   }
 }
 
@@ -991,6 +1036,7 @@ function activarPersona(persona){
   if(!(persona.tiene_pin || persona.pin) || persona.pin_temporal) mostrarPin(true); else document.getElementById('pinCard').style.display = 'none';
   localStorage.setItem('persona_id', persona.id);
   localStorage.setItem('persona_verificada', persona.id);
+  try{ localStorage.setItem('ultimo_conductor', String(persona.id)); }catch(e){}   // la próxima vez se le pide solo el PIN
   const plateInput = document.getElementById('plate');
   const plateSel = document.getElementById('plateSel');
   const plateRemolqueSel = document.getElementById('plateRemolqueSel');
@@ -1742,6 +1788,7 @@ function mostrarCarga(c, id){
     (c.referencia ? `<br><b>Nº pedido:</b> ${c.referencia}` : '') +
     (c.observaciones ? `<br><b>Observaciones de Tráfico:</b> ${c.observaciones}` : '');
   refrescarTarjetaMatricula();   // (la matrícula de la orden ya se puso al tocar la carga, antes de preguntarla)
+  $e('cargaVozBtn').style.display = (typeof VOZ !== 'undefined' && VOZ.disponible()) ? 'block' : 'none';
   // "Carga real" empieza igual que la orden: si solo cambia un tipo, el resto se mantiene
   rellenarDesdeOrden(); render();
   // refresca el resaltado en la lista
