@@ -3408,7 +3408,7 @@ document.addEventListener('change', async e => {
       return refrescar(true);
     }
     if(s.dataset.hmover){ const l = lineas.find(x => x.id === s.closest('.hrow').dataset.id); if(!l) return;
-      await moverLinea(l, s.value || null, false);
+      if(!(await moverLinea(l, s.value || null, false))) return;
       if(s.value){ const t = camion(s.value), r = huecoTxt(s.value);   // contador de lo que le queda y aviso si ya no entra
         if(r.cls === 'over'){ toast(`⛔ Ya no entra en ${t ? t.nombre : 'el camión'}: se pasa de lo que cabe. Quita algo o pásalo a otro camión.`, true); try{ sonidoAlerta(); }catch(_){} }
         else toast(`${t ? t.nombre : 'Camión'}: ${r.cls === 'full' ? 'lleno, cuadrado ✓' : `le caben ${r.h.libresE} europalet${r.h.libresE === 1 ? '' : 's'} más${r.h.libresG ? ` o ${r.h.libresG} palet${r.h.libresG === 1 ? '' : 's'} grande${r.h.libresG === 1 ? '' : 's'}` : ''}`}`); }
@@ -3429,15 +3429,59 @@ async function moverLinea(l, camId, retorno){
   const patch = {camion_id: camId, retorno: !!(camId && retorno)};
   if(patch.retorno) patch.modo = 'ruta';
   if(camId && l.fecha !== fecha) patch.fecha = fecha;
+  const t = camId ? camion(camId) : null, antes = l.camion_id ? camion(l.camion_id) : null;
+  const cambiaCamion = (camId || null) !== (l.camion_id || null);
+  const txt = `«${l.almacen} – ${l.cliente_nombre || ''}»`;
+  // Aviso si se pone en un camión de otra zona (la zona del pedido sale de la ubicación GPS de su destino)
+  if(cambiaCamion && t && !patch.retorno){
+    const zl = zonaDestino(l.destino), zc = t.direccion;
+    if(zl && zc && zc !== 'X' && zl !== zc && ZONA_NOMBRE[zl] && ZONA_NOMBRE[zc]
+       && !confirm(`Esa carga pertenece a ${ZONA_NOMBRE[zl]} (por la ubicación de su destino, ${l.destino}).\n\n¿Estás seguro de colocarla en ${t.nombre}, que va a ${ZONA_NOMBRE[zc]}?`)){ render(); return false; }
+  }
+  // Si la orden ya está en la app de un chófer (pedido que va directo en ruta), se le quita a él y pasa al nuevo camión
+  const modoFinal = patch.modo || l.modo;
+  const d = l.carga_id && decas[l.carga_id];
+  let accionOrden = null;
+  if(cambiaCamion && modoFinal === 'ruta'){
+    if(d && !d.anulado){
+      if(d.entregado){ toast(`${txt} ya está descargado: no se puede pasar a otro camión.`, true); render(); return false; }
+      if(!t){ toast(`${txt} ya está cargado (DeCA ${d.deca_id}): tiene que ir en un camión, no puede volver a «sin asignar».`, true); render(); return false; }
+      if(!t.chofer_id || !t.matricula){ toast(`Para pasarle una carga ya cargada, ${t.nombre} tiene que tener chófer de la app y matrícula.`, true); render(); return false; }
+      if(!confirm(`${txt} ya está cargado${antes ? ' en ' + antes.nombre : ''} (DeCA ${d.deca_id}).\n\nSi lo pasas a ${t.nombre}, a ${(persona(t.chofer_id) || {}).nombre || 'su chófer'} le llegará el DeCA a su app para aceptarlo cuando haga el transbordo. ¿Seguir?`)){ render(); return false; }
+      accionOrden = 'transbordo';
+    } else if(enviada(l)){
+      const quien = (persona(cargas[l.carga_id].asignado_id) || {}).nombre || 'el chófer';
+      if(t && t.estado === 'enviado' && t.chofer_id) accionOrden = 'pasar';
+      else { accionOrden = 'quitar'; patch.carga_id = null; }
+      accionOrden += '|' + quien;
+    }
+  }
   if(camId !== l.camion_id || !!retorno !== !!l.retorno){
     patch.propuesta_enviada = false;
     const hermanas = lineas.filter(x => x.camion_id === camId && !!x.retorno === !!patch.retorno && x.id !== l.id);
     patch.orden = camId ? hermanas.reduce((m,x) => Math.max(m, x.orden ?? hermanas.indexOf(x)), -1) + 1 : null;
   }
+  const cargaAntes = l.carga_id;
   await run(sb.from('carton_lineas').update(patch).eq('id', l.id));
   Object.assign(l, patch);
+  try{
+    if(accionOrden === 'transbordo') await proponerDeca(l, t);
+    else if(accionOrden){
+      const [acc, quien] = accionOrden.split('|');
+      if(acc === 'pasar'){
+        await run(sb.from('cargas_planificadas').update({asignado_id: String(t.chofer_id), matricula: t.matricula || null, observaciones: t.observaciones || null, orden: patch.orden ?? null}).eq('id', cargaAntes));
+        if(cargas[cargaAntes]) cargas[cargaAntes].asignado_id = String(t.chofer_id);
+        toast(`Orden ${txt}: se le ha quitado a ${quien} y ya está en la app de ${(persona(t.chofer_id) || {}).nombre || t.nombre}.`);
+      } else {
+        await run(sb.from('cargas_planificadas').update({estado: 'cancelada'}).eq('id', cargaAntes));
+        if(cargas[cargaAntes]) cargas[cargaAntes].estado = 'cancelada';
+        toast(`Orden ${txt}: se le ha quitado a ${quien}. ${t ? `Se enviará con ${t.nombre} cuando lo envíes.` : 'Queda en «sin asignar».'}`);
+      }
+    }
+  }catch(_){}
   render();
   refrescar(true);
+  return true;
 }
 
 async function reordenar(l, delta){

@@ -1767,6 +1767,7 @@ function fichaCarga(c){
         <div style="margin:2px 0 4px">${enlaceMapa(c.almacen, 'Ir a cargar')}${enlaceMapa(c.destino, 'Destino')}</div>
         <div class="pmeta">${cli.nombre || 'Cliente sin nombre'}</div>
         <div>📦 ${c.mercancia || '—'} · ${c.peso || '—'} kg</div>
+        ${cargasCambiadas.has(String(c.id)) ? '<div class="aviso-carga">🔔 Tráfico ha cambiado esta carga</div>' : ''}
         <div class="pend-q">${cargaBonita(c.detalle_planificado)}</div>
         ${c.referencia ? `<div class="pmeta">Ref. ${c.referencia}</div>` : ''}
         ${c.aviso_carga ? `<div class="aviso-carga">⚠️ ${c.aviso_carga}</div>` : ''}
@@ -1792,6 +1793,7 @@ function pintarCargas(){
   pintarRetornoVisible();
 }
 
+let firmasCargas = null; const cargasCambiadas = new Set(), cargasCerradasAqui = new Set();
 async function pollCargasPendientes(){
   if(!sb || !choferActual) return;
   const consulta = campos => sb.from('cargas_planificadas')
@@ -1804,13 +1806,29 @@ async function pollCargasPendientes(){
   document.getElementById('syncTag').textContent = 'Sincronizado · ' + new Date().toLocaleTimeString('es-ES');
   cargasPendientes = data || [];
   const idsAhora = new Set(cargasPendientes.map(c=>String(c.id)));
-  if(idsCargasVistas && [...idsAhora].some(id=>!idsCargasVistas.has(id))) avisoSonoro();
+  let suena = idsCargasVistas && [...idsAhora].some(id=>!idsCargasVistas.has(id));
+  // Si tráfico cambia una orden que ya tenías (más palets, otro destino…), se marca y suena
+  const firmas = {};
+  cargasPendientes.forEach(c => { firmas[String(c.id)] = [c.detalle_planificado, c.almacen, c.destino, c.cliente_id, c.referencia, c.matricula].join('|'); });
+  if(firmasCargas) Object.keys(firmas).forEach(id => { if(firmasCargas[id] != null && firmasCargas[id] !== firmas[id]){ cargasCambiadas.add(id); suena = true; } });
+  firmasCargas = firmas;
+  if(suena) avisoSonoro();
   idsCargasVistas = idsAhora;
+  // La carga en la que estás trabajando: si tráfico la ha cambiado, se pone al día y te lo dice
+  const nc = currentCarga && !currentCarga.manual && cargasPendientes.find(c=>c.id===currentCarga.id);
+  if(nc && cargasCambiadas.has(String(nc.id))){
+    const antes = cargaBonita(currentCarga.detalle_planificado);
+    cargasCambiadas.delete(String(nc.id));
+    mostrarCarga(nc, nc.id);
+    $e('ordenDatos').insertAdjacentHTML('afterbegin', `<div class="aviso-carga">🔔 <b>Tráfico ha cambiado esta carga.</b> Antes: ${antes}</div>`);
+  }
   pintarCargas();
-  // Si la carga en la que se estaba trabajando ya no está pendiente (confirmada desde otro sitio), se limpia
+  // Si la carga en la que se estaba trabajando ya no está pendiente, se limpia (y si no la has cerrado tú, se avisa)
   if(currentCarga && !currentCarga.manual && !cargasPendientes.some(c=>c.id===currentCarga.id)){
+    const quitada = !cargasCerradasAqui.has(String(currentCarga.id)) ? currentCarga : null;
     currentCarga = null;
     document.getElementById('trabajandoCard').style.display = 'none';
+    if(quitada){ avisoSonoro(); setTimeout(() => alert(`Tráfico te ha quitado la carga de ${quitada.almacen || quitada.origen || '—'} → ${quitada.destino || '—'} (se la ha pasado a otro camión o la ha anulado). No la cargues.`), 50); }
   }
   hayCargas = cargasPendientes.length > 0;
   revisarMatricula();
@@ -1820,6 +1838,7 @@ let preguntandoMat = false;
 async function seleccionarCarga(id){
   const c = cargasPendientes.find(x=>x.id===id);
   if(!c || preguntandoMat) return;
+  cargasCambiadas.delete(String(c.id));
   if(currentCarga && currentCarga.manual && !confirm('Estás haciendo un DeCA nuevo sin orden. ¿Dejarlo y trabajar en esta carga?')) return;
   if(c.matricula){ document.getElementById('plate').value = c.matricula; if(choferActual && choferActual.puesto === 'cargador') sincronizarPlateSelectsCargador(c.matricula); }
   if(typeof VOZ !== 'undefined' && VOZ.disponible() && !matConfirmada()){
@@ -2311,7 +2330,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
     if(insErr){ alert('No se pudo guardar en el servidor: ' + insErr.message); return; }
 
     if(currentCarga.manual) guardarDatosNuevos(currentCarga);
-    else await sb.from('cargas_planificadas').update({estado:'cerrada'}).eq('id', currentCarga.id);
+    else { cargasCerradasAqui.add(String(currentCarga.id)); await sb.from('cargas_planificadas').update({estado:'cerrada'}).eq('id', currentCarga.id); }
     pollHistorial(); pollCargasPendientes();
   }
   // Deja la app lista para la siguiente carga pendiente del mismo viaje
