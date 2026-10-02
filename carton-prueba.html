@@ -474,6 +474,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
 <div class="login" id="login" hidden>
   <div class="login-card">
     <h1>El cartón de Tráfico</h1>
+    <p id="loginEmpresa" hidden style="margin:-6px 0 4px;font-weight:800;color:var(--accent)"></p>
     <div id="loginNormal" style="display:flex;flex-direction:column;gap:10px">
       <p class="hint" style="margin:0">Elige tu área y escribe tu PIN.</p>
       <select class="field" id="loginUser" aria-label="Área"></select>
@@ -733,7 +734,35 @@ table.fichero td.acc{white-space:nowrap;width:1%}
 const SUPABASE_URL = 'https://abeutxnyyyaxrmhoeemv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiZXV0eG55eXlheHJtaG9lZW12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyODIyNTAsImV4cCI6MjEwNTg1ODI1MH0.qQ0q0H3HbR6Dcno35uCWFYRPhKYHbSEIZAXf-_HtTfY';
 // =======================================================================================
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const EMPRESA = (() => { let q = ''; try{ q = new URLSearchParams(location.search).get('e') || ''; if(q) localStorage.setItem('empresa_codigo', q); return q || localStorage.getItem('empresa_codigo') || ''; }catch(_){ return q; } })();
+// Cada empresa tiene su propio «usuario» de Supabase en este navegador (así se pueden abrir dos empresas sin mezclarse),
+// y el soporte que entra con permiso usa uno solo para esa pestaña (no toca la sesión normal de este ordenador)
+const MODO_SOPORTE = (() => { try{ return new URLSearchParams(location.search).has('soporte') || !!sessionStorage.getItem('carton_soporte'); }catch(_){ return false; } })();
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth: MODO_SOPORTE
+  ? {storage: window.sessionStorage, storageKey: 'mydecas-soporte', persistSession: true, autoRefreshToken: true}
+  : {storageKey: 'mydecas-' + (EMPRESA || 'principal').toLowerCase(), persistSession: true, autoRefreshToken: true}});
+// ====== FASE 2: varias empresas. Cada empresa entra por su enlace (carton.html?e=codigo); sin código = la empresa principal ======
+// Cada ordenador entra en Supabase con un usuario anónimo; al poner el PIN queda unido a su empresa y solo ve lo suyo
+let authLista = null;
+function asegurarAuth(){
+  if(!authLista) authLista = (async () => {
+    try{
+      const { data } = await sb.auth.getSession();
+      if(data && data.session) return true;
+      const { error } = await sb.auth.signInAnonymously();
+      if(error){ console.warn('Sin usuario anónimo:', error.message); return false; }
+      return true;
+    }catch(e){ return false; }
+  })();
+  return authLista;
+}
+// Llama a una función nueva (con empresa) y, si la base aún no tiene la actualización 43, a la de antes
+async function rpcConEmpresa(nombre, args){
+  let { data, error } = await sb.rpc(nombre, {p_empresa: EMPRESA, ...args});
+  if(error && /function|schema cache|not find/i.test(error.message || '')) ({ data, error } = await sb.rpc(nombre, args));
+  if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
+  return data || {};
+}
 
 // Metros de carga por unidad: los mismos valores que usa la app del conductor
 const LDM = {e_pal:0.4, m_pal:0.5, carros:13.2/38, box:0.5, cajas:0.02};   // carros: en un frigo normal caben 38 (9 filas de 4 de punta + las 2 últimas de estampa)
@@ -857,7 +886,7 @@ const fmt = n => (Math.round(n*100)/100).toLocaleString('es-ES', {maximumFractio
 // Sin tabla o sin fila = todo activo (así funciona igual antes de la actualización 30)
 let licencia = null;
 async function leerLicencia(){
-  try{ const { data, error } = await sb.from('licencia').select('*').eq('id', 1).limit(1); licencia = (!error && data && data[0]) || null; }catch(e){ licencia = null; }
+  try{ const { data, error } = await sb.from('licencia').select('*').order('id').limit(1); licencia = (!error && data && data[0]) || null; }catch(e){ licencia = null; }   // (cada empresa solo ve la suya)
   aplicarLicencia();
 }
 // Partes del programa que tiene la empresa (las pone el maestro según su plan y sus extras). Sin dato = como antes, por el nombre del plan
@@ -1180,7 +1209,8 @@ function telefonoWa(t){
 }
 function appUrl(personaId){
   const base = location.href.replace(/[^/]*([?#].*)?$/, '') + 'index.html';
-  return personaId ? `${base}?p=${encodeURIComponent(personaId)}` : base;
+  const e = EMPRESA ? `e=${encodeURIComponent(EMPRESA)}` : '';
+  return personaId ? `${base}?p=${encodeURIComponent(personaId)}${e ? '&' + e : ''}` : (e ? `${base}?${e}` : base);
 }
 function abrirWhatsApp(telefono, texto){
   const n = telefonoWa(telefono);
@@ -1773,10 +1803,12 @@ function renderOrders(){
 // ====== ACCESO POR ENLACE: el trabajador elige su PIN sin que nadie lo vea ======
 let pinPendiente = null;
 function codigoAleatorio(){ const a = new Uint8Array(12); crypto.getRandomValues(a); return Array.from(a, x => 'abcdefghjkmnpqrstuvwxyz23456789'[x % 31]).join(''); }
+let empresaEnlace = '';   // código de empresa que devuelve la base al crear el enlace
 function enlaceAcceso(p, codigo){
   const esCarton = ['trafico','direccion'].includes(p.puesto);
   const base = location.href.replace(/[^/]*([?#].*)?$/, '') + (esCarton ? 'carton.html' : 'index.html');
-  return `${base}?p=${encodeURIComponent(p.id)}&c=${codigo}`;
+  const emp = empresaEnlace || EMPRESA;
+  return `${base}?p=${encodeURIComponent(p.id)}&c=${codigo}${emp ? '&e=' + encodeURIComponent(emp) : ''}`;
 }
 function textoAcceso(p, codigo){
   const esCarton = ['trafico','direccion'].includes(p.puesto);
@@ -1801,7 +1833,7 @@ async function enviarPinWa(){
   const ventana = window.open('about:blank', '_blank');
   const r = await rpcAcceso('crear_enlace', {p_token: tokenCarton(), p_persona: String(p.id)});
   if(r.error || !r.codigo){ if(ventana) ventana.close(); toast(r.error || 'No se pudo crear el enlace.', true); return; }
-  const codigo = r.codigo, caduca = r.caduca;
+  const codigo = r.codigo, caduca = r.caduca; empresaEnlace = r.empresa || '';
   const patch = {codigo_caduca: caduca};
   if(tel !== (p.telefono || '')){ patch.telefono = tel; await sb.from('personal').update({telefono: tel}).eq('id', p.id); }
   const url = `https://wa.me/${telefonoWa(tel)}?text=${encodeURIComponent(textoAcceso(p, codigo))}`;
@@ -2416,7 +2448,8 @@ async function rpcAcceso(nombre, args){
   if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
   return data || {};
 }
-function usuariosCarton(){ return personalTodos.filter(p => ['trafico','direccion'].includes(p.puesto) && !p.baja); }
+let personasEmpresa = null;   // lista de la empresa del enlace (antes de entrar no se ven los datos)
+function usuariosCarton(){ return (personasEmpresa || personalTodos).filter(p => ['trafico','direccion'].includes(p.puesto) && !p.baja); }
 function panelLogin(cual){ ['loginNormal','loginPrimero','loginNuevoPin'].forEach(id => $('#' + id).hidden = id !== cual); $('#loginMsg').textContent = ''; }
 function mostrarLogin(){
   document.body.dataset.sesion = 'no'; $('#login').hidden = false;
@@ -2472,7 +2505,8 @@ let pendienteNuevoPin = null;
 $('#loginBtn').onclick = async () => {
   const area = $('#loginUser').value, pin = $('#loginPin').value.trim();
   if(!pin){ $('#loginMsg').textContent = 'Escribe tu PIN.'; return; }
-  const r = await rpcAcceso('entrar_carton', {p_area: area, p_pin: pin});
+  await asegurarAuth();
+  const r = await rpcConEmpresa('entrar_carton', {p_area: area, p_pin: pin});
   $('#loginPin').value = '';
   if(r.error || !r.persona){ $('#loginMsg').textContent = r.error || 'No se ha podido entrar.'; return; }
   guardarToken(r.token);
@@ -2495,7 +2529,8 @@ $('#primBtn').onclick = async () => {
   const nombre = $('#primNombre').value.trim(), a = $('#primPin').value.trim(), b = $('#primPin2').value.trim();
   if(!nombre){ $('#loginMsg').textContent = 'Escribe tu nombre.'; return; }
   if(!pinValido(a, b)) return;
-  const r = await rpcAcceso('crear_primer_usuario', {p_nombre: nombre, p_pin: a});
+  await asegurarAuth();
+  const r = await rpcConEmpresa('crear_primer_usuario', {p_nombre: nombre, p_pin: a});
   if(r.error || !r.persona){ $('#loginMsg').textContent = 'No se pudo crear: ' + (r.error || ''); return; }
   guardarToken(r.token);
   await cargarMaestros();
@@ -2556,6 +2591,7 @@ async function finDeJornada(){
 }
 async function arrancar(){
   if(arrancado) return; arrancado = true;
+  try{ await cargarMaestros(); }catch(_){}   // ya con su empresa: ahora sí se ven sus datos
   setTimeout(() => copiaAutomatica('al abrir el cartón'), 20000);   // por si el día anterior no se cerró sesión
   ajustarFechaInicial();
   await refrescar(true);
@@ -3524,6 +3560,9 @@ if('serviceWorker' in navigator) window.addEventListener('load', () => navigator
 
 document.body.dataset.sesion = 'no';
 (async () => {
+  await asegurarAuth();
+  try{ const { data, error } = await sb.rpc('personal_para_entrar', {p_empresa: EMPRESA}); if(!error && Array.isArray(data)) personasEmpresa = data; }catch(_){}
+  try{ const { data } = await sb.rpc('empresa_nombre', {p_empresa: EMPRESA}); if(data){ const el = document.getElementById('loginEmpresa'); if(el){ el.textContent = data; el.hidden = false; } } }catch(_){}
   try{ await cargarMaestros(); }catch(err){ setSync(false, err.message); }
   // ¿sesión recordada en este ordenador?
   // ¿viene de un enlace de acceso enviado por WhatsApp?

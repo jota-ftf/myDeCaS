@@ -140,6 +140,14 @@
 </div>
 <div class="wrap">
   <h1>🚚 myDeCaS <span style="font-weight:500;color:var(--muted);font-size:.8em">· conductor</span></h1>
+  <div class="pmeta" id="empresaTxt" style="display:none;margin-top:-4px"></div>
+  <div class="card" id="empresaCard" style="display:none;border-color:var(--accent);border-width:2px">
+    <strong style="font-size:1.1rem">🏢 ¿De qué empresa eres?</strong>
+    <div class="pmeta" style="margin:4px 0 8px">Escribe el código de tu empresa (te lo da tu oficina). Solo se pide la primera vez.</div>
+    <input type="text" id="empresaCodigoIn" autocomplete="off" autocapitalize="none" placeholder="por ejemplo: frutas-garcia" style="font-size:1.2rem">
+    <div class="pmeta" id="empresaMsg" style="color:var(--bad);min-height:1.2em"></div>
+    <button class="btn btn-primary" id="empresaOk" type="button" style="margin-top:6px">Entrar</button>
+  </div>
   <div class="sub">Ajusta la carga real, confirma y genera el DeCA con QR</div>
   <div id="licenciaAviso" style="display:none;background:rgba(255,92,92,.15);border:2px solid var(--bad);border-radius:12px;padding:12px;margin-bottom:12px;font-weight:700"></div>
   <div class="synctag" style="display:flex;justify-content:flex-end;align-items:center;gap:8px"><span id="syncTag">Conectando con el servidor…</span><span class="badge" id="actualizarBtn" style="cursor:pointer" title="Vuelve a leer todo del servidor">⟳ Actualizar</span></div>
@@ -331,8 +339,19 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // =====================================================================
 
 // Si no hay cobertura y la librería no se pudo cargar, la app sigue abriendo en modo "sin cobertura"
+const EMPRESA = (() => { let q = ''; try{ q = new URLSearchParams(location.search).get('e') || ''; if(q) localStorage.setItem('empresa_codigo', q); return q || localStorage.getItem('empresa_codigo') || ''; }catch(_){ return q; } })();
 const sb = (SUPABASE_URL.includes('TU-PROYECTO') || !window.supabase) ? null :
-  window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth: {storageKey: 'mydecas-' + (EMPRESA || 'principal').toLowerCase(), persistSession: true, autoRefreshToken: true}});   // un «usuario» de Supabase por empresa en este móvil
+// ====== FASE 2: varias empresas. Cada empresa tiene su enlace (index.html?e=codigo); sin código = la empresa principal ======
+let authLista = null;
+function asegurarAuth(){   // cada móvil entra en Supabase con un usuario anónimo; al poner el PIN queda unido a su empresa
+  if(!sb) return Promise.resolve(false);
+  if(!authLista) authLista = (async () => {
+    try{ const { data } = await sb.auth.getSession(); if(data && data.session) return true;
+      const { error } = await sb.auth.signInAnonymously(); if(error){ console.warn('Sin usuario anónimo:', error.message); return false; } return true; }catch(e){ return false; }
+  })();
+  return authLista;
+}
 
 const TYPES = [
   {id:'europeo', name:'Palet Europeo', meta:'1,20 × 0,80 m', ldmUnit:0.4},
@@ -529,7 +548,7 @@ const escH = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,
 // ====== LICENCIA: si el servicio está suspendido no se pueden crear DeCAs nuevos (los ya hechos se siguen enseñando) ======
 let licenciaApp = null;
 async function leerLicencia(){
-  try{ const { data, error } = await sb.from('licencia').select('*').eq('id', 1).limit(1); licenciaApp = (!error && data && data[0]) || null; }catch(e){}
+  try{ const { data, error } = await sb.from('licencia').select('*').order('id').limit(1); licenciaApp = (!error && data && data[0]) || null; }catch(e){}   // (cada empresa solo ve la suya)
   const av = $e('licenciaAviso');
   if(licenciaBloqueada()){
     av.innerHTML = '⛔ ' + escH((licenciaApp && licenciaApp.mensaje) || 'Servicio suspendido: no se pueden crear DeCAs nuevos. Avisa a tu empresa.') + '<div class="pmeta" style="font-weight:400;margin-top:4px">Tus DeCAs ya hechos se pueden seguir enseñando y marcando como descargados.</div>';
@@ -1000,6 +1019,7 @@ let personalCache = [];
 const tokenApp = ()=> { try{ return localStorage.getItem('persona_token') || ''; }catch(e){ return ''; } };
 function guardarTokenApp(t){ try{ if(t) localStorage.setItem('persona_token', t); else localStorage.removeItem('persona_token'); localStorage.removeItem('persona_pin_huella'); }catch(e){} }
 async function rpcAcceso(nombre, args){
+  await asegurarAuth();
   const { data, error } = await sb.rpc(nombre, args);
   if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase. Avisa a la oficina.' : error.message};
   return data || {};
@@ -1007,7 +1027,10 @@ async function rpcAcceso(nombre, args){
 async function cargarChoferes(){
   const sel = document.getElementById('choferSel');
   if(!sb){ sel.innerHTML = '<option value="">Sin conexión con el servidor</option>'; mostrarSinCobertura(); return; }
-  let { data, error } = await sb.from('personal').select('*').order('puesto').order('nombre');
+  await asegurarAuth();
+  // la lista «¿Quién eres?» de SU empresa (con la actualización 43 los datos ya no se ven sin haber entrado)
+  let { data, error } = await sb.rpc('personal_para_entrar', {p_empresa: EMPRESA});
+  if(error && /function|schema cache|not find/i.test(error.message || '')) ({ data, error } = await sb.from('personal').select('*').order('puesto').order('nombre'));
   if(error){ sel.innerHTML = `<option value="">Sin conexión con el servidor</option>`; mostrarSinCobertura(); return; }
   // en la app salen cargadores y chóferes, y también tráfico y dirección (pueden coger un camión en cualquier momento); no sale quien está de baja
   data = (data || []).filter(c => ['cargador','chofer','trafico','direccion'].includes(c.puesto) && !c.baja);
@@ -1079,6 +1102,7 @@ function activarPersona(persona){
   localStorage.setItem('persona_id', persona.id);
   localStorage.setItem('persona_verificada', persona.id);
   try{ localStorage.setItem('ultimo_conductor', String(persona.id)); }catch(e){}   // la próxima vez se le pide solo el PIN
+  if(!activarPersona._cargado){ activarPersona._cargado = true; cargarLugares(); cargarMatriculas(); }   // ya dentro de su empresa: ahora sí se ven sus datos
   const plateInput = document.getElementById('plate');
   const plateSel = document.getElementById('plateSel');
   const plateRemolqueSel = document.getElementById('plateRemolqueSel');
@@ -2380,6 +2404,24 @@ if(sb){
   document.getElementById('pendientesLista').innerHTML = '<div class="empty">Sin cobertura: las cargas nuevas aparecerán cuando vuelva la conexión.</div>';
   mostrarSinCobertura();
 }
+// ====== EMPRESA: nombre arriba y, en la app instalada sin código, se pregunta una vez ======
+(async function(){
+  if(!sb) return;
+  const ponerNombre = n => { const el = $e('empresaTxt'); if(n){ el.innerHTML = '🏢 ' + escH(n) + ' · <a href="#" id="cambiarEmpresa" style="color:var(--muted)">cambiar</a>'; el.style.display = 'block';
+    $e('cambiarEmpresa').onclick = ev => { ev.preventDefault(); if(confirm('¿Cambiar de empresa en este móvil?')){ try{ localStorage.removeItem('empresa_codigo'); localStorage.removeItem('persona_id'); localStorage.removeItem('persona_verificada'); localStorage.removeItem('ultimo_conductor'); localStorage.removeItem('persona_token'); }catch(e){} location.href = location.pathname; } }; } };
+  try{ const { data } = await sb.rpc('empresa_nombre', {p_empresa: EMPRESA}); if(EMPRESA || ES_NATIVA) ponerNombre(data); }catch(e){}
+  if(ES_NATIVA && !EMPRESA){   // la app instalada no sabe de qué empresa es hasta que se le dice
+    $e('empresaCard').style.display = 'block';
+    $e('empresaOk').onclick = async () => {
+      const c = $e('empresaCodigoIn').value.trim().toLowerCase(); if(!c){ $e('empresaMsg').textContent = 'Escribe el código.'; return; }
+      const { data, error } = await sb.rpc('empresa_nombre', {p_empresa: c});
+      if(error){ $e('empresaMsg').textContent = 'Sin conexión. Vuelve a probar.'; return; }
+      if(!data){ $e('empresaMsg').textContent = 'No encuentro esa empresa. Revisa el código con tu oficina.'; return; }
+      try{ localStorage.setItem('empresa_codigo', c); }catch(e){}
+      location.reload();
+    };
+  }
+})();
 }catch(e){
   document.body.innerHTML = '<div style="padding:20px;font-family:sans-serif;color:#c00">Error cargando la app: '+e.message+'</div>';
 }

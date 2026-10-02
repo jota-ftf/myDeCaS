@@ -121,6 +121,8 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
     <div class="grid2">
       <label class="full">Nombre de la empresa *<input class="field" id="meNombre"></label>
       <label>NIF / CIF<input class="field" id="meNif"></label>
+      <label>Código de la empresa (va en sus enlaces)<input class="field" id="meCodigo" placeholder="se pone solo con el nombre" autocomplete="off"></label>
+      <div class="full hint" id="meEnlaces"></div>
       <label>Persona de contacto<input class="field" id="meContacto"></label>
       <label>Email<input class="field" id="meEmail" type="email"></label>
       <label>Teléfono<input class="field" id="meTel"></label>
@@ -159,6 +161,15 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
     </div>
     <p class="hint" id="mcAyuda"></p>
     <div class="fila" style="justify-content:flex-end"><button class="btn" id="mcCancelar" type="button">Cancelar</button><button class="btn primary" id="mcGuardar" type="button">Apuntar cobro</button></div>
+  </div>
+</div>
+
+<!-- Enlaces de una empresa -->
+<div class="modal" id="mEnlaces" hidden>
+  <div class="modal-card" style="max-width:620px">
+    <h2 id="mlTit">🔗 Enlaces</h2>
+    <div id="mlCuerpo"></div>
+    <div class="fila" style="justify-content:flex-end"><button class="btn" id="mlCerrar" type="button">Cerrar</button></div>
   </div>
 </div>
 
@@ -337,6 +348,7 @@ function pEmpresas(){
           <td><div class="acc">
             <button class="btn small" data-editar="${e.id}">Editar</button>
             <button class="btn small" data-remoto="${e.id}" title="Entrar en su cartón para ayudarles (necesita el permiso de su dirección)">🛟 Remoto</button>
+            ${e.codigo ? `<button class="btn small" data-enlaces="${e.id}" title="Enlaces de su cartón y de la app, y alta de su primer usuario">🔗 Enlaces</button>` : ''}
             ${e.estado !== 'baja' ? `<button class="btn small" data-cobrar="${e.id}">💶 Cobro</button>` : ''}
             ${e.estado === 'prueba' ? `<button class="btn small" data-alargar="${e.id}">+ prueba</button>` : ''}
             ${e.estado === 'suspendida' || e.estado === 'baja' ? `<button class="btn small" data-reactivar="${e.id}">▶ Reactivar</button>` : `<button class="btn small peligro" data-suspender="${e.id}">⏸ Suspender</button>`}
@@ -465,6 +477,9 @@ document.addEventListener('click', async ev => {
   if(b.dataset.borrarplan){ if(!confirm('¿Borrar este plan?')) return; return guardar(sb.from('maestro_planes').delete().eq('clave', b.dataset.borrarplan), 'Plan borrado'); }
   if(b.dataset.borrarextra){ if(!confirm('¿Borrar este extra?')) return; return guardar(sb.from('maestro_extras').delete().eq('clave', b.dataset.borrarextra), 'Extra borrado'); }
   if(b.dataset.remoto) return pedirRemoto(empresas.find(x => x.id === b.dataset.remoto));
+  if(b.dataset.enlaces) return abrirEnlaces(empresas.find(x => x.id === b.dataset.enlaces));
+  if(b.dataset.copiar){ navigator.clipboard && navigator.clipboard.writeText(b.dataset.copiar).then(() => toast('Copiado')); return; }
+  if(b.dataset.nuevousuario) return crearUsuarioEmpresa(empresas.find(x => x.id === b.dataset.nuevousuario));
   if(b.dataset.quitaradmin){ if(!confirm(`¿Quitar a ${b.dataset.quitaradmin} como administrador?`)) return; return guardar(sb.from('maestro_admins').delete().eq('email', b.dataset.quitaradmin), 'Quitado'); }
 });
 
@@ -473,7 +488,9 @@ function abrirEmpresa(e){
   editando = e;
   $('#meTit').textContent = e ? 'Editar empresa' : 'Nueva empresa';
   const v = (id, val) => $('#' + id).value = val == null ? '' : val;
-  v('meNombre', e && e.nombre); v('meNif', e && e.nif); v('meContacto', e && e.contacto); v('meEmail', e && e.email); v('meTel', e && e.telefono); v('meDir', e && e.direccion);
+  v('meNombre', e && e.nombre); v('meCodigo', e && e.codigo);
+  $('#meCodigo').dataset.tocado = e && e.codigo ? '1' : '';
+  pintarEnlacesFicha(); v('meNif', e && e.nif); v('meContacto', e && e.contacto); v('meEmail', e && e.email); v('meTel', e && e.telefono); v('meDir', e && e.direccion);
   $('#mePlan').innerHTML = planes.filter(p => p.activo !== false || (e && e.plan === p.clave)).map(p => `<option value="${esc(p.clave)}">${esc(p.nombre)}${p.descripcion ? ' — ' + esc(p.descripcion).slice(0, 60) : ''}</option>`).join('');
   v('mePlan', e ? e.plan : (planDe('pro') ? 'pro' : (planes[0] || {}).clave)); v('meCamiones', e ? e.camiones : 1); v('meEstado', e ? e.estado : 'prueba');
   const tiene = e ? extrasDe(e) : [];
@@ -488,10 +505,20 @@ function abrirEmpresa(e){
   $('#meDiasL').hidden = !!e; $('#meMsg').textContent = '';
   $('#mEmpresa').hidden = false; $('#meNombre').focus();
 }
+// Código: se propone solo a partir del nombre (en minúsculas, sin tildes ni espacios)
+$('#meNombre').addEventListener('input', () => { if(!$('#meCodigo').dataset.tocado){ $('#meCodigo').value = slugCodigo($('#meNombre').value); pintarEnlacesFicha(); } });
+$('#meCodigo').addEventListener('input', () => { $('#meCodigo').dataset.tocado = '1'; pintarEnlacesFicha(); });
+function slugCodigo(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\b(s\.?\s?l\.?u?|s\.?\s?a\.?|s\.?\s?c\.?a\.?|sat|slu)\b/g, ' ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30); }
+const BASE_WEB = location.href.replace(/[^/]*([?#].*)?$/, '');
+const enlacesDe = cod => ({carton: BASE_WEB + 'carton.html?e=' + encodeURIComponent(cod), app: BASE_WEB + 'index.html?e=' + encodeURIComponent(cod)});
+function pintarEnlacesFicha(){ const c = $('#meCodigo').value.trim(); if(!c){ $('#meEnlaces').innerHTML = ''; return; } const en = enlacesDe(c);
+  $('#meEnlaces').innerHTML = `Cartón: <b>${esc(en.carton)}</b><br>App de sus conductores: <b>${esc(en.app)}</b>`; }
 $('#meDias').oninput = () => { const n = parseInt($('#meDias').value, 10); if(n >= 0) $('#mePrueba').value = sumarDias(hoy(), n); };
 $('#meCancelar').onclick = () => { $('#mEmpresa').hidden = true; editando = null; };
 $('#meGuardar').onclick = async () => {
   const nombre = $('#meNombre').value.trim(); if(!nombre){ $('#meMsg').textContent = 'Escribe el nombre de la empresa.'; return; }
+  const codigo = slugCodigo($('#meCodigo').value || nombre) || 'empresa';
+  if(empresas.some(x => (x.codigo || '').toLowerCase() === codigo && (!editando || x.id !== editando.id))){ $('#meMsg').textContent = 'Ese código ya lo tiene otra empresa: cambia el código.'; return; }
   const row = {
     nombre, nif: $('#meNif').value.trim().toUpperCase() || null, contacto: $('#meContacto').value.trim() || null, email: $('#meEmail').value.trim() || null,
     telefono: $('#meTel').value.trim() || null, direccion: $('#meDir').value.trim() || null,
@@ -503,6 +530,7 @@ $('#meGuardar').onclick = async () => {
   if(empresas.some(x => 'contar_autonomos' in x)) row.contar_autonomos = $('#meAutonomos').checked;   // (con la actualización 37)
   const extrasMarcados = [...document.querySelectorAll('#meExtras [data-extra]:checked')].map(c => c.dataset.extra);
   if(hay40) row.extras = extrasMarcados;
+  if(empresas.some(x => 'codigo' in x)) row.codigo = codigo;   // (con la actualización 43)
   if(empresas.some(x => 'dias_descarga' in x)){ row.dias_descarga = Math.max(0, parseInt($('#meDiasDesc').value, 10) >= 0 ? parseInt($('#meDiasDesc').value, 10) : 1); row.hora_corte_descarga = +$('#meCorte').value; }   // (con la actualización 42)
   if(empresas.some(x => 'extra_contractual' in x)) row.extra_contractual = extrasMarcados.includes('contractual');   // (con la actualización 38)
   if(row.estado === 'prueba' && !row.prueba_hasta){ $('#meMsg').textContent = 'Pon hasta qué día dura la prueba.'; return; }
@@ -516,12 +544,14 @@ $('#meGuardar').onclick = async () => {
 let remoto = null;
 async function pedirRemoto(e){
   if(!hay40){ toast('Para la conexión remota ejecuta antes la actualización 40 en Supabase.', true); return; }
-  if(!e.principal){ alert(`Por ahora solo se puede entrar en el cartón de tu empresa principal: cada empresa tiene todavía su propio sistema.\n\nCuando todas estén en el mismo sistema (fase 2), el botón «Remoto» funcionará igual con «${e.nombre}».`); return; }
-  const { data: abiertos } = await sb.from('soporte_accesos').select('*').eq('estado', 'aprobado').gt('caduca', new Date().toISOString()).order('caduca', {ascending:false}).limit(1);
+  if(!e.principal && !empresas.some(x => 'codigo' in x)){ alert('Para entrar en el cartón de otras empresas hace falta la actualización 43 (fase 2).'); return; }
+  let q = sb.from('soporte_accesos').select('*').eq('estado', 'aprobado').gt('caduca', new Date().toISOString());
+  if(empresas.some(x => 'codigo' in x)) q = q.eq('empresa_id', e.id);
+  const { data: abiertos } = await q.order('caduca', {ascending:false}).limit(1);
   let fila = abiertos && abiertos[0];
   if(!fila){
     const motivo = prompt(`¿Para qué necesitas entrar en el cartón de ${e.nombre}? (lo verá su dirección)`, 'Revisar una incidencia'); if(motivo === null) return;
-    const { data, error } = await sb.from('soporte_accesos').insert({empresa_id: e.id, pedido_por: miEmail, motivo: motivo.trim() || null}).select('*').single();
+    const { data, error } = await sb.from('soporte_accesos').insert({empresa_id: e.id, pedido_por: miEmail, motivo: motivo.trim() || null}).select('*').single();   // le sale el aviso a la dirección de ESA empresa
     if(error){ toast('No se pudo pedir el acceso: ' + error.message, true); return; }
     fila = data;
   }
@@ -550,12 +580,37 @@ async function revisarAyudas(){
   const { data } = await sb.from('soporte_accesos').select('*').eq('estado', 'aprobado').gt('caduca', new Date().toISOString()).order('caduca', {ascending:false}).limit(3);
   const av = $('#avisoAyuda');
   if(!data || !data.length){ av.hidden = true; return; }
-  const f = data[0], h = new Date(f.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}), pr = empresas.find(e => e.principal) || {};
+  const f = data[0], h = new Date(f.caduca).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}), pr = empresas.find(e => e.id === f.empresa_id) || empresas.find(e => e.principal) || {};
   av.innerHTML = `🛟 <span>${/^Dirección/.test(f.pedido_por || '') ? `${esc(f.pedido_por)} de <b>${esc(pr.nombre || 'tu empresa')}</b> pide ayuda remota` : `Acceso remoto abierto en <b>${esc(pr.nombre || 'tu empresa')}</b>`}${f.motivo ? ': «' + esc(f.motivo) + '»' : ''} · hasta las ${h}</span> <button class="btn small primary" type="button" id="abrirAyuda">🖥 Abrir su cartón</button>`;
   av.hidden = false;
   $('#abrirAyuda').onclick = () => window.open('carton.html?soporte=' + encodeURIComponent(f.token), '_blank', 'noopener');
 }
 setInterval(revisarAyudas, 30000);
+// ---- enlaces de una empresa y alta de su primer usuario ----
+let enlacesEmp = null;
+function abrirEnlaces(e){
+  enlacesEmp = e; const en = enlacesDe(e.codigo);
+  $('#mlTit').textContent = '🔗 ' + e.nombre;
+  $('#mlCuerpo').innerHTML = `<p class="hint">Cada empresa entra por sus enlaces y solo ve sus datos. Dáselos a su dirección.</p>
+    <p><b>Cartón de Tráfico</b> (para el ordenador de la oficina)<br><span style="word-break:break-all">${esc(en.carton)}</span> <button class="btn small" data-copiar="${esc(en.carton)}">Copiar</button></p>
+    <p><b>App de los conductores</b> (para el móvil)<br><span style="word-break:break-all">${esc(en.app)}</span> <button class="btn small" data-copiar="${esc(en.app)}">Copiar</button></p>
+    <p class="hint">En la app instalada (la de Android) la primera vez hay que abrir este enlace de la app en el móvil para que quede unida a la empresa.</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
+    <p><b>Primer usuario de dirección</b><br><span class="hint">Se crea la persona y su enlace personal para que elija su PIN (sirve 7 días). Después, desde su cartón, da de alta al resto.</span></p>
+    <div class="fila"><button class="btn primary" data-nuevousuario="${e.id}">➕ Crear usuario de dirección</button></div>
+    <div id="mlUsuario" style="margin-top:10px"></div>`;
+  $('#mEnlaces').hidden = false;
+}
+async function crearUsuarioEmpresa(e){
+  const nombre = (prompt(`Nombre de la persona de dirección de ${e.nombre}:`) || '').trim(); if(!nombre) return;
+  const { data, error } = await sb.rpc('maestro_crear_usuario', {p_empresa: e.id, p_nombre: nombre, p_puesto: 'direccion'});
+  if(error || (data && data.error)){ toast('No se pudo crear: ' + ((data && data.error) || (/function|schema/i.test(error.message) ? 'falta la actualización 43' : error.message)), true); return; }
+  const url = BASE_WEB + 'carton.html?p=' + encodeURIComponent(data.persona) + '&c=' + encodeURIComponent(data.codigo) + '&e=' + encodeURIComponent(data.empresa || e.codigo);
+  const txt = `Hola ${nombre}, este es tu enlace para entrar en el cartón de tráfico de myDeCaS y elegir tu PIN:\n\n${url}\n\nSirve una sola vez y caduca en 7 días.`;
+  $('#mlUsuario').innerHTML = `<div class="card" style="margin:0"><b>✅ ${esc(nombre)} creado.</b> Su enlace personal (un solo uso):<br><span style="word-break:break-all">${esc(url)}</span>
+    <div class="fila" style="margin-top:6px"><button class="btn small" data-copiar="${esc(txt)}">Copiar mensaje</button>${e.telefono ? `<a class="btn small" target="_blank" rel="noopener" href="https://wa.me/${String(e.telefono).replace(/\D/g, '').replace(/^(\d{9})$/, '34$1')}?text=${encodeURIComponent(txt)}">Enviar por WhatsApp</a>` : ''}</div></div>`;
+}
+$('#mlCerrar').onclick = () => { $('#mEnlaces').hidden = true; enlacesEmp = null; };
 // ---- cobro ----
 function hastaCobro(e, meses){
   const desde = e.pagado_hasta && e.pagado_hasta >= hoy() ? sumarDias(e.pagado_hasta, 1) : hoy();
@@ -584,7 +639,7 @@ $('#mcGuardar').onclick = async () => {
   if(error){ toast('No se pudo apuntar: ' + error.message, true); return; }
   if(await guardar(sb.from('maestro_empresas').update({pagado_hasta: hasta, estado: e.estado === 'baja' ? 'baja' : 'activa'}).eq('id', e.id), `Cobro apuntado: pagado hasta el ${fmtF(hasta)}`)){ $('#mCobro').hidden = true; cobrando = null; }
 };
-document.addEventListener('keydown', ev => { if(ev.key === 'Escape'){ $('#mEmpresa').hidden = true; $('#mCobro').hidden = true; } });
+document.addEventListener('keydown', ev => { if(ev.key === 'Escape'){ $('#mEmpresa').hidden = true; $('#mCobro').hidden = true; $('#mEnlaces').hidden = true; } });
 
 comprobar();
 sb.auth.onAuthStateChange((evento) => { if(evento === 'SIGNED_OUT') ver('vLogin'); });
