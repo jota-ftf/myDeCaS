@@ -101,6 +101,11 @@
 .card.plegable.ahora{border-color:var(--accent);border-width:2px}
 .card.plegable.ahora > .row strong::after{content:'  · ahora';font-weight:700;font-size:.8rem;color:var(--accent)}
 
+.pin-capa{position:fixed;inset:0;z-index:2100;background:rgba(5,8,15,.75);display:flex;align-items:center;justify-content:center;padding:16px}
+.pin-capa[hidden]{display:none}
+.pin-caja{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;width:100%;max-width:380px}
+.voz-ayuda{font-size:1.1rem;font-weight:500;text-align:left;line-height:1.45;margin-top:10px}
+.voz-ayuda li{margin:6px 0}
 /* DeCA por voz: letras grandes para quien ve poco */
 .voz-capa{position:fixed;inset:0;z-index:2000;background:#0b0f1a;color:#fff;display:flex;align-items:center;justify-content:center;padding:16px}
 .voz-capa[hidden]{display:none}
@@ -227,6 +232,15 @@
     <datalist id="ndListaClientes"></datalist><datalist id="ndListaTrans"></datalist>
     <datalist id="ndListaAlmacenes"></datalist><datalist id="ndListaDestinos"></datalist>
     <datalist id="ndListaMercancias"><option value="Frutas y hortalizas frescas"><option value="Frutas frescas"><option value="Hortalizas frescas"><option value="Cítricos"><option value="Plantas y flores"></datalist>
+  </div>
+
+  <div id="pinCapa" class="pin-capa" hidden role="dialog" aria-modal="true">
+    <div class="pin-caja">
+      <div id="pinCapaTxt" style="font-size:1.15rem;font-weight:700;margin-bottom:12px"></div>
+      <input type="password" id="pinCapaIn" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" style="font-size:1.6rem;text-align:center;letter-spacing:.4em">
+      <div id="pinCapaMsg" style="color:var(--bad);min-height:1.3em;margin-top:6px"></div>
+      <div class="row" style="gap:8px;margin-top:6px"><button class="btn btn-ghost" id="pinCapaNo" type="button" style="margin:0">Cancelar</button><button class="btn btn-primary" id="pinCapaSi" type="button" style="margin:0">Aceptar</button></div>
+    </div>
   </div>
 
   <div id="vozCapa" class="voz-capa" hidden role="dialog" aria-modal="true" aria-live="assertive">
@@ -667,29 +681,45 @@ function vozNif(alts){
 let vozActivo = false;
 // Si el micrófono no funciona, se explica en grande qué hacer (y se para)
 async function vozAvisoMicro(){
+  const web = location.hostname;
   const txt = VOZ.errorMic === 'app-vieja' ? 'Esta versión de la app todavía no puede usar el micrófono. Instala la nueva, o mientras tanto abre la app en Chrome.'
     : VOZ.errorMic === 'sin-micro' ? 'No encuentro el micrófono del móvil.'
-    : 'El micrófono está bloqueado. Pulsa el candado de arriba, junto a la dirección, entra en Permisos y activa el Micrófono. Después vuelve a probar.';
+    : 'El micrófono está bloqueado. Sigue los pasos de la pantalla y vuelve a probar.';
+  const pasos = VOZ.errorMic === 'denegado' ? `<ol class="voz-ayuda">
+      <li>En Chrome, toca los <b>tres puntos ⋮</b> (arriba a la derecha) → <b>Configuración</b> → <b>Configuración de sitios</b> → <b>Micrófono</b>.</li>
+      <li>Busca <b>${escH(web)}</b> (puede estar en «Bloqueados»), tócalo y elige <b>Permitir</b>.</li>
+      <li>Si ahí no sale, en los <b>Ajustes del móvil</b> → <b>Aplicaciones</b> → <b>Chrome</b> → <b>Permisos</b> → <b>Micrófono</b> → <b>Permitir</b>.</li>
+      <li>Vuelve aquí y pulsa <b>Probar otra vez</b>.</li></ol>` : '';
   vozActivo = false; VOZ.parar();
-  $e('vozCapa').hidden = false; $e('vozPaso').textContent = '🎤 Micrófono'; $e('vozPregunta').textContent = txt; $e('vozEstado').textContent = ''; $e('vozOido').textContent = '';
-  $e('vozBotones').innerHTML = '<button class="btn btn-primary" type="button" id="vozEntendido">Entendido</button>';
-  $e('vozEntendido').onclick = () => { $e('vozCapa').hidden = true; };
+  $e('vozCapa').hidden = false; $e('vozPaso').textContent = '🎤 Micrófono'; $e('vozPregunta').innerHTML = escH(txt) + pasos; $e('vozEstado').textContent = ''; $e('vozOido').textContent = '';
+  $e('vozBotones').innerHTML = (VOZ.errorMic === 'denegado' ? '<button class="btn btn-ghost" type="button" id="vozReintentar">Probar otra vez</button>' : '') + '<button class="btn btn-primary" type="button" id="vozEntendido">Entendido</button>';
+  $e('vozEntendido').onclick = () => { VOZ.errorMic = ''; $e('vozCapa').hidden = true; };
+  if($e('vozReintentar')) $e('vozReintentar').onclick = async () => { if(await VOZ.prepararMicro()){ $e('vozCapa').hidden = true; VOZ.hablar('Ya funciona el micrófono. Vuelve a pulsar el botón para hablar.'); } else vozAvisoMicro(); };
   try{ await VOZ.hablar(txt); }catch(e){}
 }
 function vozPantalla(paso, pregunta){ $e('vozCapa').hidden = false; $e('vozPaso').textContent = paso || ''; $e('vozPregunta').textContent = pregunta || ''; $e('vozOido').textContent = ''; $e('vozBotones').innerHTML = ''; $e('vozEstado').textContent = ''; $e('vozEstado').classList.remove('escucha'); }
+// Pregunta en voz alta y espera la respuesta hablada. En las de «sí o no» también se puede contestar tocando un botón grande
+let vozTocado;
 async function vozPreguntar(paso, texto, valida){
   for(let intento = 0; intento < 3 && vozActivo; intento++){
     vozPantalla(paso, texto);
+    vozTocado = undefined;
+    if(valida === vozSiNo){
+      $e('vozBotones').innerHTML = '<button class="btn btn-ghost" type="button" data-voztoca="no">❌ No</button><button class="btn btn-primary" type="button" data-voztoca="si">✅ Sí</button>';
+      $e('vozBotones').querySelectorAll('[data-voztoca]').forEach(b => b.onclick = () => { vozTocado = b.dataset.voztoca === 'si'; VOZ.parar(); });
+    }
     await VOZ.hablar(intento ? 'Perdona, no te he entendido. ' + texto : texto);
     if(!vozActivo) return null;
+    if(vozTocado !== undefined){ $e('vozBotones').innerHTML = ''; return {valor: vozTocado, dicho: vozTocado ? 'sí' : 'no'}; }
     $e('vozEstado').textContent = '🎤 Te escucho… habla ahora'; $e('vozEstado').classList.add('escucha');
     // espera la respuesta: si el micrófono se corta sin oír nada, vuelve a escuchar sin repetir la pregunta (hasta unos 25 segundos)
     let alts = [], desde = Date.now();
-    while(vozActivo && !alts.length && !VOZ.errorMic && Date.now() - desde < 25000){ alts = await VOZ.escuchar(); if(!alts.length) await vozPausa(300); }
-    if(VOZ.errorMic){ await vozAvisoMicro(); return null; }
+    while(vozActivo && vozTocado === undefined && !alts.length && !VOZ.errorMic && Date.now() - desde < 25000){ alts = await VOZ.escuchar(); if(!alts.length && vozTocado === undefined) await vozPausa(300); }
     $e('vozEstado').classList.remove('escucha'); $e('vozEstado').textContent = '';
+    if(vozTocado !== undefined){ $e('vozBotones').innerHTML = ''; await vozPausa(300); return {valor: vozTocado, dicho: vozTocado ? 'sí' : 'no'}; }
+    if(VOZ.errorMic){ await vozAvisoMicro(); return null; }
     if(!vozActivo) return null;
-    if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined){ await vozPausa(700); return {valor: v, dicho: alts[0]}; } }
+    if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined){ $e('vozBotones').innerHTML = ''; await vozPausa(700); return {valor: v, dicho: alts[0]}; } }
   }
   return null;
 }
@@ -1517,21 +1547,31 @@ function aplicarChoferSeleccionado(){
       if(r.error){ alert(r.error); sel.value = ''; return; }
       guardarTokenApp(r.token); activarPersona(Object.assign(cache, r.persona)); return;
     }
-    const intento = prompt(persona.pin_temporal
-      ? `Hola ${persona.nombre}, introduce el PIN PROVISIONAL que te ha dado Tráfico:`
-      : `Hola ${persona.nombre}, introduce tu PIN:`);
-    if(intento === null) { sel.value = ''; return; }
-    const r = await rpcAcceso('entrar_app', {p_persona: String(persona.id), p_pin: intento.trim()});
-    if(r.persona){
-      guardarTokenApp(r.token);
-      activarPersona(Object.assign(cache, r.persona));   // si era provisional, activarPersona le pide que elija uno suyo
-    } else {
-      alert(r.error || 'PIN incorrecto.');
-      sel.value = '';
+    // el PIN se pide en una ventana propia (con el aviso del navegador salía la opción «eliminar cuadros de diálogo»)
+    let msgError = '';
+    while(true){
+      const intento = await pedirPin(persona.pin_temporal ? `Hola ${persona.nombre}, introduce el PIN PROVISIONAL que te ha dado Tráfico:` : `Hola ${persona.nombre}, introduce tu PIN:`, msgError);
+      if(intento === null){ sel.value = ''; return; }
+      const r = await rpcAcceso('entrar_app', {p_persona: String(persona.id), p_pin: intento.trim()});
+      if(r.persona){ guardarTokenApp(r.token); activarPersona(Object.assign(cache, r.persona)); return; }   // si era provisional, activarPersona le pide que elija uno suyo
+      msgError = r.error || 'PIN incorrecto.';
+      if(/demasiados/i.test(msgError)){ await pedirPin(msgError, '', true); sel.value = ''; return; }
     }
   });
 }
 // Al cerrar sesión no se queda nada del trabajador anterior en pantalla
+function pedirPin(texto, error, soloAviso){
+  return new Promise(res => {
+    const capa = $e('pinCapa'), inp = $e('pinCapaIn');
+    $e('pinCapaTxt').textContent = texto; $e('pinCapaMsg').textContent = error || ''; inp.value = '';
+    inp.style.display = soloAviso ? 'none' : ''; $e('pinCapaNo').style.display = soloAviso ? 'none' : '';
+    capa.hidden = false; if(!soloAviso) setTimeout(() => inp.focus(), 50);
+    const fin = v => { capa.hidden = true; $e('pinCapaSi').onclick = $e('pinCapaNo').onclick = inp.onkeydown = null; res(v); };
+    $e('pinCapaSi').onclick = () => { if(soloAviso) return fin(''); if(!inp.value.trim()){ $e('pinCapaMsg').textContent = 'Escribe tu PIN.'; return; } fin(inp.value); };
+    $e('pinCapaNo').onclick = () => fin(null);
+    inp.onkeydown = e => { if(e.key === 'Enter') $e('pinCapaSi').click(); };
+  });
+}
 function limpiarPantalla(){
   const $i = id => document.getElementById(id);
   currentCarga = null; cargasPendientes = []; hayCargas = false; hayViaje = false; cargadorTractoraActual = '';
@@ -1644,10 +1684,19 @@ async function pollCargasPendientes(){
   revisarMatricula();
 }
 
-function seleccionarCarga(id){
+let preguntandoMat = false;
+async function seleccionarCarga(id){
   const c = cargasPendientes.find(x=>x.id===id);
-  if(!c) return;
+  if(!c || preguntandoMat) return;
   if(currentCarga && currentCarga.manual && !confirm('Estás haciendo un DeCA nuevo sin orden. ¿Dejarlo y trabajar en esta carga?')) return;
+  if(c.matricula){ document.getElementById('plate').value = c.matricula; if(choferActual && choferActual.puesto === 'cargador') sincronizarPlateSelectsCargador(c.matricula); }
+  if(typeof VOZ !== 'undefined' && VOZ.disponible() && !matConfirmada()){
+    preguntandoMat = true;
+    try{ if(await VOZ.prepararMicro()) await asistenteMatricula(false); else await vozAvisoMicro(); } finally { preguntandoMat = false; }
+  }
+  mostrarCarga(c, id);
+}
+function mostrarCarga(c, id){
   salirDeNuevo();
   currentCarga = c;
   document.getElementById('cargaRealDetails').open = false;   // empieza cerrado: la carga ya viene igual que la orden
@@ -1672,11 +1721,7 @@ function seleccionarCarga(id){
     (c.autorizacion_especial ? `<br><b>Autorización especial:</b> ${c.autorizacion_especial}` : '') +
     (c.referencia ? `<br><b>Nº pedido:</b> ${c.referencia}` : '') +
     (c.observaciones ? `<br><b>Observaciones de Tráfico:</b> ${c.observaciones}` : '');
-  if(c.matricula){
-    document.getElementById('plate').value = c.matricula;
-    if(choferActual && choferActual.puesto === 'cargador'){ sincronizarPlateSelectsCargador(c.matricula); }
-  }
-  refrescarTarjetaMatricula();
+  refrescarTarjetaMatricula();   // (la matrícula de la orden ya se puso al tocar la carga, antes de preguntarla)
   // "Carga real" empieza igual que la orden: si solo cambia un tipo, el resto se mantiene
   rellenarDesdeOrden(); render();
   // refresca el resaltado en la lista
