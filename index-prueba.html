@@ -646,16 +646,27 @@ const VOZ = {
 };
 const vozPausa = ms => new Promise(r => setTimeout(r, ms));
 const vozNorm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\b(s\.?\s?l\.?u?|s\.?\s?a\.?|s\.?\s?c\.?a\.?|sat|coop(erativa)?)\b/g, ' ').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
-// Busca en la lista el nombre que más se parece a lo que ha dicho (vale con decir parte del nombre)
+// Busca en la lista el nombre que más se parece a lo que ha dicho (vale con decir parte del nombre).
+// Se comparan las palabras (no letras sueltas), así un nombre corto o genérico no «gana» siempre.
+function vozDistancia(a, b){ if(Math.abs(a.length - b.length) > 2) return 9; const d = Array.from({length: b.length + 1}, (_, k) => k);
+  for(let x = 1; x <= a.length; x++){ let prev = d[0]; d[0] = x; for(let y = 1; y <= b.length; y++){ const t = d[y]; d[y] = Math.min(d[y] + 1, d[y-1] + 1, prev + (a[x-1] === b[y-1] ? 0 : 1)); prev = t; } } return d[b.length]; }
+function vozPalabraIgual(w, x){ if(w === x) return 1; if(w.length >= 4 && x.length >= 4 && (x.startsWith(w) || w.startsWith(x))) return 0.9; if(w.length >= 5 && vozDistancia(w, x) <= (w.length >= 8 ? 2 : 1)) return 0.8; return 0; }
 function vozBuscar(alts, lista){
   let mejor = null, pMax = 0;
-  for(const a of alts){ const q = vozNorm(a); if(!q) continue; const qp = q.split(' ').filter(w => w.length > 2);
-    for(const nombre of lista){ const n = vozNorm(nombre); if(!n) continue;
-      let p = 0;
-      if(n === q) p = 100; else if(n.includes(q) || q.includes(n)) p = 70 + Math.min(q.length, n.length) / Math.max(q.length, n.length) * 20;
-      else { const np = n.split(' '); const comunes = qp.filter(w => np.some(x => x === w || (w.length > 4 && (x.startsWith(w) || w.startsWith(x))))).length; if(comunes) p = 30 + 40 * comunes / Math.max(qp.length, 1); }
-      if(p > pMax){ pMax = p; mejor = nombre; } } }
-  return pMax >= 45 ? mejor : null;
+  const palabras = t => vozNorm(t).split(' ').filter(w => w.length > 2 && !['del','los','las','por','para','con'].includes(w));
+  alts.forEach((a, ia) => {
+    const qw = palabras(a); if(!qw.length) return;
+    const peso = ia === 0 ? 1 : 0.9;   // la primera forma de entenderlo vale un poco más
+    for(const nombre of lista){
+      const nw = palabras(nombre); if(!nw.length) continue;
+      let comun = 0; qw.forEach(w => { comun += Math.max(0, ...nw.map(x => vozPalabraIgual(w, x))); });
+      const cubreDicho = comun / qw.length, cubreNombre = comun / nw.length;
+      let p = (cubreDicho * 0.7 + cubreNombre * 0.3) * peso;   // sobre todo: que todo lo que ha dicho esté en el nombre
+      if(vozNorm(nombre) === vozNorm(a)) p = 1.2;
+      if(p > pMax){ pMax = p; mejor = nombre; }
+    }
+  });
+  return pMax >= 0.6 ? mejor : null;
 }
 const VOZ_NUM = {cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiuno:21,veintiun:21,veintiuna:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29,treinta:30,cuarenta:40,cincuenta:50};
 function vozNumeros(t){   // "treinta y tres" → "33", "veintiséis" → "26"
@@ -741,7 +752,7 @@ async function asistenteVoz(){
   const datos = {};
   const pasos = {
     async cargador(){ const r = await vozPreguntar('Paso 1 de 5', '¿Quién es el cargador? Di el nombre del cliente.', alts => vozBuscar(alts, lista('ndListaClientes')) || alts[0]);
-      if(!r) return false; poner('ndCargador', r.valor); datos.cargador = r.valor;
+      if(!r) return false; $e('ndCargadorNif').value = ''; $e('ndCargadorDom').value = ''; poner('ndCargador', r.valor); datos.cargador = r.valor;   // (se borran los datos del cliente anterior por si lo está cambiando)
       if(!$e('ndCargadorNif').value.trim()){ const n = await vozPreguntar('Paso 1 de 5', 'Este cliente no lo tengo. Dime su NIF, letra a letra.', vozNif); if(n) $e('ndCargadorNif').value = n.valor; }
       return true; },
     async origen(){ const r = await vozPreguntar('Paso 2 de 5', '¿Dónde cargas? Di el almacén o el pueblo.', alts => vozBuscar(alts, lista('ndListaAlmacenes')) || alts[0]); if(!r) return false; poner('ndOrigen', r.valor); datos.origen = r.valor; return true; },
