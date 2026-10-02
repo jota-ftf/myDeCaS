@@ -537,6 +537,17 @@ async function leerLicencia(){
   } else av.style.display = 'none';
   mostrarBotonNuevo(); render();
 }
+// Fecha prevista de descarga (sale en el DeCA, en «Lugar de entrega»). Se configura por empresa en el maestro:
+// días hasta la descarga (por defecto 1) y hora de corte (por defecto las 6:00). Antes de esa hora cuenta como el mismo día.
+function fechaPrevistaDescarga(desde){
+  const d = new Date(desde || Date.now());
+  const dias = Math.max(0, parseInt(licenciaApp && licenciaApp.dias_descarga, 10) >= 0 ? parseInt(licenciaApp.dias_descarga, 10) : 1);
+  const corte = licenciaApp && licenciaApp.hora_corte_descarga != null && licenciaApp.hora_corte_descarga !== '' ? +licenciaApp.hora_corte_descarga : 6;
+  const suma = d.getHours() < corte ? Math.max(0, dias - 1) : dias;
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate() + suma, 12);
+  return {iso: `${r.getFullYear()}-${String(r.getMonth()+1).padStart(2,'0')}-${String(r.getDate()).padStart(2,'0')}`, txt: r.toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit', year:'numeric'})};
+}
+const fechaIsoATexto = iso => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
 function licenciaBloqueada(){
   if(!licenciaApp) return false;
   const d = new Date(), hoy = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
@@ -804,7 +815,7 @@ async function asistenteVoz(){
   };
   const nombrePal = (t, n) => ({'europeo': n === 1 ? 'europeo' : 'europeos', 'grande (americano)': n === 1 ? 'grande' : 'grandes', 'carro': n === 1 ? 'carro' : 'carros', 'box': 'box', 'cajas': n === 1 ? 'caja' : 'cajas', 'especial': n === 1 ? 'bulto especial' : 'bultos especiales'})[t];
   try{
-    if($e('matCard').style.display === 'block' || !matriculaActual()){ if(!(await asistenteMatricula(true))) return; }
+    if(!matConfirmada() || !matriculaActual()){ if(!(await asistenteMatricula(true))) return; }   // sin matrículas confirmadas hoy no se puede generar el DeCA: se preguntan primero
     for(const k of ['cargador','origen','destino','palets','pedido']){ if(!vozActivo) return; if(!(await pasos[k]())){ if(vozActivo){ await VOZ.hablar('No lo he entendido. Sigue a mano, por favor.'); } return vozCerrar(); } }
     for(let vuelta = 0; vuelta < 4 && vozActivo; vuelta++){
       const pal = Object.entries(datos.palets || {}).map(([t, n]) => n + ' ' + nombrePal(t, n)).join(' y ');
@@ -1971,6 +1982,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
     origenDireccion: row.origen_direccion || '', destinoDireccion: row.destino_direccion || '',
     contractual: row.transportista_contractual_nombre ? {nombre: row.transportista_contractual_nombre, nif: row.transportista_contractual_nif, domicilio: row.transportista_contractual_domicilio || ''} : null,
     autorizacionEspecial: row.autorizacion_especial || '',
+    descargaPrevista: row.fecha_prevista_descarga ? fechaIsoATexto(row.fecha_prevista_descarga) : fechaPrevistaDescarga(new Date(row.fecha)).txt,
     matriculaHistorial: nuevoHistorial
   };
 
@@ -2107,6 +2119,7 @@ function buildPdf(r, qrDataUrl){
   box(M+wA, y, wB, h2); label(M+wA, y, '3  LUGAR DE ENTREGA (destino, dirección)');
   negrita(String(r.destino||'—'), M+wA+2, y+9, {maxWidth:wB-4});
   dirPdf(r.destinoDireccion, M+wA+2, y+14, wB-4);
+  if(r.descargaPrevista) doc.text('Fecha prevista de descarga: ' + r.descargaPrevista, M+wA+2, y+24);
   y += h2;
 
   // Fila 3: Naturaleza mercancía (9) | Nº bultos (7) | Peso bruto (11)
@@ -2227,7 +2240,8 @@ document.getElementById('confirmBtn').onclick = async ()=>{
     origenDireccion: currentCarga.origen_direccion || dirLugar(currentCarga.almacen) || dirLugar(currentCarga.origen),
     destinoDireccion: currentCarga.destino_direccion || dirLugar(currentCarga.destino),
     peso: currentCarga.peso + (currentCarga.peso_aproximado ? ' (aprox.)' : ''),
-    autorizacionEspecial: currentCarga.autorizacion_especial || ''
+    autorizacionEspecial: currentCarga.autorizacion_especial || '',
+    descargaPrevista: fechaPrevistaDescarga(now).txt, descargaPrevistaIso: fechaPrevistaDescarga(now).iso
   };
 
   // 1. QR: si hay servidor, codifica la URL pública del PDF (lo que exige la norma);
@@ -2259,11 +2273,12 @@ document.getElementById('confirmBtn').onclick = async ()=>{
       cargador_nombre: record.cargadorNombre, cargador_nif: record.cargadorNif, cargador_domicilio: record.cargadorDomicilio,
       transportista_nombre: record.transportistaNombre, transportista_nif: record.transportistaNif,
       origen: record.origen, destino: record.destino, mercancia: record.mercancia, peso: record.peso,
-      autorizacion_especial: record.autorizacionEspecial || null,
+      autorizacion_especial: record.autorizacionEspecial || null, fecha_prevista_descarga: record.descargaPrevistaIso || null,
       transportista_domicilio: record.transportistaDomicilio || null, origen_direccion: record.origenDireccion || null, destino_direccion: record.destinoDireccion || null,
       ...(record.contractual ? {transportista_contractual_nombre: record.contractual.nombre || null, transportista_contractual_nif: record.contractual.nif || null, transportista_contractual_domicilio: record.contractual.domicilio || null} : {})
     };
     let { error: insErr } = await sb.from('decas').insert(filaDeca);
+    if(insErr && /prevista/.test(insErr.message || '')){ delete filaDeca.fecha_prevista_descarga; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 42: se guarda sin ese dato (el PDF sí lo lleva)
     if(insErr && /direccion|domicilio|contractual/.test(insErr.message || '')){   // falta la actualización 33 o 37: se guarda sin esos datos (el PDF sí los lleva)
       delete filaDeca.transportista_domicilio; delete filaDeca.origen_direccion; delete filaDeca.destino_direccion;
       delete filaDeca.transportista_contractual_nombre; delete filaDeca.transportista_contractual_nif; delete filaDeca.transportista_contractual_domicilio;

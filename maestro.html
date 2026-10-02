@@ -132,6 +132,9 @@ code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
       <label>Prueba hasta<input class="field" id="mePrueba" type="date"></label>
       <label>Pagado hasta<input class="field" id="mePagado" type="date"></label>
       <label>Precio especial por camión y mes (€)<input class="field" id="mePrecio" inputmode="decimal" placeholder="Vacío = el del plan"></label>
+      <label>Días hasta la descarga (fecha prevista en el DeCA)<input class="field" id="meDiasDesc" type="number" min="0" max="15" step="1" placeholder="1"></label>
+      <label>Hora de corte (antes de esta hora cuenta el mismo día)<select class="field" id="meCorte"></select></label>
+      <p class="hint full" style="margin:-4px 0 0">Ejemplo con 1 día y corte a las 6:00: un DeCA hecho a las 18:00 pone la descarga al día siguiente; uno hecho a las 2:00 de la madrugada, ese mismo día.</p>
       <label class="full">Mensaje si se suspende (opcional)<input class="field" id="meMensaje" placeholder="Ej.: Pago pendiente. Llama al 600 000 000."></label>
       <label class="full">Notas internas<textarea class="field" id="meNotas" rows="2"></textarea></label>
       <div class="full" id="meExtras"></div>
@@ -479,6 +482,8 @@ function abrirEmpresa(e){
   v('mePrueba', e ? e.prueba_hasta : sumarDias(hoy(), +ajustes.dias_prueba || 30)); v('mePagado', e && e.pagado_hasta);
   v('mePrecio', e && e.precio_camion != null ? String(e.precio_camion).replace('.', ',') : ''); v('meMensaje', e && e.mensaje); v('meNotas', e && e.notas);
   $('#mePrincipal').checked = !!(e && e.principal);
+  $('#meCorte').innerHTML = Array.from({length: 13}, (_, h) => `<option value="${h}">${h === 0 ? '00:00 (medianoche)' : String(h).padStart(2, '0') + ':00'}</option>`).join('');
+  v('meDiasDesc', e && e.dias_descarga != null ? e.dias_descarga : 1); v('meCorte', e && e.hora_corte_descarga != null ? e.hora_corte_descarga : 6);
   $('#meAutonomos').checked = !e || e.contar_autonomos !== false;
   $('#meDiasL').hidden = !!e; $('#meMsg').textContent = '';
   $('#mEmpresa').hidden = false; $('#meNombre').focus();
@@ -498,6 +503,7 @@ $('#meGuardar').onclick = async () => {
   if(empresas.some(x => 'contar_autonomos' in x)) row.contar_autonomos = $('#meAutonomos').checked;   // (con la actualización 37)
   const extrasMarcados = [...document.querySelectorAll('#meExtras [data-extra]:checked')].map(c => c.dataset.extra);
   if(hay40) row.extras = extrasMarcados;
+  if(empresas.some(x => 'dias_descarga' in x)){ row.dias_descarga = Math.max(0, parseInt($('#meDiasDesc').value, 10) >= 0 ? parseInt($('#meDiasDesc').value, 10) : 1); row.hora_corte_descarga = +$('#meCorte').value; }   // (con la actualización 42)
   if(empresas.some(x => 'extra_contractual' in x)) row.extra_contractual = extrasMarcados.includes('contractual');   // (con la actualización 38)
   if(row.estado === 'prueba' && !row.prueba_hasta){ $('#meMsg').textContent = 'Pon hasta qué día dura la prueba.'; return; }
   if(row.principal){ const otra = empresas.find(x => x.principal && (!editando || x.id !== editando.id)); if(otra){ if(!confirm(`Ahora la empresa principal es «${otra.nombre}». ¿Cambiarla por esta?`)) return; await sb.from('maestro_empresas').update({principal:false}).eq('id', otra.id); } }
