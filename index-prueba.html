@@ -565,7 +565,23 @@ $e('nuevoDecaBtn').onclick = ()=>{
 // ====== NUEVO DeCA POR VOZ: la app pregunta en voz alta y el conductor solo contesta hablando ======
 // En el móvil usa el reconocimiento de voz del propio teléfono (app nativa) o el del navegador Chrome.
 const VOZ = {
-  rec: null,
+  rec: null, errorMic: '',
+  esAppSinMicro(){ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) && !C.SpeechRecognition; },
+  // Pide permiso del micrófono al pulsar el botón (así el móvil enseña su aviso «¿Permitir micrófono?»)
+  async prepararMicro(){
+    VOZ.errorMic = '';
+    const C = (window.Capacitor && window.Capacitor.Plugins) || {};
+    if(C.SpeechRecognition){
+      try{ const p = await C.SpeechRecognition.checkPermissions().catch(() => ({})); if(p.speechRecognition !== 'granted'){ const r = await C.SpeechRecognition.requestPermissions(); if(r && r.speechRecognition === 'denied') VOZ.errorMic = 'denegado'; } }catch(e){}
+      return !VOZ.errorMic;
+    }
+    if(VOZ.esAppSinMicro()){ VOZ.errorMic = 'app-vieja'; return false; }
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      try{ const st = await navigator.mediaDevices.getUserMedia({audio: true}); st.getTracks().forEach(t => t.stop()); }
+      catch(e){ VOZ.errorMic = (e && e.name === 'NotFoundError') ? 'sin-micro' : 'denegado'; return false; }
+    }
+    return true;
+  },
   disponible(){ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; return !!C.SpeechRecognition || !!(window.SpeechRecognition || window.webkitSpeechRecognition); },
   async hablar(txt){
     const C = (window.Capacitor && window.Capacitor.Plugins) || {};
@@ -602,7 +618,8 @@ const VOZ = {
       try{
         const r = new R(); VOZ.rec = r; r.lang = 'es-ES'; r.maxAlternatives = 3; r.interimResults = false; r.continuous = false;
         r.onresult = e => { const x = e.results[0]; alts = [...x].map(a => a.transcript); };
-        r.onerror = fin; r.onend = fin; r.start();
+        r.onerror = ev => { if(ev && ['not-allowed','service-not-allowed','audio-capture'].includes(ev.error)) VOZ.errorMic = ev.error === 'audio-capture' ? 'sin-micro' : 'denegado'; fin(); };
+        r.onend = fin; r.start();
         setTimeout(() => { try{ r.stop(); }catch(_){} setTimeout(fin, 800); }, 12000);
       }catch(e){ fin(); }
     });
@@ -648,6 +665,17 @@ function vozNif(alts){
   return null;
 }
 let vozActivo = false;
+// Si el micrófono no funciona, se explica en grande qué hacer (y se para)
+async function vozAvisoMicro(){
+  const txt = VOZ.errorMic === 'app-vieja' ? 'Esta versión de la app todavía no puede usar el micrófono. Instala la nueva, o mientras tanto abre la app en Chrome.'
+    : VOZ.errorMic === 'sin-micro' ? 'No encuentro el micrófono del móvil.'
+    : 'El micrófono está bloqueado. Pulsa el candado de arriba, junto a la dirección, entra en Permisos y activa el Micrófono. Después vuelve a probar.';
+  vozActivo = false; VOZ.parar();
+  $e('vozCapa').hidden = false; $e('vozPaso').textContent = '🎤 Micrófono'; $e('vozPregunta').textContent = txt; $e('vozEstado').textContent = ''; $e('vozOido').textContent = '';
+  $e('vozBotones').innerHTML = '<button class="btn btn-primary" type="button" id="vozEntendido">Entendido</button>';
+  $e('vozEntendido').onclick = () => { $e('vozCapa').hidden = true; };
+  try{ await VOZ.hablar(txt); }catch(e){}
+}
 function vozPantalla(paso, pregunta){ $e('vozCapa').hidden = false; $e('vozPaso').textContent = paso || ''; $e('vozPregunta').textContent = pregunta || ''; $e('vozOido').textContent = ''; $e('vozBotones').innerHTML = ''; $e('vozEstado').textContent = ''; $e('vozEstado').classList.remove('escucha'); }
 async function vozPreguntar(paso, texto, valida){
   for(let intento = 0; intento < 3 && vozActivo; intento++){
@@ -657,7 +685,8 @@ async function vozPreguntar(paso, texto, valida){
     $e('vozEstado').textContent = '🎤 Te escucho… habla ahora'; $e('vozEstado').classList.add('escucha');
     // espera la respuesta: si el micrófono se corta sin oír nada, vuelve a escuchar sin repetir la pregunta (hasta unos 25 segundos)
     let alts = [], desde = Date.now();
-    while(vozActivo && !alts.length && Date.now() - desde < 25000){ alts = await VOZ.escuchar(); if(!alts.length) await vozPausa(300); }
+    while(vozActivo && !alts.length && !VOZ.errorMic && Date.now() - desde < 25000){ alts = await VOZ.escuchar(); if(!alts.length) await vozPausa(300); }
+    if(VOZ.errorMic){ await vozAvisoMicro(); return null; }
     $e('vozEstado').classList.remove('escucha'); $e('vozEstado').textContent = '';
     if(!vozActivo) return null;
     if(alts.length){ $e('vozOido').textContent = '«' + alts[0] + '»'; const v = valida ? valida(alts) : alts[0]; if(v !== null && v !== undefined){ await vozPausa(700); return {valor: v, dicho: alts[0]}; } }
@@ -666,6 +695,7 @@ async function vozPreguntar(paso, texto, valida){
 }
 async function asistenteVoz(){
   if(!VOZ.disponible()){ alert('Este móvil no deja usar la voz. Rellénalo a mano.'); return; }
+  if(!(await VOZ.prepararMicro())){ await vozAvisoMicro(); return; }
   vozActivo = true;
   const lista = id => [...$e(id).options].map(o => o.value);
   const poner = (id, v) => { $e(id).value = v; $e(id).dispatchEvent(new Event('input', {bubbles: true})); };
@@ -707,7 +737,7 @@ async function asistenteVoz(){
     else VOZ.hablar('Vale. Cuando quieras, pulsa el botón azul de abajo: Confirmar carga y generar DeCA.');
   }catch(e){ vozCerrar(); }
 }
-function vozCerrar(){ vozActivo = false; VOZ.parar(); $e('vozCapa').hidden = true; }
+function vozCerrar(){ vozActivo = false; VOZ.parar(); if(!VOZ.errorMic) $e('vozCapa').hidden = true; }   // si hay aviso del micrófono, se queda a la vista
 $e('vozParar').onclick = vozCerrar;
 $e('vozBtn').onclick = asistenteVoz;
 // ====== MATRÍCULAS POR VOZ: pregunta si son las de siempre y, si no, las apunta hablando ======
@@ -743,7 +773,7 @@ async function asistenteMatricula(dentroDeOtro){
     return true;
   }catch(e){ vozCerrar(); return false; }
 }
-$e('matVoz').onclick = () => asistenteMatricula(false);
+$e('matVoz').onclick = async () => { if(!(await VOZ.prepararMicro())){ await vozAvisoMicro(); return; } asistenteMatricula(false); };
 $e('nuevoCancelar').onclick = salirDeNuevo;
 // Al elegir un cargador o transportista conocido, se rellenan solos su NIF y domicilio
 $e('ndCargador').addEventListener('input', ()=>{
