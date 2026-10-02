@@ -582,7 +582,10 @@ const VOZ = {
   rec: null, errorMic: '',
   esAppSinMicro(){ const C = (window.Capacitor && window.Capacitor.Plugins) || {}; return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) && !C.SpeechRecognition; },
   // Pide permiso del micrófono al pulsar el botón (así el móvil enseña su aviso «¿Permitir micrófono?»)
+  // En iPhone la voz solo arranca si la primera frase sale justo al tocar el botón: se «despierta» con una frase vacía
+  despertar(){ try{ if('speechSynthesis' in window && !(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech)){ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } }catch(e){} },
   async prepararMicro(){
+    VOZ.despertar();
     VOZ.errorMic = '';
     const C = (window.Capacitor && window.Capacitor.Plugins) || {};
     if(C.SpeechRecognition){
@@ -685,7 +688,12 @@ async function vozAvisoMicro(){
   const txt = VOZ.errorMic === 'app-vieja' ? 'Esta versión de la app todavía no puede usar el micrófono. Instala la nueva, o mientras tanto abre la app en Chrome.'
     : VOZ.errorMic === 'sin-micro' ? 'No encuentro el micrófono del móvil.'
     : 'El micrófono está bloqueado. Sigue los pasos de la pantalla y vuelve a probar.';
-  const pasos = VOZ.errorMic === 'denegado' ? `<ol class="voz-ayuda">
+  const esIphone = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const pasos = VOZ.errorMic === 'denegado' && esIphone ? `<ol class="voz-ayuda">
+      <li>Abre esta página en <b>Safari</b> (no en Chrome ni desde el icono de la pantalla de inicio).</li>
+      <li>En Safari, toca el icono <b>aA</b> o el de <b>la página</b> junto a la dirección → <b>Ajustes del sitio web</b> → <b>Micrófono</b> → <b>Permitir</b>.</li>
+      <li>Si sigue sin ir: <b>Ajustes del iPhone</b> → <b>Apps</b> → <b>Safari</b> → <b>Micrófono</b> → <b>Permitir</b>, y en <b>General → Teclado</b> activa <b>Dictado</b>.</li>
+      <li>Vuelve aquí y pulsa <b>Probar otra vez</b>.</li></ol>` : VOZ.errorMic === 'denegado' ? `<ol class="voz-ayuda">
       <li>En Chrome, toca los <b>tres puntos ⋮</b> (arriba a la derecha) → <b>Configuración</b> → <b>Configuración de sitios</b> → <b>Micrófono</b>.</li>
       <li>Busca <b>${escH(web)}</b> (puede estar en «Bloqueados»), tócalo y elige <b>Permitir</b>.</li>
       <li>Si ahí no sale, en los <b>Ajustes del móvil</b> → <b>Aplicaciones</b> → <b>Chrome</b> → <b>Permisos</b> → <b>Micrófono</b> → <b>Permitir</b>.</li>
