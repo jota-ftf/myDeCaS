@@ -743,14 +743,14 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth: 
   : {storageKey: 'mydecas-' + (EMPRESA || 'principal').toLowerCase(), persistSession: true, autoRefreshToken: true}});
 // ====== FASE 2: varias empresas. Cada empresa entra por su enlace (carton.html?e=codigo); sin código = la empresa principal ======
 // Cada ordenador entra en Supabase con un usuario anónimo; al poner el PIN queda unido a su empresa y solo ve lo suyo
-let authLista = null;
+let authLista = null, authFallo = '';
 function asegurarAuth(){
   if(!authLista) authLista = (async () => {
     try{
       const { data } = await sb.auth.getSession();
       if(data && data.session) return true;
       const { error } = await sb.auth.signInAnonymously();
-      if(error){ console.warn('Sin usuario anónimo:', error.message); return false; }
+      if(error){ authFallo = error.message || String(error); console.warn('Sin usuario anónimo:', authFallo); return false; }
       return true;
     }catch(e){ return false; }
   })();
@@ -1107,7 +1107,10 @@ async function cargarDia(){
 function setSync(ok, msg){
   const s = $('#sync');
   if(ok){ lastOk = new Date(); s.textContent = 'Sincronizado · ' + lastOk.toLocaleTimeString('es-ES'); s.classList.remove('err'); }
-  else { s.textContent = 'Error de conexión: ' + (msg || ''); s.classList.add('err'); }
+  else {
+    if(/permission denied/i.test(msg || '')) msg = 'Supabase no deja entrar a este ordenador' + (authFallo ? ' (Supabase dice: «' + authFallo + '»)' : '') + '. Revisa en Supabase → Authentication → Sign In / Providers → «Allow anonymous sign-ins», y después cerrar sesión y volver a entrar con tu PIN.';
+    s.textContent = 'Error de conexión: ' + (msg || ''); s.classList.add('err');
+  }
 }
 
 function editando(){
@@ -2505,7 +2508,7 @@ let pendienteNuevoPin = null;
 $('#loginBtn').onclick = async () => {
   const area = $('#loginUser').value, pin = $('#loginPin').value.trim();
   if(!pin){ $('#loginMsg').textContent = 'Escribe tu PIN.'; return; }
-  await asegurarAuth();
+  if(!(await asegurarAuth())){ authLista = null; $('#loginMsg').textContent = 'Supabase no deja entrar a este ordenador' + (authFallo ? ' (dice: «' + authFallo + '»)' : '') + '. Revisa en Supabase → Authentication → Sign In / Providers → «Allow anonymous sign-ins».'; return; }
   const r = await rpcConEmpresa('entrar_carton', {p_area: area, p_pin: pin});
   $('#loginPin').value = '';
   if(r.error || !r.persona){ $('#loginMsg').textContent = r.error || 'No se ha podido entrar.'; return; }
