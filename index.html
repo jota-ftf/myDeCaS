@@ -1232,8 +1232,8 @@ async function pollDescargas(){
   if(choferActual.puesto === 'cargador') return pollEntregasHub();
   const propia = document.getElementById('plate').value.trim();
   const consultas = [];
-  if(propia) consultas.push(sb.from('decas').select('*').eq('matricula', propia).eq('entregado', false));
-  consultas.push(sb.from('decas').select('*').eq('conductor', choferActual.nombre).eq('entregado', false));
+  if(propia) consultas.push(sb.from('decas').select('*').eq('matricula', propia).eq('entregado', false).order('fecha', {ascending:false}).limit(300));
+  consultas.push(sb.from('decas').select('*').eq('conductor', choferActual.nombre).eq('entregado', false).order('fecha', {ascending:false}).limit(300));
   const misCam = decasDeMisCamiones(diasAtras(3));
   consultas.push(misCam.then(d=> ({data: d.filter(r=> !r.entregado)})));
   const resultados = await Promise.all(consultas);
@@ -1350,8 +1350,9 @@ function alarmaDescarga(texto){
 }
 // ====== Cargador: entregar sus DeCAs en la nave al terminar ======
 async function pollEntregasHub(){
-  const { data } = await sb.from('decas').select('*').eq('conductor', choferActual.nombre).order('fecha', {ascending:true}).limit(200);
-  const lista = (data || []).filter(r => !r.entregado_hub && !r.anulado);   // vacío o false = aún no entregado
+  // Los 200 más recientes (antes eran los 200 más antiguos: al pasar de 200 DeCAs, los nuevos ya no salían)
+  const { data } = await sb.from('decas').select('*').eq('conductor', choferActual.nombre).order('fecha', {ascending:false}).limit(200);
+  const lista = (data || []).filter(r => !r.entregado_hub && !r.anulado).reverse();   // vacío o false = aún no entregado
   const box = document.getElementById('descargasLista');
   document.getElementById('descargasBadge').textContent = String(lista.length);
   if(!lista.length){ box.innerHTML = '<div class="empty">No tienes cargas pendientes de entregar en la nave</div>'; return; }
@@ -1920,10 +1921,12 @@ async function pollHistorial(){
   // Así, aunque cambie de matrícula (p.ej. solo el remolque), sus propios DeCAs
   // generados con su nombre siguen apareciéndole.
   const consultas = [];
-  if(propia) consultas.push(sb.from('decas').select('*').eq('matricula', propia));
+  // Solo los más recientes de cada consulta (luego se enseñan 30): antes se descargaban TODOS cada 8 segundos
+  const recientes = q => q.order('fecha', {ascending:false}).limit(60);
+  if(propia) consultas.push(recientes(sb.from('decas').select('*').eq('matricula', propia)));
   if(choferActual){
-    consultas.push(sb.from('decas').select('*').eq('chofer_destino_id', choferActual.id));
-    consultas.push(sb.from('decas').select('*').eq('conductor', choferActual.nombre));
+    consultas.push(recientes(sb.from('decas').select('*').eq('chofer_destino_id', choferActual.id)));
+    consultas.push(recientes(sb.from('decas').select('*').eq('conductor', choferActual.nombre)));
   }
   const box = document.getElementById('history');
   const badge = document.getElementById('histBadge');
@@ -2028,13 +2031,13 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
     matriculaHistorial: nuevoHistorial
   };
 
-  let qrDataUrl = null;
+  let qrDataUrl = null, qrObj = null;
   try{
     const qr = qrcode(0, 'M'); qr.addData(row.pdf_url || row.deca_id); qr.make();
-    qrDataUrl = qr.createDataURL(6, 8);
+    qrObj = qr; qrDataUrl = qr.createDataURL(6, 8);
   }catch(e){ /* seguimos sin QR visual si falla */ }
 
-  const doc = buildPdf(record, qrDataUrl);
+  const doc = buildPdf(record, qrDataUrl, qrObj);
   // Metadatos: se conserva la fecha de creación original y se pone la de esta modificación
   const blob = pdfFinal(doc, new Date(row.fecha), new Date());
 
@@ -2099,9 +2102,9 @@ function pdfFinal(doc, fechaCreacion, fechaModificacion){
 }
 
 // Construye el PDF nativo (texto real, no imagen) con el QR ya embebido
-function buildPdf(r, qrDataUrl){
+function buildPdf(r, qrDataUrl, qrObj){
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
+  const doc = new jsPDF({compress: true});   // comprimido: ocupa mucho menos en el servidor (se lee igual)
   doc.setProperties({
     title: 'DeCA ' + r.id,
     subject: 'Documento electrónico de control administrativo',
@@ -2228,7 +2231,20 @@ function buildPdf(r, qrDataUrl){
   // Fila 6: QR + URL pública (control de inspección)
   const h6 = 42;
   box(M, y, W, h6); label(M, y, 'CONTROL DE INSPECCIÓN — ESCANEE PARA VERIFICAR');
-  if(qrDataUrl){ doc.addImage(qrDataUrl, 'PNG', M+3, y+5, 34, 34); }
+  // El QR se dibuja con cuadrados (vectorial): nítido a cualquier tamaño, se lee igual y el PDF ocupa ~8 veces menos que con la imagen
+  if(qrObj){
+    const n = qrObj.getModuleCount(), lado = 34, cel = lado / (n + 4), x0 = M+3 + 2*cel, y0 = y+5 + 2*cel;
+    doc.setFillColor(255,255,255); doc.rect(M+3, y+5, lado, lado, 'F');
+    doc.setFillColor(0,0,0);
+    for(let f = 0; f < n; f++){
+      for(let c = 0; c < n; c++){
+        if(!qrObj.isDark(f, c)) continue;
+        let fin = c; while(fin + 1 < n && qrObj.isDark(f, fin + 1)) fin++;   // une los cuadrados seguidos de la fila en un solo rectángulo
+        doc.rect(x0 + c*cel, y0 + f*cel, (fin - c + 1)*cel + 0.01, cel + 0.01, 'F');
+        c = fin;
+      }
+    }
+  } else if(qrDataUrl){ doc.addImage(qrDataUrl, 'PNG', M+3, y+5, 34, 34); }
   doc.setFontSize(8); doc.setTextColor(15,15,15);
   doc.text('Este documento es válido sin firma manuscrita. El QR redirige a una', M+42, y+16, {maxWidth:W-48});
   doc.text('URL pública, sin contraseña, donde se puede verificar en tiempo real:', M+42, y+22, {maxWidth:W-48});
@@ -2289,16 +2305,16 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   // 1. QR: si hay servidor, codifica la URL pública del PDF (lo que exige la norma);
   //    si no, codifica los datos en crudo como plan B para seguir probando en local.
   const qrTarget = publicUrl || `DECA:${decaId}|COND:${driver}|MATR:${plate}|CARGA:${detail}|LDM:${ldm.toFixed(1)}|GEO:${geo}|FECHA:${record.date}`;
-  let qrDataUrl = null;
+  let qrDataUrl = null, qrObj = null;
   try{
     const qr = qrcode(0, 'M');
     qr.addData(qrTarget);
     qr.make();
-    qrDataUrl = qr.createDataURL(6, 8);
+    qrObj = qr; qrDataUrl = qr.createDataURL(6, 8);
   }catch(e){ /* seguimos sin QR visual si falla */ }
 
   // 2. PDF nativo con el QR ya dentro
-  const doc = buildPdf(record, qrDataUrl);
+  const doc = buildPdf(record, qrDataUrl, qrObj);
 
   // 3. Subir el PDF al bucket público de Supabase Storage y guardar el registro
   const pdfBlob = pdfFinal(doc, now, now);
