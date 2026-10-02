@@ -192,13 +192,13 @@
     <label>Cargador (quien contrata el porte) *</label>
     <input type="text" id="ndCargador" list="ndListaClientes" placeholder="Nombre o empresa" autocomplete="off">
     <div class="row" style="gap:8px">
-      <div style="flex:1"><label>NIF cargador *</label><input type="text" id="ndCargadorNif" placeholder="B12345678" autocomplete="off"></div>
+      <div style="flex:1"><label>NIF cargador <span class="pmeta">(opcional: sale solo si está en su ficha)</span></label><input type="text" id="ndCargadorNif" placeholder="B12345678" autocomplete="off"></div>
     </div>
     <label>Domicilio cargador</label>
     <input type="text" id="ndCargadorDom" placeholder="Calle, población" autocomplete="off">
     <label style="margin-top:10px;display:block">Transportista *</label>
     <input type="text" id="ndTrans" list="ndListaTrans" placeholder="Nombre o empresa" autocomplete="off">
-    <label>NIF transportista *</label>
+    <label>NIF transportista <span class="pmeta">(opcional)</span></label>
     <input type="text" id="ndTransNif" placeholder="NIF" autocomplete="off">
     <label>Domicilio transportista</label>
     <input type="text" id="ndTransDom" placeholder="Calle, población" autocomplete="off">
@@ -490,12 +490,24 @@ function capturarUbicacion(){
 
 // ====== Enlaces al mapa (abre Google Maps o el navegador GPS del móvil) ======
 let lugares = {}, ajustesApp = {};
+// Supabase devuelve como mucho 1000 filas por consulta: las listas largas (clientes, destinos…) se leen por tandas
+async function leerTodo(hacer){
+  let todo = [], desde = 0;
+  while(true){
+    const { data, error } = await hacer().range(desde, desde + 999);
+    if(error) return {data: todo.length ? todo : null, error};
+    todo = todo.concat(data || []);
+    if(!data || data.length < 1000 || desde > 100000) break;
+    desde += 1000;
+  }
+  return {data: todo, error: null};
+}
 async function cargarLugares(){
   if(!sb) return;
   sb.from('ajustes').select('*').then(({data})=> { (data || []).forEach(x=> ajustesApp[x.clave] = x.valor); mostrarBotonNuevo(); pintarMercancias(); });
   leerLicencia();
-  const [a, d, cl, tr] = await Promise.all([sb.from('almacenes').select('*').limit(5000), sb.from('destinos').select('*').limit(5000),
-    sb.from('clientes').select('*').order('nombre').limit(5000), sb.from('transportistas').select('*').order('nombre').limit(5000)]);
+  const [a, d, cl, tr] = await Promise.all([leerTodo(() => sb.from('almacenes').select('*').order('nombre').order('id')), leerTodo(() => sb.from('destinos').select('*').order('nombre').order('id')),
+    leerTodo(() => sb.from('clientes').select('*').order('nombre').order('id')), leerTodo(() => sb.from('transportistas').select('*').order('nombre').order('id'))]);
   lugares = {};
   (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || ''});
   (d.data || []).forEach(x => { const k = String(x.nombre).toLowerCase(), prev = lugares[k] || {}; lugares[k] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', horarioCarga: prev.horario || ''}; });
@@ -665,22 +677,36 @@ const vozNorm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀
 function vozDistancia(a, b){ if(Math.abs(a.length - b.length) > 2) return 9; const d = Array.from({length: b.length + 1}, (_, k) => k);
   for(let x = 1; x <= a.length; x++){ let prev = d[0]; d[0] = x; for(let y = 1; y <= b.length; y++){ const t = d[y]; d[y] = Math.min(d[y] + 1, d[y-1] + 1, prev + (a[x-1] === b[y-1] ? 0 : 1)); prev = t; } } return d[b.length]; }
 function vozPalabraIgual(w, x){ if(w === x) return 1; if(w.length >= 4 && x.length >= 4 && (x.startsWith(w) || w.startsWith(x))) return 0.9; if(w.length >= 5 && vozDistancia(w, x) <= (w.length >= 8 ? 2 : 1)) return 0.8; return 0; }
-function vozBuscar(alts, lista){
+const VOZ_RELLENO = ['del','los','las','por','para','con','cliente','cargador','empresa','que','llama','llamado','carga','cargo','almacen','destino','pueblo','una','uno','hay','esta','este','pues','bueno','vale','mira','casa'];
+function vozBuscarCon(alts, lista){
   let mejor = null, pMax = 0;
-  const palabras = t => vozNorm(t).split(' ').filter(w => w.length > 2 && !['del','los','las','por','para','con'].includes(w));
+  const palabras = t => vozNorm(t).split(' ').filter(w => w.length > 2 && !VOZ_RELLENO.includes(w));
   alts.forEach((a, ia) => {
     const qw = palabras(a); if(!qw.length) return;
-    const peso = ia === 0 ? 1 : 0.9;   // la primera forma de entenderlo vale un poco más
+    const peso = ia === 0 ? 1 : 0.9, qJunto = qw.join('');   // la primera forma de entenderlo vale un poco más
     for(const nombre of lista){
       const nw = palabras(nombre); if(!nw.length) continue;
       let comun = 0; qw.forEach(w => { comun += Math.max(0, ...nw.map(x => vozPalabraIgual(w, x))); });
-      const cubreDicho = comun / qw.length, cubreNombre = comun / nw.length;
-      let p = (cubreDicho * 0.7 + cubreNombre * 0.3) * peso;   // sobre todo: que todo lo que ha dicho esté en el nombre
+      let p = (comun / qw.length * 0.7 + comun / nw.length * 0.3) * peso;   // sobre todo: que todo lo que ha dicho esté en el nombre
+      if(qJunto.length >= 5 && nw.join('').includes(qJunto)) p = Math.max(p, 0.85 * peso);   // «agrosol» = «Agro Sol»
       if(vozNorm(nombre) === vozNorm(a)) p = 1.2;
       if(p > pMax){ pMax = p; mejor = nombre; }
     }
   });
-  return pMax >= 0.6 ? mejor : null;
+  return {nombre: mejor, p: pMax};
+}
+function vozBuscar(alts, lista){ const r = vozBuscarCon(alts, lista); return r.p >= 0.6 ? r.nombre : null; }
+// Elige de la lista lo que ha dicho; si no está seguro pregunta «¿Es …?»; si no lo encuentra, lo busca también en la base
+async function vozElegir(paso, alts, lista, tabla){
+  let r = vozBuscarCon(alts, lista);
+  if(r.p < 0.3 && tabla && sb){   // por si la lista del móvil no lo tiene: se busca en la base por la palabra más larga
+    const w = vozNorm(alts[0]).split(' ').filter(x => x.length > 3 && !VOZ_RELLENO.includes(x)).sort((a, b) => b.length - a.length)[0];
+    if(w){ const patron = '%' + w.replace(/[aeioun]/g, '_') + '%';   // «_» = cualquier letra: así encuentra también los nombres con tildes o ñ
+      const { data } = await sb.from(tabla).select('nombre').ilike('nombre', patron).limit(50); if(data && data.length){ const r2 = vozBuscarCon(alts, data.map(x => x.nombre)); if(r2.p > r.p) r = r2; } }
+  }
+  if(r.p >= 0.6) return r.nombre;
+  if(r.nombre && r.p >= 0.3){ const c = await vozPreguntar(paso, `¿Es ${String(r.nombre).replace(/[.,\s]+$/, '')}?`, vozSiNo); if(c && c.valor) return r.nombre; }
+  return alts[0];   // no está: se apunta tal cual lo ha dicho
 }
 const VOZ_NUM = {cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiuno:21,veintiun:21,veintiuna:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29,treinta:30,cuarenta:40,cincuenta:50};
 function vozNumeros(t){   // "treinta y tres" → "33", "veintiséis" → "26"
@@ -765,12 +791,13 @@ async function asistenteVoz(){
   const poner = (id, v) => { $e(id).value = v; $e(id).dispatchEvent(new Event('input', {bubbles: true})); };
   const datos = {};
   const pasos = {
-    async cargador(){ const r = await vozPreguntar('Paso 1 de 5', '¿Quién es el cargador? Di el nombre del cliente.', alts => vozBuscar(alts, lista('ndListaClientes')) || alts[0]);
-      if(!r) return false; $e('ndCargadorNif').value = ''; $e('ndCargadorDom').value = ''; poner('ndCargador', r.valor); datos.cargador = r.valor;   // (se borran los datos del cliente anterior por si lo está cambiando)
-      if(!$e('ndCargadorNif').value.trim()){ const n = await vozPreguntar('Paso 1 de 5', 'Este cliente no lo tengo. Dime su NIF, letra a letra.', vozNif); if(n) $e('ndCargadorNif').value = n.valor; }
+    async cargador(){ const r = await vozPreguntar('Paso 1 de 5', '¿Quién es el cargador? Di el nombre del cliente.', alts => alts);
+      if(!r) return false; r.valor = await vozElegir('Paso 1 de 5', r.valor, lista('ndListaClientes'), 'clientes'); if(!vozActivo) return false;
+      $e('ndCargadorNif').value = ''; $e('ndCargadorDom').value = ''; poner('ndCargador', r.valor); datos.cargador = r.valor;
+      if(!$e('ndCargadorNif').value.trim()){ const cli = (await sb.from('clientes').select('*').ilike('nombre', String(r.valor).trim()).limit(1)).data; if(cli && cli[0]){ $e('ndCargadorNif').value = cli[0].nif || ''; $e('ndCargadorDom').value = cli[0].domicilio || ''; } }   // estaba en la base aunque no en la lista del móvil   // (se borran los datos del cliente anterior por si lo está cambiando)
       return true; },
-    async origen(){ const r = await vozPreguntar('Paso 2 de 5', '¿Dónde cargas? Di el almacén o el pueblo.', alts => vozBuscar(alts, lista('ndListaAlmacenes')) || alts[0]); if(!r) return false; poner('ndOrigen', r.valor); datos.origen = r.valor; return true; },
-    async destino(){ const r = await vozPreguntar('Paso 3 de 5', '¿A dónde va la carga?', alts => vozBuscar(alts, lista('ndListaDestinos')) || alts[0]); if(!r) return false; poner('ndDestino', r.valor); datos.destino = r.valor; return true; },
+    async origen(){ const r = await vozPreguntar('Paso 2 de 5', '¿Dónde cargas? Di el almacén o el pueblo.', alts => alts); if(!r) return false; r.valor = await vozElegir('Paso 2 de 5', r.valor, lista('ndListaAlmacenes'), 'almacenes'); if(!vozActivo) return false; poner('ndOrigen', r.valor); datos.origen = r.valor; return true; },
+    async destino(){ const r = await vozPreguntar('Paso 3 de 5', '¿A dónde va la carga?', alts => alts); if(!r) return false; r.valor = await vozElegir('Paso 3 de 5', r.valor, lista('ndListaDestinos'), 'destinos'); if(!vozActivo) return false; poner('ndDestino', r.valor); datos.destino = r.valor; return true; },
     async palets(){ const r = await vozPreguntar('Paso 4 de 5', '¿Cuántos palets llevas y de qué tipo? Por ejemplo: veintiséis grandes, o diez europeos y cuatro carros.', vozPalets); if(!r) return false; datos.palets = r.valor; return true; },
     async pedido(){ const r = await vozPreguntar('Paso 5 de 5', '¿Tiene número de pedido? Dilo, o di no.'); if(!r) return true;
       const t = vozNorm(r.valor); if(/^(no|ninguno|nada|no tiene|no hay)\b/.test(t)){ $e('ndRef').value = ''; datos.pedido = ''; } else { $e('ndRef').value = vozNumeros(r.valor).replace(/^(el\s+)?(pedido|numero|n|referencia|es)(\s+(de\s+)?(pedido|numero))?\s+/, '').replace(/\s+/g, '').toUpperCase(); datos.pedido = $e('ndRef').value; } return true; }
@@ -891,7 +918,7 @@ $e('ndAqui').onclick = async ()=>{
 };
 $e('ndSeguir').onclick = ()=>{
   const v = id => $e(id).value.trim();
-  const faltan = [['ndCargador','cargador'],['ndCargadorNif','NIF del cargador'],['ndTrans','transportista'],['ndTransNif','NIF del transportista'],
+  const faltan = [['ndCargador','cargador'],['ndTrans','transportista'],   // (el NIF no se pide aquí: sale solo si está en la ficha del cliente)
     ['ndOrigen','origen'],['ndDestino','destino'],['ndMercancia','mercancía']].filter(([id]) => !v(id)).map(([,n]) => n);
   if(faltan.length){ $e('ndMsg').textContent = 'Falta: ' + faltan.join(', ') + '.'; return; }
   guardarMercanciaNueva(v('ndMercancia'));   // si es una categoría nueva, queda guardada para todos
@@ -936,8 +963,12 @@ async function guardarDatosNuevos(c){
   if(!sb) return;
   try{
     const nom = s => String(s || '').trim().toLowerCase();
-    if(c.clientes.nombre && !listaClientes.some(x => nom(x.nombre) === nom(c.clientes.nombre))){
-      await sb.from('clientes').insert({nombre: c.clientes.nombre, nif: c.clientes.nif || null, domicilio: c.clientes.domicilio || null});
+    const nifN = String(c.clientes.nif || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if(c.clientes.nombre && !listaClientes.some(x => nom(x.nombre) === nom(c.clientes.nombre) || (nifN.length > 5 && String(x.nif || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === nifN))){
+      // antes de darlo de alta se mira en la base (por si la lista del móvil no lo tenía): mismo nombre o mismo NIF → no se repite
+      const { data: ya } = await sb.from('clientes').select('id').ilike('nombre', c.clientes.nombre.trim()).limit(1);
+      const { data: yaNif } = nifN.length > 5 ? await sb.from('clientes').select('id').eq('nif', c.clientes.nif.toUpperCase()).limit(1) : {data: []};
+      if(!(ya && ya.length) && !(yaNif && yaNif.length)) await sb.from('clientes').insert({nombre: c.clientes.nombre, nif: c.clientes.nif || null, domicilio: c.clientes.domicilio || null});
     }
     if(c.origen && !lugares[nom(c.origen)]) await sb.from('almacenes').insert({nombre: c.origen});
     if(c.destino && !lugares[nom(c.destino)]) await sb.from('destinos').insert({nombre: c.destino});
