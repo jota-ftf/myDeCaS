@@ -174,9 +174,10 @@ table.adm input.field{width:90px;padding:3px 6px}
 .dispo-g{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
 .dispo-g > b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .dispo-p{display:flex;align-items:center;gap:6px;font-size:13px;padding:2px 0;cursor:pointer}
-#dispoDet summary{cursor:pointer;list-style:none}
-#dispoDet summary::before{content:'▸ ';color:var(--muted)}
-#dispoDet[open] summary::before{content:'▾ '}
+#dispoDet summary, #salenDet summary{cursor:pointer;list-style:none}
+#dispoDet summary::before, #salenDet summary::before{content:'▸ ';color:var(--muted)}
+#dispoDet[open] summary::before, #salenDet[open] summary::before{content:'▾ '}
+#dispoDet summary::-webkit-details-marker, #salenDet summary::-webkit-details-marker{display:none}
 .dispo-p > span:first-child{flex:1;min-width:0}
 .dispo-p.fuera > span:first-child{text-decoration:line-through;color:var(--muted)}
 .dispo-m{font-size:11px;color:#8a4b00;background:#fff1dc;border-radius:99px;padding:1px 7px}
@@ -614,8 +615,9 @@ table.fichero td.acc{white-space:nowrap;width:1%}
   <div class="board" id="board">
     <aside>
       <section class="panel" aria-labelledby="h-salen">
-        <h2 id="h-salen">Salen hoy</h2>
-        <p class="hint">Cada nombre es un camión: al añadirlo aparece su caja en el cartón.</p>
+        <details id="salenDet">
+        <summary><h2 id="h-salen" style="display:inline">Salen hoy</h2> <span class="hint" id="salenResumen"></span></summary>
+        <p class="hint" style="margin-top:6px">Cada nombre es un camión: al añadirlo aparece su caja en el cartón.</p>
         <ul class="roster" id="roster"></ul>
         <form class="row" id="addCamion" autocomplete="off">
           <select class="field full" id="camChofer" aria-label="Chófer"></select>
@@ -625,6 +627,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
           <button class="btn full" type="submit">Añadir al cartón</button>
         </form>
         <button type="button" class="btn small" id="copiarAyer">Copiar «salen hoy» del día anterior</button>
+        </details>
       </section>
 
       <section class="panel" aria-labelledby="h-dispo">
@@ -1707,6 +1710,8 @@ function render(){
   const conCosas = DIRS.filter(d => d !== 'X' && (nec[d] || camiones.some(t => t.direccion === d)));   // zonas que hoy tienen pedidos o camiones
   pintarFiltroZonas(conCosas);
   $('#h-salen').textContent = `Salen hoy · ${camiones.length} ${camiones.length === 1 ? 'camión' : 'camiones'}`;
+  { const pz = DIRS.map(d => [d, camiones.filter(t => (t.direccion || 'X') === d).length]).filter(([, n]) => n);
+    $('#salenResumen').textContent = pz.map(([d, n]) => `${d === 'X' ? 'sin dirección' : (ZONA_NOMBRE[d] || d)} ${n}`).join(' · ') + (camiones.some(t => !t.chofer_id && t.tipo !== 'autonomo') ? ' · ⚠️ falta chófer' : ''); }
   const sinCg = lineas.filter(l => l.camion_id && l.modo === 'hub' && !l.cargador_id && !l.retorno).length;
   const sinEnviar = lineas.filter(l => l.modo === 'hub' && l.cargador_id && !enviada(l)).length;
   const cuadrados = camiones.filter(t => { const h = huecoCamion(lineas.filter(l => l.camion_id === t.id && !l.retorno)); return !h.over && h.libresE === 0 && h.libresG === 0; }).length;
@@ -1966,6 +1971,9 @@ async function dividirConDeca(l, d, items, p1, p2, camDest){
   return true;
 }
 $('#edDividir').onclick = abrirDividir;
+// «Salen hoy» plegable como «Personal operativo hoy»: se recuerda si lo tienes abierto o cerrado
+try{ if(localStorage.getItem('carton_salen_abierto') === '1') $('#salenDet').open = true; }catch(_){}
+$('#salenDet').addEventListener('toggle', () => { try{ localStorage.setItem('carton_salen_abierto', $('#salenDet').open ? '1' : '0'); }catch(_){} });
 $('#edCancelar').onclick = cerrarEdicion;
 $('#editar').addEventListener('mousedown', e => { if(e.target.id === 'editar') cerrarEdicion(); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('#editar').hidden) cerrarEdicion(); if(e.key === 'Escape' && !$('#pinDlg').hidden) cerrarPin(); });
