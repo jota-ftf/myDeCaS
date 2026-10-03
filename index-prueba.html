@@ -2521,11 +2521,12 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   const cambiaCargador = !esCmr && !mismoTrans(cg.nombre, row.cargador_nombre);
   const ahora = new Date().toLocaleString('es-ES'), quien = choferActual ? choferActual.nombre : 'Sin identificar';
   const nuevos = [];
+  const pr = (listaTrans || []).find(x => x.propia), enNave = pr && pr.nombre ? 'la nave de ' + pr.nombre : 'la nave';   // «transbordo en la nave de Alcazaba Logística…»
   if(nuevaLimpia !== row.matricula) nuevos.push({campo: 'matricula', anterior: row.matricula || null, nueva: nuevaLimpia, fecha: ahora, cambiado_por: quien,
     origen_cambio: eraPendiente ? 'Propuesta de Tráfico, confirmada por el chófer' : 'Cambiado directamente por el chófer',
-    motivo: eraPendiente ? 'transbordo en la nave a otro vehículo' : 'cambio de vehículo indicado por el conductor'});
+    motivo: eraPendiente ? `transbordo en ${enNave} a otro vehículo` : 'cambio de vehículo indicado por el conductor'});
   if(cambiaTrans) nuevos.push({campo: 'transportista', anterior: row.transportista_nombre || null, nueva: efNuevo.nombre, fecha: ahora, cambiado_por: quien,
-    motivo: 'la mercancía sale de la nave en un vehículo de otro transportista'});
+    motivo: `la mercancía sale de ${enNave} en un vehículo de otro transportista`});
   if(cambiaCargador) nuevos.push({campo: 'cargador', anterior: row.cargador_nombre || null, nueva: cg.nombre, fecha: ahora, cambiado_por: quien,
     motivo: 'cambia el transportista efectivo; el cargador contractual es quien le contrata directamente'});
   const nuevoHistorial = [...historialPrevio, ...nuevos];
