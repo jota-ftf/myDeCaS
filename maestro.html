@@ -27,6 +27,11 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 h1{font-size:1.3rem;margin:0} h1 small{font-weight:500;color:var(--muted);font-size:.85rem;margin-left:6px}
 h2{font-size:1.05rem;margin:0 0 10px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.card > h2{cursor:pointer;user-select:none}
+.card > h2::before{content:'▾ ';color:var(--muted)}
+.card.plegada > h2::before{content:'▸ '}
+.card.plegada > *:not(h2){display:none}
+.card.plegada > h2{margin-bottom:0}
 .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:8px 12px;font-size:.92rem;cursor:pointer;font-weight:600}
 .btn:hover{border-color:var(--pen)}
 .btn.primary{background:var(--pen);border-color:var(--pen);color:#fff}
@@ -647,6 +652,19 @@ document.addEventListener('keydown', ev => { if(ev.key === 'Escape'){ $('#mEmpre
 
 comprobar();
 sb.auth.onAuthStateChange((evento) => { if(evento === 'SIGNED_OUT') ver('vLogin'); });
+})();
+
+// Tarjetas que se pliegan y despliegan tocando su título (se recuerda en este ordenador). Planes y Extras empiezan plegadas.
+(() => {
+  const PLEG_DEF = ['Planes', 'Extras'];
+  const leer = () => { try{ return JSON.parse(localStorage.getItem('maestro_plegadas') || 'null'); }catch(_){ return null; } };
+  const aplicar = () => { const st = leer(); document.querySelectorAll('.card > h2').forEach(h => { const t = h.textContent.trim(); const pl = st ? !!st[t] : PLEG_DEF.includes(t); h.parentElement.classList.toggle('plegada', pl); }); };
+  document.addEventListener('click', e => { const h = e.target.closest('.card > h2'); if(!h) return;
+    const card = h.parentElement; card.classList.toggle('plegada');
+    const st = leer() || Object.fromEntries(PLEG_DEF.map(t => [t, true])); st[h.textContent.trim()] = card.classList.contains('plegada');
+    try{ localStorage.setItem('maestro_plegadas', JSON.stringify(st)); }catch(_){} });
+  new MutationObserver(() => { document.querySelectorAll('.card > h2:not([data-pleg])').forEach(h => h.dataset.pleg = '1'); aplicar(); }).observe(document.body, {childList: true, subtree: true});
+  aplicar();
 })();
 </script>
 </body>

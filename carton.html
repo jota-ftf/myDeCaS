@@ -613,7 +613,8 @@ table.fichero td.acc{white-space:nowrap;width:1%}
           <div class="combo"><input class="field" id="lnDest" placeholder="Destino" data-combo="destinos" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnDest" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
           <div class="combo"><input class="field" id="lnRef" placeholder="Nº pedido / referencia (opcional)"><button type="button" class="limpiar" data-limpiar="lnRef" aria-label="Borrar" title="Borrar">×</button></div>
           <select class="field full" id="lnContr" aria-label="Transportista contractual" title="Sale en el DeCA encima del transportista efectivo" hidden></select>
-          <select class="field full" id="lnTrans" aria-label="Transportista efectivo" title="Si lo dejas en «Transportista Efectivo», se pone solo el del camión (el autónomo o tu empresa)"></select>
+          <select class="field full" id="lnTrans" aria-label="Transportista efectivo" hidden></select>
+          <p class="hint full" style="margin:0">🚚 El transportista efectivo se pone solo: el de quien lleve la carga (cargador o chófer). Cambia cada vez que cambies la asignación, hasta que se haga el DeCA.</p>
           <select class="field full" id="lnMerc" aria-label="Naturaleza de la mercancía"></select>
           <div class="combo"><input class="field" id="lnAut" placeholder="Nº de autorización o ficha ADR — déjalo vacío si no procede"><button type="button" class="limpiar" data-limpiar="lnAut" aria-label="Borrar" title="Borrar">×</button></div>
           <div class="inline full">
@@ -717,7 +718,8 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       <label>Quién lo recoge<select class="field" id="edModo"><option value="hub">Cargador → nave</option><option value="ruta">El chófer en ruta</option></select></label>
       <label>Cargador<select class="field" id="edCg"></select></label>
       <label id="edContrL" hidden>Transportista contractual<select class="field" id="edContr"></select></label>
-      <label>Transportista efectivo<select class="field" id="edTrans"></select></label>
+      <label hidden>Transportista efectivo<select class="field" id="edTrans"></select></label>
+      <p class="hint full" id="edTransTxt" style="margin:0"></p>
       <label>Naturaleza de la mercancía<select class="field" id="edMerc"></select></label>
       <label>Autorización especial<input class="field" id="edAut" placeholder="Vacío si no procede"></label>
       <label>Kilos (si se cobra por kilo)<input class="field" id="edKilos" type="number" min="0" step="1" placeholder="Opcional"></label>
@@ -1024,7 +1026,7 @@ async function cargarMaestros(){
   ]);
   destinosNombres = (de.data || []).map(x => x.nombre);
   zonasDestino = {}; (de.data || []).forEach(x => { const z = zonaPorUbicacion(x); if(z) zonasDestino[normTxt(x.nombre)] = z; });
-  (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url, horario:x.horario || '', pais:x.pais || ''});
+  (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url, horario:x.horario || '', pais:x.pais || '', nombreDeca:x.nombre_deca || ''});
   personalTodos = p.data || []; clientesTodos = c.data || []; transportistasTodos = t.data || [];
   // en los desplegables solo salen los que no están de baja
   personal = personalTodos.filter(x => !x.baja); clientes = clientesTodos.filter(x => !x.baja); transportistas = transportistasTodos.filter(x => !x.baja);
@@ -1038,7 +1040,7 @@ async function cargarMaestros(){
   $('#destinosList').innerHTML = (de.data || []).map(x => `<option value="${esc(x.nombre)}">`).join('');
   // Almacenes: si hay tabla en Supabase se usa; si no, los que ya se han apuntado alguna vez
   const al = await leerTodo(() => sb.from('almacenes').select('*').order('nombre').order('id'));
-  (al.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url});
+  (al.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = Object.assign(lugares[String(x.nombre).toLowerCase()] || {}, {lat:x.lat, lng:x.lon, url:x.maps_url, nombreDeca:x.nombre_deca || ''}));
   const hist = await sb.from('carton_lineas').select('almacen').limit(1000);
   const nombres = new Set([...(al.data||[]).map(x => x.nombre), ...(hist.data||[]).map(x => x.almacen)].filter(Boolean));
   almacenesNombres = [...nombres].sort((a,b) => a.localeCompare(b,'es'));
@@ -1538,7 +1540,7 @@ function lineHTML(l, idx, total){
   const d = decas[l.carga_id];
   return `<li class="line" draggable="true" data-id="${l.id}">
     <button type="button" class="st ${est}" data-act="problema" title="${ST_NAME[est]}${d ? ' · ' + esc(d.deca_id) : ''} (toca para marcar/quitar problema)" aria-label="Estado: ${ST_NAME[est]}">${ST_TXT[est]}</button>
-    <div class="what">${enCamion ? `<div class="dst-big">→ ${esc(l.destino || 'sin destino')}</div>` : ''}${enCamion ? `<span class="rn" title="Orden de ruta">${idx+1}</span>` : ''}${l.fecha !== fecha ? `<span class="old">${fechaBonita(l.fecha)}</span>` : ''}${(() => { const pa = (lugares[String(l.destino || '').toLowerCase()] || {}).pais; return pa && !/^espa/i.test(pa) ? `<span class="rn" style="background:#6a4bc4" title="Destino en ${esc(pa)}: se hace CMR en lugar de DeCA">🌍 CMR</span>` : ''; })()}${l.orden_descarga != null && enCamion && !l.retorno ? `<span class="rn" style="background:var(--ok,#2e9d6b)" title="Orden de descarga">⬇${l.orden_descarga + 1}</span>` : ''}<b>${esc(l.almacen)}</b><a class="maplink" href="${esc(urlMapa(l.almacen))}" target="_blank" rel="noopener" title="Ver en el mapa" draggable="false">📍</a> – <span class="cli">${esc(l.cliente_nombre)}</span>${l.referencia ? `<span class="ref">${esc(l.referencia)}</span>` : ''}${l.mercancia && l.mercancia !== 'fruta y verdura' ? `<span class="tag">${esc(l.mercancia)}</span>` : ''}${l.autorizacion_especial ? `<span class="tag" title="Autorización especial">Aut. ${esc(l.autorizacion_especial)}</span>` : ''}${enCamion ? '' : `<br><span class="dst">→ ${esc(l.destino || 'sin destino')}</span>`}${d && d.pdf_url ? ` · <a href="${esc(d.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener" class="dst">ver DeCA</a>` : ''}</div>
+    <div class="what">${enCamion ? `<div class="dst-big">→ ${esc(l.destino || 'sin destino')}</div>` : ''}${enCamion ? `<span class="rn" title="Orden de ruta">${idx+1}</span>` : ''}${l.fecha !== fecha ? `<span class="old">${fechaBonita(l.fecha)}</span>` : ''}${(() => { const pa = (lugares[String(l.destino || '').toLowerCase()] || {}).pais; return ajustes.cmr_activo === 'si' && pa && !/^espa/i.test(pa) ? `<span class="rn" style="background:#6a4bc4" title="Destino en ${esc(pa)}: se hace CMR en lugar de DeCA">🌍 CMR</span>` : ''; })()}${l.orden_descarga != null && enCamion && !l.retorno ? `<span class="rn" style="background:var(--ok,#2e9d6b)" title="Orden de descarga">⬇${l.orden_descarga + 1}</span>` : ''}<b>${esc(l.almacen)}</b><a class="maplink" href="${esc(urlMapa(l.almacen))}" target="_blank" rel="noopener" title="Ver en el mapa" draggable="false">📍</a> – <span class="cli">${esc(l.cliente_nombre)}</span>${l.referencia ? `<span class="ref">${esc(l.referencia)}</span>` : ''}${l.mercancia && l.mercancia !== 'fruta y verdura' ? `<span class="tag">${esc(l.mercancia)}</span>` : ''}${l.autorizacion_especial ? `<span class="tag" title="Autorización especial">Aut. ${esc(l.autorizacion_especial)}</span>` : ''}${enCamion ? '' : `<br><span class="dst">→ ${esc(l.destino || 'sin destino')}</span>`}${d && d.pdf_url ? ` · <a href="${esc(d.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener" class="dst">ver DeCA</a>` : ''}</div>
     <span class="qty">${qtyHTML(l)}${l.remonta ? '<span class="x2" title="Va a dos alturas">×2</span>' : ''}${d && incidenciasPor[d.deca_id] ? (incidenciasPor[d.deca_id].some(x => !x.todo_bien) ? `<button type="button" class="inc-btn mal" data-verinc="${esc(d.deca_id)}" title="Incidencia en la descarga: ver fotos y firma">⚠️</button>` : `<button type="button" class="inc-btn" data-verinc="${esc(d.deca_id)}" title="Entregado con firma: ver">✍️</button>`) : ''}</span>
     <div class="ops">${enCamion ? `<span class="ord"><button type="button" data-act="subir" ${idx === 0 ? 'disabled' : ''} aria-label="Subir en la ruta">▲</button><button type="button" data-act="bajar" ${idx === total-1 ? 'disabled' : ''} aria-label="Bajar en la ruta">▼</button></span>` : ''}${modoSel}${cgSel}<select data-act="mover" aria-label="Mover a camión">${camOpts}</select>${envio}
       ${enCamion ? `<button type="button" class="rem-btn ${l.remonta ? 'on' : ''}" data-act="remonta" title="${l.remonta ? 'Va remontado (toca para quitar)' : '¿Va remontado encima de otra carga? Toca para marcarlo: al chófer le saldrá «¡OJO! este palet va remontado»'}">⇅</button>` : ''}<button type="button" class="edit-btn" data-act="editar" title="Editar el pedido" aria-label="Editar el pedido">✏️</button><button type="button" class="xbtn" data-act="borrar" title="Anular pedido" aria-label="Anular pedido">×</button></div>
@@ -1738,7 +1740,10 @@ function abrirEdicion(l){
   $('#edCg').innerHTML = opcionesCargador(l.cargador_id).replace('¿Cargador?', '— Sin cargador —');
   const pr = transPropia();
   $('#edTrans').innerHTML = '<option value="">Según el camión</option>' + transportistas.map(x => `<option value="${x.id}">${esc(x.nombre)}${x.propia ? ' (empresa propia)' : x.autonomo ? ' (autónomo)' : ''}</option>`).join('');
-  $('#edTrans').value = l.transportista_id || '';
+  $('#edTrans').value = '';   // el efectivo ya no se elige a mano: es el de quien lleve la carga
+  { const cam = camion(l.camion_id), cond = persona(l.modo === 'hub' ? l.cargador_id : (cam && cam.chofer_id)), d0 = decas[l.carga_id];
+    const ef = d0 ? d0.transportista_nombre : ((cond && cond.transportista_id && nombreTrans(cond.transportista_id)) || (l.modo === 'ruta' && cam && cam.tipo === 'autonomo' && nombreTrans(cam.transportista_id)) || (transPropia() || {}).nombre || '—');
+    $('#edTransTxt').innerHTML = `🚚 Transportista efectivo: <b>${esc(ef || '—')}</b> ${d0 ? '(ya está en el DeCA)' : '— se pone solo según quién lleve la carga'}`; }
   const conContr = hayExtraContractual() || !!l.transportista_contractual_id;
   $('#edContrL').hidden = !conContr; if(conContr) opcionesContractual($('#edContr'), l.transportista_contractual_id || '');
   $('#edMerc').innerHTML = opcionesMerc(l.mercancia || 'fruta y verdura'); $('#edMerc').value = l.mercancia || 'fruta y verdura';
@@ -2025,7 +2030,7 @@ const FICHEROS = {
     {tabla:'tractoras', subtitulo:'Tractoras', orden:'matricula', campos:[['matricula','Matrícula'],['remolque_habitual','Remolque habitual']]},
     {tabla:'remolques', subtitulo:'Remolques', orden:'matricula', campos:[['matricula','Matrícula']]}]},
   destinos: {titulo:'Destinos', aviso:'', tablas:[
-    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre corto (para buscar y en el cartón)'],['nombre_deca','Nombre en el DeCA (si es distinto)'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de descarga'],['pais','País (vacío = España; si es otro, se hace CMR)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
+    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre corto (para buscar y en el cartón)'],['nombre_deca','Nombre en el DeCA (si es distinto)'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de descarga'],['pais','País (vacío = España; con el CMR activado en Ajustes, si es otro se hace CMR)'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
   tarifas_cli: {titulo:'Tarifas de clientes', aviso:'Una fila por cliente y destino. Deja el destino vacío para la tarifa general de ese cliente (se usa cuando no hay una más concreta). «Cobro por»: palet (rellena el precio de cada tipo), viaje (precio por camión completo para ese cliente) o kilo.', tablas:[
     {tabla:'tarifas_cliente', orden:'created_at', ordenar:(a,b) => nombreCliente(a.cliente_id).localeCompare(nombreCliente(b.cliente_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['cliente_id','Cliente','cliente'],['destino','Destino (vacío = todos)','destino'],['tipo','Cobro por',['palet','viaje','kilo']],['precio_e','€ europalet','num'],['precio_m','€ palet grande','num'],['precio_c','€ carro','num'],['precio_b','€ box','num'],['precio_k','€ caja','num'],['precio_kilo','€ / kilo','num'],['precio_viaje','€ / viaje','num']]}]},
@@ -2577,6 +2582,12 @@ function renderAjustes(box){
         <button type="button" class="btn small" id="guardarEspera">Guardar</button>
       </div>
       <div class="baja-card">
+        <b>🌍 CMR para el extranjero</b>
+        <span class="hint">Activado: si el destino tiene otro país en su ficha (Destinos → País), en lugar del DeCA se hace el CMR (carta de porte internacional). Desactivado: todo va con DeCA, como siempre.</span>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="cmrActivo" ${ajustes.cmr_activo === 'si' ? 'checked' : ''}> Activado</label>
+        <button type="button" class="btn small" id="guardarCmr">Guardar</button>
+      </div>
+      <div class="baja-card">
         <b>Firma de quien recibe al descargar</b>
         <span class="hint">Al marcar «Descargado», el chófer dice si ha ido todo bien o hay un problema (con fotos). Aquí decides si además firma en la pantalla la persona que recibe la mercancía.</span>
         <select class="field" id="firmaEntrega" style="max-width:280px">${[['no','No pedir firma'],['opcional','Firma opcional'],['obligatoria','Firma obligatoria']].map(([v, n]) => `<option value="${v}" ${(ajustes.firma_entrega || 'opcional') === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
@@ -2862,9 +2873,10 @@ function pintarCombo(inp){
   const list = inp.parentElement.querySelector('.combo-list');
   const q = quitarAcentos(inp.value.trim());
   const todas = opcionesCombo(inp.dataset.combo);
-  const coinc = todas.filter(n => !q || quitarAcentos(n).includes(q)).slice(0, 120);
+  const largo = n => (inp.dataset.combo === 'destinos' || inp.dataset.combo === 'almacenes') ? ((lugares[String(n).toLowerCase()] || {}).nombreDeca || '') : '';   // también se encuentra por su «Nombre en el DeCA»
+  const coinc = todas.filter(n => !q || quitarAcentos(n).includes(q) || quitarAcentos(largo(n)).includes(q)).slice(0, 120);
   const exacta = todas.some(n => quitarAcentos(n) === q);
-  list.innerHTML = coinc.map((n, i) => `<div data-val="${esc(n)}" class="${i === 0 && q ? 'act' : ''}">${esc(n)}</div>`).join('')
+  list.innerHTML = coinc.map((n, i) => `<div data-val="${esc(n)}" class="${i === 0 && q ? 'act' : ''}">${esc(n)}${largo(n) && largo(n) !== n ? ` <small style="opacity:.65">· ${esc(largo(n))}</small>` : ''}</div>`).join('')
     + (q && !exacta ? `<div class="nuevo" data-val="${esc(inp.value.trim())}">➕ Usar «${esc(inp.value.trim())}» (nuevo)</div>` : '')
     + (!coinc.length && !q ? '<div class="nuevo">La lista está vacía</div>' : '');
   list.hidden = false;
@@ -3441,6 +3453,7 @@ document.addEventListener('click', async e => {
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
+    if(b.id === 'guardarCmr'){ if(await guardarAjuste('cmr_activo', $('#cmrActivo').checked ? 'si' : 'no')){ toast($('#cmrActivo').checked ? 'CMR activado: se aplica en las apps en unos minutos' : 'CMR desactivado: todo con DeCA'); render(); } return; }
     if(b.id === 'guardarFirma'){ if(await guardarAjuste('firma_entrega', $('#firmaEntrega').value)) toast('Guardado: se aplica en las apps en unos minutos'); return; }
     if(b.id === 'guardarAvDesc'){ const n = (id, min, max, def) => String(Math.min(max, Math.max(min, parseInt($(id).value, 10) || def)));
       let ok = await guardarAjuste('aviso_descarga', $('#avDescActiva').checked ? 'si' : 'no');

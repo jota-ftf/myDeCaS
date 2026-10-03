@@ -28,6 +28,9 @@
     --bg:#f4f6fb; --card:#ffffff; --card2:#f0f2f8; --border:#dfe4ee;
     --text:#151a26; --muted:#5b657c;
   }
+  .grupo-alm{border:2px solid var(--accent);border-radius:14px;padding:8px;margin-bottom:10px;background:rgba(62,166,255,.06)}
+  .grupo-alm-t{font-size:1rem;margin:2px 4px 8px}
+  .grupo-alm .pend-item:last-child{margin-bottom:0}
   .entrega-capa{position:fixed;inset:0;z-index:1950;background:var(--bg);overflow:auto;padding:16px}
   .entrega-capa[hidden]{display:none}
   .entrega-caja{max-width:520px;margin:0 auto}
@@ -783,7 +786,11 @@ function vozBuscarCon(alts, lista){
 function vozBuscar(alts, lista){ const r = vozBuscarCon(alts, lista); return r.p >= 0.6 ? r.nombre : null; }
 // Elige de la lista lo que ha dicho; si no está seguro pregunta «¿Es …?»; si no lo encuentra, lo busca también en la base
 async function vozElegir(paso, alts, lista, tabla){
-  let r = vozBuscarCon(alts, lista);
+  // destinos y almacenes: vale decir el nombre corto o el «Nombre en el DeCA» (se apunta siempre el corto)
+  const alias = {};
+  if(tabla === 'destinos' || tabla === 'almacenes') Object.entries(lugares).forEach(([k, l]) => { if(l.nombreDeca){ const corto = lista.find(n => String(n).toLowerCase() === k) || k; alias[l.nombreDeca] = corto; } });
+  let r = vozBuscarCon(alts, lista.concat(Object.keys(alias)));
+  if(alias[r.nombre]) r = {...r, nombre: alias[r.nombre]};
   if(r.p < 0.3 && tabla && sb){   // por si la lista del móvil no lo tiene: se busca en la base por la palabra más larga
     const w = vozNorm(alts[0]).split(' ').filter(x => x.length > 3 && !VOZ_RELLENO.includes(x)).sort((a, b) => b.length - a.length)[0];
     if(w){ const patron = '%' + w.replace(/[aeioun]/g, '_') + '%';   // «_» = cualquier letra: así encuentra también los nombres con tildes o ñ
@@ -2206,10 +2213,14 @@ function fichaCarga(c){
         ${c.observaciones ? `<div class="pmeta" style="color:var(--warn)">📝 ${c.observaciones}</div>` : ''}
       </div>`;
 }
+// Las cargas del mismo almacén van juntas en un bloque «📍 Níjar · 3 clientes» (cada cliente sigue con su propio DeCA)
 function pintarUnaLista(listaId, badgeId, cargas, vacio){
   $e(badgeId).textContent = String(cargas.length);
   const lista = $e(listaId);
-  lista.innerHTML = cargas.length ? cargas.map(fichaCarga).join('') : `<div class="empty">${vacio}</div>`;
+  const grupos = [], porAlm = {};
+  cargas.forEach(c => { const k = String(c.almacen || c.origen || '').trim().toLowerCase(); if(k && porAlm[k]) porAlm[k].cargas.push(c); else { const g = {nombre: c.almacen || c.origen || '—', cargas: [c]}; grupos.push(g); if(k) porAlm[k] = g; } });
+  lista.innerHTML = cargas.length ? grupos.map(g => g.cargas.length < 2 ? fichaCarga(g.cargas[0]) :
+    `<div class="grupo-alm"><div class="grupo-alm-t">📍 <b>${escH(g.nombre)}</b> · ${g.cargas.length} clientes · se carga todo aquí ${enlaceMapa(g.nombre, 'Ir a cargar')}</div>${g.cargas.map(fichaCarga).join('')}</div>`).join('') : `<div class="empty">${vacio}</div>`;
   lista.querySelectorAll('[data-id]').forEach(el => { el.onclick = () => seleccionarCarga(el.dataset.id); });
 }
 function pintarRetornoVisible(){
@@ -2223,6 +2234,35 @@ function pintarCargas(){
   pintarRetornoVisible();
 }
 
+// Si tráfico añade un cliente en un almacén donde el conductor ya ha cargado hoy, se le pregunta si sigue allí.
+// Si ya se fue, salta una alerta en el cartón para que ese palet no se quede en tierra.
+let misDecasHoy = [], preguntandoAlm = false; const colaAlm = [];
+function revisarAlmacenYaRecogido(c){
+  const alm = String(c.almacen || c.origen || '').trim().toLowerCase(); if(!alm || !choferActual) return;
+  const yaCargo = misDecasHoy.some(d => String(d.origen || '').trim().toLowerCase() === alm);
+  if(!yaCargo) return;
+  try{ if(localStorage.getItem('almq_' + c.id)) return; localStorage.setItem('almq_' + c.id, '1'); }catch(e){}
+  colaAlm.push(c); siguientePreguntaAlm();
+}
+function siguientePreguntaAlm(){
+  if(preguntandoAlm || !colaAlm.length) return;
+  const c = colaAlm.shift(); preguntandoAlm = true;
+  let capa = $e('almCapa');
+  if(!capa){ capa = document.createElement('div'); capa.id = 'almCapa'; capa.className = 'voz-capa'; capa.setAttribute('role', 'dialog'); document.body.appendChild(capa); }
+  const cli = (c.clientes || {}).nombre || 'otro cliente', alm = c.almacen || c.origen || 'el almacén';
+  capa.innerHTML = `<div class="voz-caja"><div class="voz-paso">Carga nueva</div>
+    <div class="voz-pregunta">Tráfico te ha añadido <b>${escH(cli)}</b> en<span class="voz-mat" style="white-space:normal">${escH(alm)}</span><span class="voz-sub">${cargaBonita(c.detalle_planificado)}</span><span class="voz-sub" style="margin-top:10px;color:#fff">¿Sigues en ${escH(alm)} o todavía no has salido?</span></div>
+    <div class="voz-botones"><button class="btn btn-ghost" type="button" id="almSeFue">🚛 Ya me fui</button><button class="btn btn-primary" type="button" id="almSigue">✅ Sigo aquí, lo cargo</button></div></div>`;
+  capa.hidden = false; avisoSonoro('Tráfico te ha añadido una carga en ' + alm);
+  const cerrar = () => { capa.hidden = true; preguntandoAlm = false; siguientePreguntaAlm(); };
+  $e('almSigue').onclick = cerrar;
+  $e('almSeFue').onclick = () => {
+    sb.from('alertas').insert({tipo:'almacen_recogido', persona_id: String(choferActual.id), persona_nombre: choferActual.nombre,
+      mensaje: `🚨 ${choferActual.nombre} ya había salido de ${alm}: el pedido de ${cli} (${String(c.detalle_planificado || '').trim() || 'sin cantidad'}) puede quedarse en tierra. Pásalo a otro camión o avísale.`}).then(()=>{});
+    alert('Avisado a tráfico: decidirán qué hacer con esa carga.');
+    cerrar();
+  };
+}
 let firmasCargas = null; const cargasCambiadas = new Set(), cargasCerradasAqui = new Set();
 async function pollCargasPendientes(){
   if(!sb || !choferActual) return;
@@ -2242,6 +2282,7 @@ async function pollCargasPendientes(){
   cargasPendientes.forEach(c => { firmas[String(c.id)] = [c.detalle_planificado, c.almacen, c.destino, c.cliente_id, c.referencia, c.matricula].join('|'); });
   if(firmasCargas) Object.keys(firmas).forEach(id => { if(firmasCargas[id] != null && firmasCargas[id] !== firmas[id]){ cargasCambiadas.add(id); suena = true; txtAviso = txtAviso || '🔔 Tráfico ha cambiado una de tus cargas'; } });
   firmasCargas = firmas;
+  if(idsCargasVistas) cargasPendientes.filter(c => !idsCargasVistas.has(String(c.id))).forEach(c => revisarAlmacenYaRecogido(c));
   if(suena) avisoSonoro(txtAviso);
   idsCargasVistas = idsAhora;
   // La carga en la que estás trabajando: si tráfico la ha cambiado, se pone al día y te lo dice
@@ -2376,6 +2417,7 @@ async function pollHistorial(){
   }
   data.sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
   data.splice(30); // igual que el .limit(30) de antes
+  misDecasHoy = data.filter(r => !r.anulado && esDia(r.fecha, hoyLocal()) && choferActual && mismoTrans(r.conductor, choferActual.nombre));
   badge.textContent = String(data.length);
 
   // Bandeja de propuestas de matrícula enviadas desde Tráfico, pendientes de confirmar
@@ -2541,6 +2583,7 @@ const nombreEnDeca = n => { const l = lugares[String(n || '').toLowerCase()]; re
 // ====== CMR: si el destino está fuera de España, en lugar del DeCA se hace la carta de porte internacional (CMR) ======
 const PAISES = /\b(portugal|francia|france|italia|italy|alemania|germany|deutschland|holanda|pa[ií]ses bajos|netherlands|b[eé]lgica|belgium|reino unido|united kingdom|suiza|switzerland|austria|polonia|poland|marruecos|morocco|dinamarca|suecia|noruega|irlanda|chequia|hungr[ií]a|ruman[ií]a)\b/i;
 function paisDestino(destino){
+  if(ajustesApp.cmr_activo !== 'si') return '';   // el CMR se activa en Ajustes del cartón; apagado, todo va con DeCA como siempre
   const l = lugares[String(destino || '').toLowerCase()] || {};
   if(l.pais && !/^espa/i.test(String(l.pais).trim())) return String(l.pais).trim();
   const m = String(l.direccion || '').match(PAISES); return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1) : '';
