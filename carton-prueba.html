@@ -284,6 +284,8 @@ table.adm input.field{width:90px;padding:3px 6px}
 body[data-cerrado="1"] #addLinea, body[data-cerrado="1"] #addCamion, body[data-cerrado="1"] #tray .lines.empty::after{display:none!important}
 body[data-cerrado="1"] #board aside .panel, body[data-cerrado="1"] #tray, body[data-cerrado="1"] .truck.terminado{opacity:.72}
 body[data-cerrado="1"] .truck:not(.terminado){outline:2px solid var(--accent);outline-offset:2px}
+.inc-btn{border:0;background:transparent;cursor:pointer;font-size:15px;padding:0 0 0 4px;line-height:1}
+.inc-btn.mal{animation:none}
 .tray-zona-t{font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 2px;text-transform:uppercase;letter-spacing:.04em}
 .dirblock h3 .nec{font-weight:600;color:var(--muted)}.dirblock h3 .nec.falta{color:var(--bad)}
 .estados-bar span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
@@ -885,6 +887,7 @@ const fmt = n => (Math.round(n*100)/100).toLocaleString('es-ES', {maximumFractio
 // ====== LICENCIA DE LA EMPRESA (la cambia solo el proveedor, desde Supabase: tabla «licencia») ======
 // Sin tabla o sin fila = todo activo (así funciona igual antes de la actualización 30)
 let licencia = null;
+let incidenciasPor = {};   // incidencias de la descarga (fotos y firma) por nº de DeCA
 async function leerLicencia(){
   try{ const { data, error } = await sb.from('licencia').select('*').order('id').limit(1); licencia = (!error && data && data[0]) || null; }catch(e){ licencia = null; }   // (cada empresa solo ve la suya)
   aplicarLicencia();
@@ -1017,7 +1020,7 @@ async function cargarMaestros(){
   ]);
   destinosNombres = (de.data || []).map(x => x.nombre);
   zonasDestino = {}; (de.data || []).forEach(x => { const z = zonaPorUbicacion(x); if(z) zonasDestino[normTxt(x.nombre)] = z; });
-  (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url});
+  (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url, horario:x.horario || ''});
   personalTodos = p.data || []; clientesTodos = c.data || []; transportistasTodos = t.data || [];
   // en los desplegables solo salen los que no están de baja
   personal = personalTodos.filter(x => !x.baja); clientes = clientesTodos.filter(x => !x.baja); transportistas = transportistasTodos.filter(x => !x.baja);
@@ -1088,6 +1091,11 @@ async function cargarDia(){
     ]);
     (c.data || []).forEach(x => cargas[String(x.id)] = x);
     (d.data || []).forEach(x => decas[String(x.carga_id)] = x);
+    const dIds = (d.data || []).map(x => x.deca_id).filter(Boolean);
+    incidenciasPor = {};
+    // el orden de descarga puesto en el cartón pasa también a los DeCAs hechos después (para la app del chófer)
+    lineas.forEach(l => { const dd = decas[String(l.carga_id)]; if(dd && l.orden_descarga != null && 'orden_descarga' in dd && dd.orden_descarga !== l.orden_descarga){ dd.orden_descarga = l.orden_descarga; sb.from('decas').update({orden_descarga: l.orden_descarga}).eq('id', dd.id).then(()=>{}); } });
+    if(dIds.length){ const { data: inc } = await sb.from('incidencias').select('*').in('deca_id', dIds); (inc || []).forEach(x => (incidenciasPor[x.deca_id] = incidenciasPor[x.deca_id] || []).push(x)); }   // (sin la actualización 49 no hay nada)
   }
   const chIds = camiones.map(c => c.chofer_id).filter(Boolean);
   const [au, op] = await Promise.all([
@@ -1104,6 +1112,144 @@ async function cargarDia(){
   setSync(true);
   return true;
 }
+// ====== ORDEN DE DESCARGA SUGERIDO Y HOJA DE CARGA EN LA NAVE ======
+// Por la distancia (GPS de cada destino) y la hora a la que descargan (horario de su ficha), con las pausas obligatorias.
+// Se puede aplicar y luego cambiar a mano. La hoja de carga es al revés: lo último que se descarga entra primero (al fondo).
+const ptLugar = n => { const l = lugares[String(n || '').toLowerCase()]; if(!l) return null; const la = parseFloat(String(l.lat ?? '').replace(',', '.')), lo = parseFloat(String(l.lng ?? '').replace(',', '.')); return !isNaN(la) && !isNaN(lo) ? {lat:la, lng:lo} : coordsDe(l.url); };
+const distKm = (a, b) => { const R = 6371, r = x => x * Math.PI / 180, dA = r(b.lat - a.lat), dO = r(b.lng - a.lng); const h = Math.sin(dA/2)**2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dO/2)**2; return 2 * R * Math.asin(Math.sqrt(h)); };
+function ventanasHorario(txt){   // «6:00-14:00», «de 5 a 13 h», «22:00-6:00»… → [[min apertura, min cierre], …]
+  const out = [], re = /(\d{1,2})(?:[:.h](\d{2}))?\s*(?:-|–|a|hasta)\s*(\d{1,2})(?:[:.h](\d{2}))?/gi; let m;
+  while((m = re.exec(String(txt || '')))){ const o = +m[1] * 60 + (+m[2] || 0); let c = +m[3] * 60 + (+m[4] || 0); if(o > 1440 || c > 1440) continue; if(c <= o) c += 1440; out.push([o, c]); }
+  return out;
+}
+// Conduce unas horas respetando la normativa: pausa de 45' cada 4 h 30 de volante y descanso diario cada 9 h.
+// Las esperas y descargas largas cuentan como pausa (45' o más) o como descanso diario (si llegan al descanso).
+function conducir(horas, st){
+  const descanso = +ajustes.descanso_diario_h || 11; let resto = horas, pasado = 0;
+  while(resto > 1e-9){
+    const paso = Math.min(resto, 4.5 - st.desdePausa, 9 - st.delDia);
+    pasado += paso; resto -= paso; st.desdePausa += paso; st.delDia += paso;
+    if(resto > 1e-9){ if(st.delDia >= 9 - 1e-9){ pasado += descanso; st.delDia = 0; st.desdePausa = 0; } else if(st.desdePausa >= 4.5 - 1e-9){ pasado += 0.75; st.desdePausa = 0; } }
+  }
+  return pasado;
+}
+function simularRuta(orden, inicio, salida){
+  const vel = +ajustes.velocidad_media || 70, porDesc = (+ajustes.minutos_por_descarga || 40) * 60000, descanso = +ajustes.descanso_diario_h || 11;
+  let punto = inicio, km = 0, reloj = salida, espera = 0, tarde = 0; const pasos = [], st = {desdePausa: 0, delDia: 0};
+  for(const p of orden){
+    if(p.pt && punto){ const tramo = distKm(punto, p.pt) * 1.25; km += tramo; punto = p.pt; reloj += conducir(tramo / vel, st) * 3600000; }
+    const llegada = reloj; let empieza = llegada;
+    const vs = ventanasHorario(p.horario);
+    if(vs.length){
+      const d0 = new Date(llegada); d0.setHours(0, 0, 0, 0); let hueco = null;
+      for(let dia = -1; dia <= 2 && hueco == null; dia++) for(const [o, c] of vs){ const ab = d0.getTime() + (dia * 1440 + o) * 60000, ci = d0.getTime() + (dia * 1440 + c) * 60000; if(llegada <= ci){ hueco = Math.max(llegada, ab); break; } }
+      if(hueco != null){ empieza = hueco; espera += empieza - llegada; if(empieza - llegada > 6 * 3600000) tarde++; }
+    }
+    pasos.push({...p, llegada, empieza, espera: empieza - llegada});
+    const parado = (empieza - llegada + porDesc) / 3600000;   // espera + descarga: sirve de pausa (o de descanso diario si es largo)
+    if(parado >= 0.75) st.desdePausa = 0;
+    if(parado >= descanso) st.delDia = 0;
+    reloj = empieza + porDesc;
+  }
+  return {pasos, fin: reloj, km, espera, tarde};
+}
+function mejorOrden(paradas, inicio, salida){
+  const conPt = paradas.filter(p => p.pt), sinPt = paradas.filter(p => !p.pt);
+  let mejor = null;
+  const probar = ord => { const r = simularRuta(ord.concat(sinPt), inicio, salida); const coste = r.fin + r.km * 1000; if(!mejor || coste < mejor.coste) mejor = {...r, coste}; };
+  if(conPt.length <= 8){   // se prueban todas las combinaciones
+    const perm = (a, k) => { if(k === a.length) return probar(a.slice()); for(let i = k; i < a.length; i++){ [a[k], a[i]] = [a[i], a[k]]; perm(a, k + 1); [a[k], a[i]] = [a[i], a[k]]; } };
+    perm(conPt.slice(), 0);
+  } else {   // muchos destinos: el más cercano cada vez y luego se mejora cambiando parejas
+    let pt = inicio, rest = conPt.slice(), ord = [];
+    while(rest.length){ rest.sort((a, b) => distKm(pt, a.pt) - distKm(pt, b.pt)); const x = rest.shift(); ord.push(x); pt = x.pt; }
+    probar(ord);
+    for(let i = 0; i < ord.length; i++) for(let j = i + 1; j < ord.length; j++){ const o2 = ord.slice(); [o2[i], o2[j]] = [o2[j], o2[i]]; probar(o2); }
+  }
+  return mejor;
+}
+let ordenDescActual = null;
+function abrirOrdenDescarga(t){
+  const ida = ordenar(lineas.filter(l => l.camion_id === t.id && !l.retorno));
+  if(!ida.length) return;
+  let dlg = $('#ordenDlg');
+  if(!dlg){ dlg = document.createElement('div'); dlg.id = 'ordenDlg'; dlg.className = 'modal'; document.body.appendChild(dlg); dlg.addEventListener('mousedown', e => { if(e.target === dlg) dlg.hidden = true; }); }
+  const horaDef = ajustes.hora_salida || '20:00';
+  dlg.innerHTML = `<div class="modal-card" style="max-width:760px"><h2>🧭 ${esc(t.nombre)}: orden de descarga y carga</h2>
+    <div class="send-row" style="flex-wrap:wrap;gap:8px">
+      <label class="hint" style="margin:0">Sale de la nave a las <input class="field" type="time" id="odHora" value="${esc(horaDef)}" style="width:110px"></label>
+      <label class="hint" style="margin:0;flex:1;min-width:240px">Ubicación de la nave <input class="field" id="odNave" value="${esc(ajustes.ubicacion_nave || '')}" placeholder="Enlace de Google Maps o «36.84, -2.46»"></label>
+      <button type="button" class="btn small" id="odCalcular">Calcular</button>
+    </div>
+    <div id="odRes"><p class="hint">Calculando…</p></div>
+    <div class="send-row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" id="odImprimir" disabled>🖨️ Hoja de carga</button><button type="button" class="btn small primary" id="odAplicar" disabled>Aplicar este orden</button><button type="button" class="btn small" id="odCerrar">Cerrar</button></div></div>`;
+  dlg.hidden = false;
+  const calcular = () => {
+    const naveTxt = $('#odNave').value.trim(), nave = coordsDe(naveTxt);
+    const inicio = nave || ida.map(l => ptLugar(l.almacen)).filter(Boolean).pop() || null;
+    const [hh, mm] = ($('#odHora').value || '20:00').split(':').map(Number);
+    const sal = new Date(fecha + 'T00:00:00'); sal.setHours(hh || 0, mm || 0, 0, 0); const salida = Math.max(sal.getTime(), Date.now());
+    const porDest = {};
+    ida.forEach(l => { const k = normTxt(l.destino) || '(sin destino)'; (porDest[k] = porDest[k] || {destino: l.destino || 'Sin destino', lineas: [], pt: ptLugar(l.destino), horario: (lugares[String(l.destino || '').toLowerCase()] || {}).horario || ''}).lineas.push(l); });
+    const paradas = Object.values(porDest);
+    const r = inicio ? mejorOrden(paradas, inicio, salida) : {pasos: paradas.map(p => ({...p})), sinInicio: true};
+    ordenDescActual = {t, r, ida};
+    const hm = ms => new Date(ms).toLocaleString('es-ES', {weekday:'short', hour:'2-digit', minute:'2-digit'});
+    const avisos = [];
+    if(!nave) avisos.push(inicio ? 'Sin la ubicación de la nave se calcula desde el último almacén. Pon la ubicación arriba (se guarda para la próxima vez).' : 'Pon la ubicación de la nave para poder calcular las horas.');
+    if(paradas.some(p => !p.pt)) avisos.push('Algún destino no tiene ubicación en su ficha: va al final. Ponle la ubicación en Destinos.');
+    if(paradas.some(p => !ventanasHorario(p.horario).length)) avisos.push('Los destinos sin horario en su ficha se dan por abiertos siempre.');
+    const filasD = r.pasos.map((p, i) => `<tr><td><b>${i + 1}</b></td><td><b>${esc(p.destino)}</b><div class="hint" style="margin:0">${p.lineas.map(l => esc(l.cliente_nombre || l.almacen) + ' · ' + esc(qtyText(l))).join('<br>')}</div></td>
+      <td>${esc(p.horario || '—')}</td><td>${p.llegada ? hm(p.llegada) : '—'}</td><td>${p.espera > 60000 ? `<span style="color:var(--warn,#c77d00);font-weight:700">espera ${Math.round(p.espera / 60000)} min</span>` : (p.llegada ? '✓' : '')}</td></tr>`).join('');
+    const carga = r.pasos.slice().reverse();
+    let metros = 0;
+    const filasC = carga.map((p, i) => { const ldm = ldmDe(p.lineas), desde = metros; metros += ldm;
+      return `<tr><td><b>${i + 1}º</b></td><td><b>${esc(p.destino)}</b> <span class="hint" style="margin:0">(se descarga la ${r.pasos.length - i}ª)</span><div class="hint" style="margin:0">${p.lineas.map(l => esc(l.cliente_nombre || l.almacen) + ' · ' + esc(qtyText(l)) + (l.modo === 'hub' ? ' · en la nave' : ' · en ' + esc(l.almacen))).join('<br>')}</div></td><td>${fmt(desde)}–${fmt(metros)} m</td></tr>`; }).join('');
+    $('#odRes').innerHTML = `${avisos.length ? `<div class="hint" style="color:var(--warn,#c77d00)">${avisos.map(esc).join('<br>')}</div>` : ''}
+      <h3 style="margin:10px 0 4px;font-size:15px">Orden de descarga sugerido${r.km ? ` · ${Math.round(r.km)} km aprox.` : ''}</h3>
+      <table class="adm"><thead><tr><th>#</th><th>Destino</th><th>Horario</th><th>Llegada aprox.</th><th></th></tr></thead><tbody>${filasD}</tbody></table>
+      <h3 style="margin:12px 0 4px;font-size:15px">Sugerencia de carga (lo primero, al fondo del remolque)</h3>
+      <table class="adm"><thead><tr><th></th><th>Qué cargar</th><th>Metros desde el fondo</th></tr></thead><tbody>${filasC}</tbody></table>
+      <p class="hint">Las horas son aproximadas: ${+ajustes.velocidad_media || 70} km/h de media, pausas de 45' cada 4 h 30 de volante (las esperas largas cuentan como pausa), descanso diario de ${+ajustes.descanso_diario_h || 11} h al llegar a 9 h de volante y ${+ajustes.minutos_por_descarga || 40} min por descarga. Se cambia en Ajustes. Con dos conductores, las horas reales serán menores.</p>`;
+    $('#odAplicar').disabled = false; $('#odImprimir').disabled = false;
+  };
+  $('#odCalcular').onclick = async () => { const v = $('#odNave').value.trim(); if(v && v !== (ajustes.ubicacion_nave || '') && coordsDe(v)) await guardarAjuste('ubicacion_nave', v); if($('#odHora').value && $('#odHora').value !== (ajustes.hora_salida || '20:00')) await guardarAjuste('hora_salida', $('#odHora').value); calcular(); };
+  $('#odCerrar').onclick = () => { dlg.hidden = true; };
+  $('#odAplicar').onclick = async () => {
+    const {r} = ordenDescActual, tareas = [];
+    r.pasos.forEach((p, i) => p.lineas.forEach(l => { l.orden_descarga = i; tareas.push(sb.from('carton_lineas').update({orden_descarga: i}).eq('id', l.id)); const d = decas[l.carga_id]; if(d){ d.orden_descarga = i; tareas.push(sb.from('decas').update({orden_descarga: i}).eq('id', d.id)); } }));
+    const res = await Promise.all(tareas);
+    if(res.some(x => x.error && /orden_descarga/.test(x.error.message || ''))){ toast('Falta ejecutar la actualización 50 en Supabase.', true); return; }
+    toast('Orden de descarga aplicado: el chófer verá sus descargas en este orden'); dlg.hidden = true; render();
+  };
+  $('#odImprimir').onclick = () => {
+    const {r} = ordenDescActual, carga = r.pasos.slice().reverse();
+    $('#printArea').innerHTML = `<div class="pr-head"><h1>Hoja de carga · ${esc(t.nombre)}</h1><span class="pr-meta">${esc(t.matricula || '')}</span><span class="pr-date">${fechaBonita(fecha)}</span></div>
+      <table class="pr-lines" style="font-size:11pt"><tr><td style="font-weight:800;border-bottom:1pt solid #000">Orden de carga</td><td style="font-weight:800;border-bottom:1pt solid #000">Destino y mercancía</td><td style="font-weight:800;border-bottom:1pt solid #000">Se descarga</td></tr>
+      ${carga.map((p, i) => `<tr><td><b>${i + 1}º</b>${i === 0 ? ' (al fondo)' : i === carga.length - 1 ? ' (en la puerta)' : ''}</td><td><b>${esc(p.destino)}</b><br>${p.lineas.map(l => esc(l.cliente_nombre || l.almacen) + ' · ' + esc(qtyText(l))).join('<br>')}</td><td>${r.pasos.length - i}ª</td></tr>`).join('')}</table>
+      <p class="pr-legend">Lo primero que se carga va al fondo del remolque; lo último, junto a la puerta (es lo primero que se descarga).</p>`;
+    window.print();
+  };
+  calcular();
+}
+// Ver la incidencia de una descarga: tipo, palets, nota, fotos y firma del receptor
+async function verIncidencia(decaId){
+  let lista = incidenciasPor[decaId];
+  if(!lista){ const { data, error } = await sb.from('incidencias').select('*').eq('deca_id', decaId).order('created_at'); if(error){ toast('No se pudo leer: ' + error.message, true); return; } lista = data || []; }
+  const TIPO = {rechazo_total:'❌ Rechazo total', rechazo_parcial:'↩️ Rechazo parcial', merma:'📉 Merma / falta', golpe:'💥 Golpe / roto', temperatura:'🌡️ Temperatura', otro:'📝 Otro'};
+  let dlg = $('#incDlg');
+  if(!dlg){ dlg = document.createElement('div'); dlg.id = 'incDlg'; dlg.className = 'modal'; document.body.appendChild(dlg); dlg.addEventListener('mousedown', e => { if(e.target === dlg) dlg.hidden = true; }); }
+  dlg.innerHTML = `<div class="modal-card" style="max-width:640px"><h2>Descarga · ${esc(decaId)}</h2>
+    ${lista.length ? lista.map(x => `<div style="border-top:1px solid var(--line);padding:10px 0">
+      <b>${x.todo_bien ? '✅ Todo bien' : (TIPO[x.tipo] || '⚠️ Incidencia')}</b>${x.palets ? ` · ${x.palets} palets` : ''} <span class="hint" style="margin:0">· ${esc(x.persona_nombre || '')} · ${new Date(x.created_at).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${x.destino ? ' · ' + esc(x.destino) : ''}</span>
+      ${x.nota ? `<p style="margin:6px 0">«${esc(x.nota)}»</p>` : ''}
+      ${(x.fotos || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${x.fotos.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>`).join('')}</div>` : ''}
+      ${x.firma_url ? `<div class="hint" style="margin:6px 0 2px">Firma de ${esc(x.receptor || 'quien recibe')}:</div><img src="${esc(x.firma_url)}" alt="Firma" style="max-width:100%;height:110px;background:#fff;border-radius:8px;border:1px solid var(--line)">` : ''}
+    </div>`).join('') : '<p class="hint">No hay incidencias de esta descarga.</p>'}
+    <div style="text-align:right;margin-top:10px"><button type="button" class="btn" id="incCerrar">Cerrar</button></div></div>`;
+  dlg.hidden = false; $('#incCerrar').onclick = () => { dlg.hidden = true; };
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-verinc]'); if(b){ e.preventDefault(); e.stopPropagation(); verIncidencia(b.dataset.verinc); } }, true);
 function setSync(ok, msg){
   const s = $('#sync');
   if(ok){ lastOk = new Date(); s.textContent = 'Sincronizado · ' + lastOk.toLocaleTimeString('es-ES'); s.classList.remove('err'); }
@@ -1256,6 +1402,7 @@ async function cargarAlertas(){
   bar.innerHTML = data.map(a => `<div class="alerta ${a.tipo === 'corregido' ? 'ok' : ''}"><span>${a.tipo === 'corregido' ? '✅' : '🚨'}</span><span class="grow">${esc(a.mensaje)} <small style="font-weight:500">· ${new Date(a.created_at).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</small></span>
     ${a.lat != null ? `<a class="btn small" href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">📍 Dónde estaba</a>` : ''}
     ${tel ? `<button type="button" class="btn small wa" data-alertawa="${a.id}">WhatsApp al responsable</button>` : ''}
+    ${a.tipo === 'incidencia' && a.deca_id ? `<button type="button" class="btn small" data-verinc="${esc(a.deca_id)}">📷 Ver fotos</button>` : ''}
     ${a.tipo === 'descarga_lejos' ? `<button type="button" class="btn small" data-alertabien="${a.id}" data-deca="${esc(a.deca_id || '')}" title="La descarga está bien hecha (por ejemplo, la ubicación del destino estaba mal apuntada)">Revisado: está bien</button>` : ''}
     <button type="button" class="btn small" data-alertavista="${a.id}">${a.tipo === 'corregido' ? 'Enterado' : 'Visto'}</button></div>`).join('');
 }
@@ -1387,8 +1534,8 @@ function lineHTML(l, idx, total){
   const d = decas[l.carga_id];
   return `<li class="line" draggable="true" data-id="${l.id}">
     <button type="button" class="st ${est}" data-act="problema" title="${ST_NAME[est]}${d ? ' · ' + esc(d.deca_id) : ''} (toca para marcar/quitar problema)" aria-label="Estado: ${ST_NAME[est]}">${ST_TXT[est]}</button>
-    <div class="what">${enCamion ? `<div class="dst-big">→ ${esc(l.destino || 'sin destino')}</div>` : ''}${enCamion ? `<span class="rn" title="Orden de ruta">${idx+1}</span>` : ''}${l.fecha !== fecha ? `<span class="old">${fechaBonita(l.fecha)}</span>` : ''}<b>${esc(l.almacen)}</b><a class="maplink" href="${esc(urlMapa(l.almacen))}" target="_blank" rel="noopener" title="Ver en el mapa" draggable="false">📍</a> – <span class="cli">${esc(l.cliente_nombre)}</span>${l.referencia ? `<span class="ref">${esc(l.referencia)}</span>` : ''}${l.mercancia && l.mercancia !== 'fruta y verdura' ? `<span class="tag">${esc(l.mercancia)}</span>` : ''}${l.autorizacion_especial ? `<span class="tag" title="Autorización especial">Aut. ${esc(l.autorizacion_especial)}</span>` : ''}${enCamion ? '' : `<br><span class="dst">→ ${esc(l.destino || 'sin destino')}</span>`}${d && d.pdf_url ? ` · <a href="${esc(d.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener" class="dst">ver DeCA</a>` : ''}</div>
-    <span class="qty">${qtyHTML(l)}${l.remonta ? '<span class="x2" title="Va a dos alturas">×2</span>' : ''}</span>
+    <div class="what">${enCamion ? `<div class="dst-big">→ ${esc(l.destino || 'sin destino')}</div>` : ''}${enCamion ? `<span class="rn" title="Orden de ruta">${idx+1}</span>` : ''}${l.fecha !== fecha ? `<span class="old">${fechaBonita(l.fecha)}</span>` : ''}${l.orden_descarga != null && enCamion && !l.retorno ? `<span class="rn" style="background:var(--ok,#2e9d6b)" title="Orden de descarga">⬇${l.orden_descarga + 1}</span>` : ''}<b>${esc(l.almacen)}</b><a class="maplink" href="${esc(urlMapa(l.almacen))}" target="_blank" rel="noopener" title="Ver en el mapa" draggable="false">📍</a> – <span class="cli">${esc(l.cliente_nombre)}</span>${l.referencia ? `<span class="ref">${esc(l.referencia)}</span>` : ''}${l.mercancia && l.mercancia !== 'fruta y verdura' ? `<span class="tag">${esc(l.mercancia)}</span>` : ''}${l.autorizacion_especial ? `<span class="tag" title="Autorización especial">Aut. ${esc(l.autorizacion_especial)}</span>` : ''}${enCamion ? '' : `<br><span class="dst">→ ${esc(l.destino || 'sin destino')}</span>`}${d && d.pdf_url ? ` · <a href="${esc(d.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener" class="dst">ver DeCA</a>` : ''}</div>
+    <span class="qty">${qtyHTML(l)}${l.remonta ? '<span class="x2" title="Va a dos alturas">×2</span>' : ''}${d && incidenciasPor[d.deca_id] ? (incidenciasPor[d.deca_id].some(x => !x.todo_bien) ? `<button type="button" class="inc-btn mal" data-verinc="${esc(d.deca_id)}" title="Incidencia en la descarga: ver fotos y firma">⚠️</button>` : `<button type="button" class="inc-btn" data-verinc="${esc(d.deca_id)}" title="Entregado con firma: ver">✍️</button>`) : ''}</span>
     <div class="ops">${enCamion ? `<span class="ord"><button type="button" data-act="subir" ${idx === 0 ? 'disabled' : ''} aria-label="Subir en la ruta">▲</button><button type="button" data-act="bajar" ${idx === total-1 ? 'disabled' : ''} aria-label="Bajar en la ruta">▼</button></span>` : ''}${modoSel}${cgSel}<select data-act="mover" aria-label="Mover a camión">${camOpts}</select>${envio}
       ${enCamion ? `<button type="button" class="rem-btn ${l.remonta ? 'on' : ''}" data-act="remonta" title="${l.remonta ? 'Va remontado (toca para quitar)' : '¿Va remontado encima de otra carga? Toca para marcarlo: al chófer le saldrá «¡OJO! este palet va remontado»'}">⇅</button>` : ''}<button type="button" class="edit-btn" data-act="editar" title="Editar el pedido" aria-label="Editar el pedido">✏️</button><button type="button" class="xbtn" data-act="borrar" title="Anular pedido" aria-label="Anular pedido">×</button></div>
   </li>`;
@@ -1447,7 +1594,7 @@ function truckHTML(t){
       return kg > maxKg ? `<div class="aviso-punta" style="background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">⚖️ Unos ${kg.toLocaleString('es-ES')} kg: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg)</div>`
                         : `<div class="hint" style="margin:2px 0" title="Kilos apuntados, o calculados con el peso medio de cada palet">⚖️ ~${kg.toLocaleString('es-ES')} kg de ${maxKg.toLocaleString('es-ES')}</div>`; })()}
     ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en la nave)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
-    <div class="section-label"><span>Ida · ${ida.length} recogidas</span></div>
+    <div class="section-label"><span>Ida · ${ida.length} recogidas</span>${ida.length ? `<button type="button" class="linkbtn" data-camact="ordendesc" data-cam="${t.id}" title="Orden de descarga sugerido (por distancia y horario de cada destino) y hoja de carga para la nave">🧭 Orden de descarga y carga</button>` : ''}</div>
     <ul class="lines ${ida.length ? '' : 'empty'}" data-zone="${t.id}" data-ret="0">${ida.map((l,i) => lineHTML(l, i, ida.length)).join('')}</ul>
     <div class="retorno">
       <div class="section-label"><span>Retorno ${vuelta.length ? `<span class="ret-pend ret-ok">Decidido · ${fmt(paletsDe(vuelta))} palets → ${esc(t.fin_retorno || 'Nave')}</span>` : '<span class="ret-pend">Pendiente · lo decide dirección</span>'}</span>
@@ -2361,22 +2508,7 @@ function descargarBlob(blob, nombre){
 }
 async function volcarDecas(tabla, id){
   const b = bajasListas.find(x => x.tabla === tabla && String(x.fila.id) === String(id)); if(!b) return;
-  if(!window.JSZip){ toast('No se pudo cargar la herramienta de ZIP. Revisa la conexión y pulsa ⟳ Actualizar.', true); return; }
-  toast('Preparando la descarga de sus DeCAs…');
-  const lista = await decasDe(tabla, b.fila);
-  const zip = new JSZip();
-  const cab = ['Nº DeCA','Fecha','Conductor','Matrícula','Origen','Destino','Cargador','Transportista','Mercancía','Detalle','PDF'];
-  const csv = [cab].concat(lista.map(r => [r.deca_id, r.fecha, r.conductor, r.matricula, r.origen, r.destino, r.cargador_nombre, r.transportista_nombre, r.mercancia, r.detalle, r.pdf_url]))
-    .map(f => f.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';')).join('\r\n');
-  zip.file('resumen.csv', '\ufeff' + csv);
-  let ok = 0;
-  for(const r of lista){
-    if(!r.pdf_url) continue;
-    try{ const resp = await fetch(r.pdf_url); if(resp.ok){ zip.file(`${r.deca_id}.pdf`, await resp.blob()); ok++; } }catch(_){}
-  }
-  const blob = await zip.generateAsync({type:'blob'});
-  descargarBlob(blob, `DeCAs de ${b.fila.nombre.replace(/[\\/:*?"<>|]/g,'')}.zip`);
-  toast(`Descargados ${ok} DeCAs de ${b.fila.nombre} (y un resumen en Excel/CSV).`);
+  await zipDeDecas(await decasDe(tabla, b.fila), `DeCAs de ${b.fila.nombre}`, b.fila.nombre);
 }
 async function borrarDefinitivo(tabla, id){
   const b = bajasListas.find(x => x.tabla === tabla && String(x.fila.id) === String(id)); if(!b) return;
@@ -2432,6 +2564,20 @@ function renderAjustes(box){
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="esperaActiva" ${ajustes.espera_activa === 'si' ? 'checked' : ''}> Activada</label>
         <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Tiempo máximo de espera <input class="field" id="esperaMax" type="number" min="10" step="5" value="${+ajustes.espera_max || 120}" style="width:80px"> minutos</span>
         <button type="button" class="btn small" id="guardarEspera">Guardar</button>
+      </div>
+      <div class="baja-card">
+        <b>Firma de quien recibe al descargar</b>
+        <span class="hint">Al marcar «Descargado», el chófer dice si ha ido todo bien o hay un problema (con fotos). Aquí decides si además firma en la pantalla la persona que recibe la mercancía.</span>
+        <select class="field" id="firmaEntrega" style="max-width:280px">${[['no','No pedir firma'],['opcional','Firma opcional'],['obligatoria','Firma obligatoria']].map(([v, n]) => `<option value="${v}" ${(ajustes.firma_entrega || 'opcional') === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        <button type="button" class="btn small" id="guardarFirma">Guardar</button>
+      </div>
+      <div class="baja-card">
+        <b>¿Has descargado? (conductores que no marcan la descarga)</b>
+        <span class="hint">Si el chófer estuvo en el destino y se va sin marcar la descarga, la app le pregunta. Si no tiene el GPS activo, se calcula a qué hora debería llegar desde que sale (velocidad media, pausas de 45' cada 4 h 30 de conducción, descanso diario si pasa de 9 h al volante y el tiempo de cada descarga) y, pasado el margen, se le pregunta. Si sigue sin contestar, salta una alerta aquí.</span>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="avDescActiva" ${ajustes.aviso_descarga !== 'no' ? 'checked' : ''}> Activado</label>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Margen <input class="field" id="avDescMargen" type="number" min="5" step="5" value="${+ajustes.aviso_descarga_margen || 30}" style="width:70px"> min · Velocidad media <input class="field" id="avDescVel" type="number" min="30" max="90" step="5" value="${+ajustes.velocidad_media || 70}" style="width:70px"> km/h</span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Cada descarga <input class="field" id="avDescMin" type="number" min="5" step="5" value="${+ajustes.minutos_por_descarga || 40}" style="width:70px"> min · Descanso diario <input class="field" id="avDescRest" type="number" min="9" max="11" step="1" value="${+ajustes.descanso_diario_h || 11}" style="width:60px"> h</span>
+        <button type="button" class="btn small" id="guardarAvDesc">Guardar</button>
       </div>
       <div class="baja-card">
         <b>Carga máxima del camión</b>
@@ -2818,7 +2964,12 @@ async function renderAdmin(box){
   const idsCam = new Set(cams.map(c => c.id));
   const lins = (li.data || []).filter(l => l.camion_id && idsCam.has(l.camion_id));   // solo lo que de verdad ha ido en un camión
   const {filas, viajes} = calcularAdm(lins, cams, tc.data || [], ta.data || []);
-  adm.datos = {desde, hasta, filas, viajes};
+  // DeCAs de los pedidos del periodo (para la prefactura, la liquidación y los ZIP de cada cliente/autónomo)
+  const idsCarga = [...new Set(lins.map(l => l.carga_id).filter(Boolean).map(String))], decasAdm = {};
+  const trozos = []; for(let i = 0; i < idsCarga.length; i += 150) trozos.push(idsCarga.slice(i, i + 150));
+  (await Promise.all(trozos.map(t => sb.from('decas').select('*').in('carga_id', t)))).forEach(r => (r.data || []).forEach(x => { if(!x.anulado) decasAdm[String(x.carga_id)] = x; }));
+  if(vista !== 'admin') return;
+  adm.datos = {desde, hasta, filas, viajes, decas: decasAdm};
   const cobros = filas.reduce((s, f) => s + (f.importe || 0), 0);
   const pagos = viajes.reduce((s, v) => s + (v.pago || 0), 0);
   const faltan = filas.filter(f => f.importe == null);
@@ -2866,15 +3017,15 @@ async function renderAdmin(box){
     <section class="adm-sec"><h3>Por cliente (a cobrar)</h3>
       <table class="adm"><thead><tr><th>Cliente</th><th class="n">Pedidos</th><th class="n">Palets</th><th class="n">Importe</th><th></th></tr></thead><tbody>
       ${clis.map(o => `<tr><td><b>${esc(o.nombre)}</b>${o.falta ? ` <span class="adm-falta">· ${o.falta} sin precio</span>` : ''}</td><td class="n">${o.filas.length}</td><td class="n">${numES(paletsDe(o.filas.map(f => f.l)))}</td><td class="n"><b>${eur(o.importe)}</b></td>
-        <td class="n"><button type="button" class="linkbtn" data-admabrir="c:${esc(o.k)}">${abierto('c:' + o.k) ? 'Ocultar' : 'Detalle'}</button> <button type="button" class="btn small" data-admprefac="${esc(o.k)}" title="Imprime el resumen valorado para preparar la factura">🖨️ Prefactura</button></td></tr>
-        ${abierto('c:' + o.k) ? o.filas.map(f => `<tr class="det"><td>${fechaBonita(f.l.fecha)} · ${esc(f.l.almacen)} → ${esc(f.l.destino || '—')}${f.l.referencia ? ' · ' + esc(f.l.referencia) : ''}</td><td class="n" colspan="2">${cantTxt(f.l)}</td><td class="n">${f.importe == null ? `<span class="adm-falta">${esc(f.falta)}</span>` : eur(f.importe)}</td><td class="hint" style="margin:0">${esc(f.como)}</td></tr>`).join('') : ''}`).join('') || '<tr><td colspan="5" class="hint">No hay pedidos cargados en este periodo.</td></tr>'}
+        <td class="n"><button type="button" class="linkbtn" data-admabrir="c:${esc(o.k)}">${abierto('c:' + o.k) ? 'Ocultar' : 'Detalle'}</button> <button type="button" class="btn small" data-admprefac="${esc(o.k)}" title="Imprime el resumen valorado para preparar la factura">🖨️ Prefactura</button> <button type="button" class="btn small" data-admzipc="${esc(o.k)}" title="Descarga sus DeCAs del periodo (PDF + resumen) para adjuntarlos a la factura">⬇ DeCAs (${o.filas.filter(f => decaAdm(f.l)).length})</button></td></tr>
+        ${abierto('c:' + o.k) ? o.filas.map(f => `<tr class="det"><td>${fechaBonita(f.l.fecha)} · ${esc(f.l.almacen)} → ${esc(f.l.destino || '—')}${f.l.referencia ? ' · ' + esc(f.l.referencia) : ''}${decaAdm(f.l) ? ' · <b>' + esc(decaAdm(f.l).deca_id) + '</b>' : ' · <span class="hint" style="margin:0">sin DeCA</span>'}</td><td class="n" colspan="2">${cantTxt(f.l)}</td><td class="n">${f.importe == null ? `<span class="adm-falta">${esc(f.falta)}</span>` : eur(f.importe)}</td><td class="hint" style="margin:0">${esc(f.como)}</td></tr>`).join('') : ''}`).join('') || '<tr><td colspan="5" class="hint">No hay pedidos cargados en este periodo.</td></tr>'}
       ${clis.length ? `<tr class="tot"><td>Total</td><td class="n">${filas.length}</td><td class="n">${numES(pal)}</td><td class="n">${eur(cobros)}</td><td></td></tr>` : ''}
       </tbody></table></section>
 
     <section class="adm-sec"><h3>Por autónomo (a pagar)</h3>
       <table class="adm"><thead><tr><th>Autónomo</th><th class="n">Viajes</th><th class="n">Cobrado de sus viajes</th><th class="n">A pagar</th><th></th></tr></thead><tbody>
       ${auts.map(o => `<tr><td><b>${esc(o.nombre)}</b>${o.falta ? ` <span class="adm-falta">· ${o.falta} sin precio</span>` : ''}</td><td class="n">${o.viajes.length}</td><td class="n">${eur(o.cobro)}</td><td class="n"><b>${eur(o.pago)}</b></td>
-        <td class="n"><button type="button" class="linkbtn" data-admabrir="a:${esc(o.id)}">${abierto('a:' + o.id) ? 'Ocultar' : 'Detalle'}</button> <button type="button" class="btn small" data-admliq="${esc(o.id)}" title="Imprime la liquidación del autónomo">🖨️ Liquidación</button></td></tr>
+        <td class="n"><button type="button" class="linkbtn" data-admabrir="a:${esc(o.id)}">${abierto('a:' + o.id) ? 'Ocultar' : 'Detalle'}</button> <button type="button" class="btn small" data-admliq="${esc(o.id)}" title="Imprime la liquidación del autónomo">🖨️ Liquidación</button> <button type="button" class="btn small" data-admzipa="${esc(o.id)}" title="Descarga los DeCAs de sus viajes del periodo (PDF + resumen)">⬇ DeCAs (${o.viajes.reduce((n, v) => n + v.fl.filter(f => decaAdm(f.l)).length, 0)})</button></td></tr>
         ${abierto('a:' + o.id) ? o.viajes.map(v => `<tr class="det"><td>${fechaBonita(v.c.fecha)} · ${esc(v.destino || '—')} · ${numES(v.pal)} palets</td><td class="n">${esc(v.como)}${v.falta ? `<span class="adm-falta">${esc(v.falta)}</span>` : ''}</td><td class="n">${eur(v.cobro)}</td><td class="n">${eur(v.pago)}</td>
           <td class="n"><input class="field" type="number" min="0" step="0.01" data-admpago="${v.c.id}" value="${v.c.pago_manual ?? ''}" placeholder="€ a mano" title="Importe a mano para este viaje (vacío = según tarifa)"> <button type="button" class="btn small" data-admguardarpago="${v.c.id}">Guardar</button></td></tr>`).join('') : ''}`).join('') || '<tr><td colspan="5" class="hint">No hay viajes de autónomos en este periodo.</td></tr>'}
       ${auts.length ? `<tr class="tot"><td>Total</td><td class="n">${auts.reduce((s, o) => s + o.viajes.length, 0)}</td><td class="n">${eur(auts.reduce((s, o) => s + o.cobro, 0))}</td><td class="n">${eur(pagos)}</td><td></td></tr>` : ''}
@@ -2885,6 +3036,26 @@ async function renderAdmin(box){
       ${viajes.map(v => `<tr><td>${fechaBonita(v.c.fecha)}</td><td>${esc(v.c.nombre)}${v.c.tipo === 'autonomo' ? ' <span class="hint" style="margin:0">(autónomo)</span>' : ''}</td><td class="n">${numES(v.pal)}</td><td class="n">${eur(v.cobro)}${v.incompleto ? ' <span class="adm-falta" title="Hay pedidos sin precio">*</span>' : ''}</td><td class="n">${v.c.tipo === 'autonomo' ? eur(v.pago) : '<span class="hint" style="margin:0">propio</span>'}</td><td class="n"><b>${eur(v.margen)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="hint">No hay camiones en este periodo.</td></tr>'}
       </tbody></table>
       <p class="hint">En los camiones propios, «Queda» todavía no descuenta gasoil, peajes ni sueldo: eso llegará con la parte de costes.</p></section>`;
+}
+const decaAdm = l => (adm.datos && adm.datos.decas && l && l.carga_id) ? adm.datos.decas[String(l.carga_id)] : null;
+// ZIP con los PDF de una lista de DeCAs y un resumen en Excel/CSV (sirve para adjuntarlo a la factura o la liquidación)
+async function zipDeDecas(lista, nombreZip, avisoQuien){
+  if(!window.JSZip){ toast('No se pudo cargar la herramienta de ZIP. Revisa la conexión y pulsa ⟳ Actualizar.', true); return; }
+  if(!lista.length){ toast('No hay DeCAs en este periodo.', true); return; }
+  toast(`Preparando ${lista.length} DeCA${lista.length === 1 ? '' : 's'}…`);
+  const zip = new JSZip();
+  const cab = ['Nº DeCA','Fecha','Conductor','Matrícula','Origen','Destino','Cargador','Transportista','Mercancía','Detalle','PDF'];
+  const csv = [cab].concat(lista.map(r => [r.deca_id, r.fecha, r.conductor, r.matricula, r.origen, r.destino, r.cargador_nombre, r.transportista_nombre, r.mercancia, r.detalle, r.pdf_url]))
+    .map(f => f.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  zip.file('resumen.csv', '\ufeff' + csv);
+  let ok = 0;
+  for(const r of lista){
+    if(!r.pdf_url) continue;
+    try{ const resp = await fetch(r.pdf_url); if(resp.ok){ zip.file(`${r.deca_id}.pdf`, await resp.blob()); ok++; } }catch(_){}
+  }
+  const blob = await zip.generateAsync({type:'blob'});
+  descargarBlob(blob, nombreZip.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/:*?"<>|]/g,'') + '.zip');   // sin tildes: algunos navegadores no aceptan el nombre
+  toast(`Descargados ${ok} DeCAs${avisoQuien ? ' de ' + avisoQuien : ''} (y un resumen en Excel/CSV).`);
 }
 function imprimirAdm(titulo, sub, cabeceras, filas, total, nota){
   $('#printArea').innerHTML = `<div class="pr-head"><h1>${esc(titulo)}</h1><span class="pr-meta">${esc(sub)}</span><span class="pr-date">${fechaBonita(hoyISO())}</span></div>
@@ -2900,7 +3071,7 @@ function exportarAdm(){
   const libro = XLSX.utils.book_new();
   const r2 = n => n == null ? null : Math.round(n * 100) / 100;
   const detalle = d.filas.map(f => ({Día:f.l.fecha, Cliente:f.cliente, 'Nº pedido':f.l.referencia || '', Recogida:f.l.almacen, Destino:f.l.destino || '', Camión:(d.viajes.find(v => v.c.id === f.l.camion_id) || {c:{}}).c.nombre || '',
-    Europalets:+f.l.e_pal || 0, 'Palets grandes':+f.l.m_pal || 0, Carros:+f.l.carros || 0, Box:+f.l.box || 0, Cajas:+f.l.cajas || 0, Kilos:f.l.kilos ?? '', Importe:r2(f.importe), Cálculo:f.como || f.falta}));
+    Europalets:+f.l.e_pal || 0, 'Palets grandes':+f.l.m_pal || 0, Carros:+f.l.carros || 0, Box:+f.l.box || 0, Cajas:+f.l.cajas || 0, Kilos:f.l.kilos ?? '', 'Nº DeCA':(decaAdm(f.l) || {}).deca_id || '', Importe:r2(f.importe), Cálculo:f.como || f.falta}));
   const porCli = {}; d.filas.forEach(f => { const o = porCli[f.cliente] = porCli[f.cliente] || {Cliente:f.cliente, Pedidos:0, Palets:0, Importe:0, 'Sin precio':0}; o.Pedidos++; o.Palets += paletsDe([f.l]); o.Importe = r2(o.Importe + (f.importe || 0)); if(f.importe == null) o['Sin precio']++; });
   const porAut = {}; d.viajes.filter(v => v.autonomo).forEach(v => { const n = nombreTrans(v.autonomo) || v.c.nombre; const o = porAut[n] = porAut[n] || {Autónomo:n, NIF:(transportistasTodos.find(t => String(t.id) === String(v.autonomo)) || {}).nif || '', Viajes:0, 'A pagar':0}; o.Viajes++; o['A pagar'] = r2(o['A pagar'] + (v.pago || 0)); });
   const viajes = d.viajes.map(v => ({Día:v.c.fecha, Camión:v.c.nombre, Tipo:v.c.tipo === 'autonomo' ? 'autónomo' : 'propio', Palets:v.pal, Cobro:r2(v.cobro), 'Pago autónomo':v.c.tipo === 'autonomo' ? r2(v.pago) : '', Queda:r2(v.margen), 'Forma de pago':v.como || v.falta}));
@@ -2931,17 +3102,26 @@ document.addEventListener('click', async e => {
     const d = adm.datos, fl = d.filas.filter(f => (f.cid || ('n:' + normTxt(f.cliente))) === b.dataset.admprefac); if(!fl.length) return;
     const cli = clientesTodos.find(c => String(c.id) === String(fl[0].cid)) || {};
     imprimirAdm(`Prefactura · ${fl[0].cliente}`, `${cli.nif ? 'NIF ' + cli.nif + ' · ' : ''}Periodo ${fechaBonita(d.desde)} – ${fechaBonita(d.hasta)}`,
-      ['Día','Recogida → destino','Nº pedido','Cantidad','Importe'],
-      fl.map(f => [fechaBonita(f.l.fecha), esc(f.l.almacen) + ' → ' + esc(f.l.destino || '—'), esc(f.l.referencia || ''), esc(qtyText(f.l)), f.importe == null ? 'SIN PRECIO' : eur(f.importe)]),
+      ['Día','Recogida → destino','Nº pedido','Nº DeCA','Cantidad','Importe'],
+      fl.map(f => [fechaBonita(f.l.fecha), esc(f.l.almacen) + ' → ' + esc(f.l.destino || '—'), esc(f.l.referencia || ''), esc((decaAdm(f.l) || {}).deca_id || '—'), esc(qtyText(f.l)), f.importe == null ? 'SIN PRECIO' : eur(f.importe)]),
       eur(fl.reduce((s, f) => s + (f.importe || 0), 0)), 'Importes sin IVA. Documento de control para preparar la factura: NO es una factura.');
     return;
+  }
+  if(b.dataset.admzipc){
+    const d = adm.datos, fl = d.filas.filter(f => (f.cid || ('n:' + normTxt(f.cliente))) === b.dataset.admzipc); if(!fl.length) return;
+    return zipDeDecas(fl.map(f => decaAdm(f.l)).filter(Boolean), `DeCAs ${fl[0].cliente} ${d.desde} a ${d.hasta}`, fl[0].cliente);
+  }
+  if(b.dataset.admzipa){
+    const d = adm.datos, vs = d.viajes.filter(v => String(v.autonomo) === String(b.dataset.admzipa)); if(!vs.length) return;
+    const nom = (transportistasTodos.find(x => String(x.id) === String(b.dataset.admzipa)) || {}).nombre || vs[0].c.nombre;
+    return zipDeDecas(vs.flatMap(v => v.fl.map(f => decaAdm(f.l))).filter(Boolean), `DeCAs ${nom} ${d.desde} a ${d.hasta}`, nom);
   }
   if(b.dataset.admliq){
     const d = adm.datos, vs = d.viajes.filter(v => String(v.autonomo) === String(b.dataset.admliq)); if(!vs.length) return;
     const t = transportistasTodos.find(x => String(x.id) === String(b.dataset.admliq)) || {};
     imprimirAdm(`Liquidación · ${t.nombre || vs[0].c.nombre}`, `${t.nif ? 'NIF ' + t.nif + ' · ' : ''}Periodo ${fechaBonita(d.desde)} – ${fechaBonita(d.hasta)}`,
-      ['Día','Destino','Palets','Forma de pago','Importe'],
-      vs.map(v => [fechaBonita(v.c.fecha), esc(v.destino || '—'), numES(v.pal), esc(v.como || v.falta), v.pago == null ? 'SIN PRECIO' : eur(v.pago)]),
+      ['Día','Destino','Palets','DeCAs','Forma de pago','Importe'],
+      vs.map(v => [fechaBonita(v.c.fecha), esc(v.destino || '—'), numES(v.pal), String(v.fl.filter(f => decaAdm(f.l)).length), esc(v.como || v.falta), v.pago == null ? 'SIN PRECIO' : eur(v.pago)]),
       eur(vs.reduce((s, v) => s + (v.pago || 0), 0)), 'Importes sin IVA ni retenciones. Documento de control para preparar la liquidación.');
     return;
   }
@@ -3240,6 +3420,14 @@ document.addEventListener('click', async e => {
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
+    if(b.id === 'guardarFirma'){ if(await guardarAjuste('firma_entrega', $('#firmaEntrega').value)) toast('Guardado: se aplica en las apps en unos minutos'); return; }
+    if(b.id === 'guardarAvDesc'){ const n = (id, min, max, def) => String(Math.min(max, Math.max(min, parseInt($(id).value, 10) || def)));
+      let ok = await guardarAjuste('aviso_descarga', $('#avDescActiva').checked ? 'si' : 'no');
+      if(ok) ok = await guardarAjuste('aviso_descarga_margen', n('#avDescMargen', 5, 600, 30));
+      if(ok) ok = await guardarAjuste('velocidad_media', n('#avDescVel', 30, 90, 70));
+      if(ok) ok = await guardarAjuste('minutos_por_descarga', n('#avDescMin', 5, 240, 40));
+      if(ok) ok = await guardarAjuste('descanso_diario_h', n('#avDescRest', 9, 11, 11));
+      if(ok) toast('Guardado: se aplica en las apps en unos minutos'); return; }
     if(b.id === 'guardarEspera'){ let ok = await guardarAjuste('espera_activa', $('#esperaActiva').checked ? 'si' : 'no');
       if(ok) ok = await guardarAjuste('espera_max', String(Math.max(10, parseInt($('#esperaMax').value, 10) || 120)));
       if(ok) toast($('#esperaActiva').checked ? 'Alarma de espera activada' : 'Guardado (alarma desactivada)'); return; }
@@ -3299,6 +3487,7 @@ document.addEventListener('click', async e => {
     if(b.dataset.camact){
       const t = camion(b.dataset.cam);
       if(b.dataset.camact === 'ret'){ abiertos.has(t.id) ? abiertos.delete(t.id) : abiertos.add(t.id); return render(); }
+      if(b.dataset.camact === 'ordendesc'){ return abrirOrdenDescarga(t); }
       if(b.dataset.camact === 'confirmar'){ await run(sb.from('carton_camiones').update({estado:'confirmado', confirmado_por: usuario ? usuario.nombre : null}).eq('id', t.id)); return refrescar(true); }
       if(b.dataset.camact === 'desconfirmar'){ await run(sb.from('carton_camiones').update({estado:'preparando'}).eq('id', t.id)); return refrescar(true); }
       if(b.dataset.camact === 'enviar'){ b.disabled = true; return enviarCamion(t); }

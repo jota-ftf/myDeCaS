@@ -24,6 +24,33 @@
       --text:#151a26; --muted:#5b657c;
     }
   }
+  :root[data-theme="light"]{
+    --bg:#f4f6fb; --card:#ffffff; --card2:#f0f2f8; --border:#dfe4ee;
+    --text:#151a26; --muted:#5b657c;
+  }
+  .entrega-capa{position:fixed;inset:0;z-index:1950;background:var(--bg);overflow:auto;padding:16px}
+  .entrega-capa[hidden]{display:none}
+  .entrega-caja{max-width:520px;margin:0 auto}
+  .entrega-caja h3{margin:4px 0 12px;font-size:1.25rem}
+  .entrega-dos{display:flex;gap:10px;margin-bottom:14px}
+  .entrega-dos button{flex:1;padding:18px 8px;font-size:1.15rem;font-weight:800;border-radius:12px;border:2px solid var(--border);background:var(--card2);color:var(--text)}
+  .entrega-dos button[aria-pressed="true"].bien{border-color:var(--ok);background:var(--ok);color:#03140d}
+  .entrega-dos button[aria-pressed="true"].mal{border-color:var(--bad);background:var(--bad);color:#fff}
+  .entrega-tipos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 10px}
+  .entrega-tipos button{padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:1rem;font-weight:600}
+  .entrega-tipos button[aria-pressed="true"]{border-color:var(--bad);background:rgba(255,92,92,.18)}
+  .entrega-fotos{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  .entrega-fotos img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
+  .entrega-caja label.pmeta{display:block;margin-top:8px}
+  .entrega-caja label.pmeta input,.entrega-caja label.pmeta textarea{display:block;width:100%;font-family:inherit}
+  .firma-lienzo{width:100%;height:170px;background:#fff;border-radius:10px;border:2px dashed var(--border);touch-action:none;display:block}
+  .pantalla-capa{position:fixed;inset:0;z-index:1900;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
+  .pantalla-capa[hidden]{display:none}
+  .pantalla-caja{background:var(--card);color:var(--text);border-radius:16px 16px 0 0;padding:18px 16px 22px;width:100%;max-width:480px}
+  .pantalla-caja h3{margin:0 0 10px;font-size:1.1rem}
+  .pantalla-ops{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
+  .pantalla-ops button{flex:1;min-width:30%;padding:12px 8px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:1rem;font-weight:600}
+  .pantalla-ops button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:#04111f}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,sans-serif;}
@@ -165,7 +192,19 @@
     <select id="plateSel" style="display:none"><option value="">Elige el camión que estás cargando…</option></select>
     <label id="plateRemolqueLabel" style="display:none;margin-top:6px;font-weight:400;font-size:.85em">Remolque (si es distinto del habitual)</label>
     <select id="plateRemolqueSel" style="display:none"></select>
-    <div style="text-align:right;margin-top:6px"><span class="badge" id="cambiarPinBtn" style="cursor:pointer;display:none">🔑 Cambiar mi PIN</span></div>
+    <div style="text-align:right;margin-top:6px"><span class="badge" id="pantallaBtn" style="cursor:pointer;margin-right:6px" title="Tamaño de letra, modo noche y avisos">🔆 Pantalla</span><span class="badge" id="cambiarPinBtn" style="cursor:pointer;display:none">🔑 Cambiar mi PIN</span></div>
+  <div class="pantalla-capa" id="pantallaCapa" hidden>
+    <div class="pantalla-caja">
+      <h3>🔆 Pantalla y avisos</h3>
+      <div class="pmeta">Tamaño de la letra</div>
+      <div class="pantalla-ops" id="opsLetra"><button type="button" data-letra="100">Normal</button><button type="button" data-letra="115">Grande</button><button type="button" data-letra="130">Muy grande</button></div>
+      <div class="pmeta">Colores</div>
+      <div class="pantalla-ops" id="opsTema"><button type="button" data-tema="auto">Como el móvil</button><button type="button" data-tema="hora">Noche automática</button><button type="button" data-tema="dark">Oscuro</button><button type="button" data-tema="light">Claro</button></div>
+      <div class="pmeta" id="avisosEstado" style="margin-bottom:8px"></div>
+      <button class="btn btn-ghost" type="button" id="avisosBtn" style="margin-bottom:8px">🔔 Activar avisos con el móvil bloqueado</button>
+      <button class="btn btn-primary" type="button" id="pantallaCerrar">Listo</button>
+    </div>
+  </div>
   </div>
 
   <div class="card" id="matCard" style="display:none;border-color:var(--warn);border-width:2px">
@@ -1260,40 +1299,164 @@ async function pollDescargas(){
   resultados.forEach(r=> (r.data||[]).forEach(row=>{
     if(!vistos.has(row.id)){ vistos.add(row.id); data.push(row); }
   }));
-  for(let i = data.length-1; i >= 0; i--) if(data[i].anulado) data.splice(i,1);   // los anulados no se descargan
+  for(let i = data.length-1; i >= 0; i--) if(data[i].anulado || descargasEnCola.has(String(data[i].id))) data.splice(i,1);   // los anulados no se descargan (ni lo ya descargado sin cobertura)
   const remontados = new Set((await misCam).filter(r=> r._remonta).map(r=> String(r.id)));
   data.forEach(r=> { if(remontados.has(String(r.id))) r._remonta = true; });
   // Descargados LEJOS del destino: tiene que llevarlos a su sitio y confirmarlo allí
   const lejos = (await decasDeMisCamiones(diasAtras(4))).filter(r=> r.entregado && r.fuera_zona && !r.anulado);
   pintarLejos(lejos);
   kgEnCamion = data.reduce((sum, r)=> sum + (parseFloat(String(r.peso || '').replace(',', '.')) || 0), 0);
-  data.sort((a,b)=> new Date(a.fecha) - new Date(b.fecha)); // las más antiguas primero: probablemente las próximas en descargar
+  data.sort((a,b)=> ((a.orden_descarga ?? 999) - (b.orden_descarga ?? 999)) || (new Date(a.fecha) - new Date(b.fecha))); // el orden de descarga que ha puesto tráfico; si no, las más antiguas primero
   const box = document.getElementById('descargasLista');
   document.getElementById('descargasBadge').textContent = String(data.length);
   if(!data.length){ box.innerHTML = '<div class="empty">No llevas ninguna descarga pendiente ahora mismo</div>'; return; }
-  if(choferActual && choferActual.puesto !== 'cargador') vigilarEspera(data);
+  if(choferActual && choferActual.puesto !== 'cargador'){ vigilarEspera(data); vigilarDescargas(data); }
   box.innerHTML = data.map(r=>`<div class="hist-item" style="flex-direction:column;align-items:stretch;gap:6px">
-      <span><b>${r.destino||'—'}</b> ${enlaceMapa(r.destino, 'Cómo llegar')}<br><span class="pmeta">${r.deca_id} · ${r.matricula||'—'} · ${r.mercancia||''}</span></span>
+      <span>${r.orden_descarga != null ? `<span class="badge" style="background:var(--ok);color:#03140d;margin-right:4px">⬇${r.orden_descarga + 1}</span>` : ''}<b>${r.destino||'—'}</b> ${enlaceMapa(r.destino, 'Cómo llegar')}<br><span class="pmeta">${r.deca_id} · ${r.matricula||'—'} · ${r.mercancia||''}</span></span>
       ${lineaHorario('Horario de descarga', horarioDescarga(r.destino))}
       ${r._remonta ? '<div class="aviso-carga">⚠️ ¡OJO! Este palet va REMONTADO (encima de otra carga): cuidado al descargar.</div>' : ''}
       <button class="btn btn-sm" data-entregar="${r.id}">✅ Marcar descargado en destino</button>
     </div>`).join('');
   box.querySelectorAll('[data-entregar]').forEach(btn=>{
     btn.onclick = async ()=>{
-      if(!confirm('¿Confirmas que ya has descargado en destino?')) return;
       const r = data.find(x=> String(x.id) === btn.dataset.entregar) || {};
-      btn.disabled = true; btn.textContent = '📍 Comprobando ubicación…';
-      const g = await capturarUbicacion();
-      const l = lugares[String(r.destino || '').toLowerCase()];
-      const radio = +ajustesApp.radio_descarga_m || 1000;
-      const dist = (g && l && l.lat != null && l.lng != null) ? distanciaM(g.lat, g.lng, +l.lat, +l.lng) : null;
-      const lejos = dist != null && dist > radio;
-      btn.textContent = 'Guardando…';
+      await marcarDescargado(r, btn, false);
+    };
+  });
+}
+// ====== ENTREGA: ¿todo bien o hay un problema? Fotos y firma del receptor ======
+const TIPOS_INC = [['rechazo_total','❌ Rechazo total'],['rechazo_parcial','↩️ Rechazo parcial'],['merma','📉 Merma / falta'],['golpe','💥 Golpe / roto'],['temperatura','🌡️ Temperatura'],['otro','📝 Otro']];
+const firmaModo = () => ajustesApp.firma_entrega || 'opcional';   // no | opcional | obligatoria (se cambia en Ajustes del cartón)
+async function reducirFoto(file){
+  try{
+    const img = await createImageBitmap(file), max = 1280, k = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise(res => c.toBlob(b => res(b || file), 'image/jpeg', 0.7));
+  }catch(e){ return file; }
+}
+function dialogoEntrega(r){
+  return new Promise(fin => {
+    let capa = $e('entregaCapa');
+    if(!capa){ capa = document.createElement('div'); capa.id = 'entregaCapa'; capa.className = 'entrega-capa'; capa.setAttribute('role', 'dialog'); document.body.appendChild(capa); }
+    const modo = firmaModo(), est = {todoBien: null, tipo: '', fotos: [], firmado: false};
+    capa.innerHTML = `<div class="entrega-caja">
+      <h3>📦 Descarga en ${escH(r.destino || 'destino')}</h3><div class="pmeta" style="margin:-8px 0 12px">${escH(r.deca_id || '')}${r.cargador_nombre ? ' · ' + escH(r.cargador_nombre) : ''}</div>
+      <div class="entrega-dos"><button type="button" class="bien" id="entBien">✅ Todo bien</button><button type="button" class="mal" id="entMal">⚠️ Hay un problema</button></div>
+      <div id="entProblema" hidden>
+        <div class="pmeta">¿Qué ha pasado?</div>
+        <div class="entrega-tipos">${TIPOS_INC.map(([k, n]) => `<button type="button" data-inctipo="${k}">${n}</button>`).join('')}</div>
+        <label class="pmeta">Palets afectados<input type="number" id="entPalets" min="0" step="1" inputmode="numeric" placeholder="0" style="margin-top:2px;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:1rem"></label>
+        <label class="pmeta">Explicación (opcional)<textarea id="entNota" rows="2" placeholder="Ej.: 2 palets con cajas aplastadas" style="width:100%;margin-top:2px;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px;font-size:1rem"></textarea></label>
+        <label class="btn btn-ghost" style="display:block;text-align:center;margin-top:8px;cursor:pointer">📷 Hacer fotos<input type="file" id="entFotos" accept="image/*" capture="environment" multiple hidden></label>
+        <div class="entrega-fotos" id="entFotosVer"></div>
+      </div>
+      ${modo !== 'no' ? `<div id="entFirmaBox" style="margin-top:10px">
+        <div class="pmeta">✍️ Firma de quien recibe ${modo === 'obligatoria' ? '(obligatoria)' : '(opcional)'}</div>
+        <input type="text" id="entReceptor" placeholder="Nombre de quien recibe" style="margin:4px 0 6px">
+        <canvas class="firma-lienzo" id="entFirma"></canvas>
+        <div style="text-align:right"><button type="button" class="badge" id="entFirmaBorrar" style="cursor:pointer;border:0">🧽 Borrar firma</button></div>
+      </div>` : ''}
+      <div class="pmeta" id="entMsg" style="color:var(--bad);min-height:1.2em;margin-top:6px"></div>
+      <button class="btn btn-primary" type="button" id="entGuardar" style="margin-top:4px">Guardar la descarga</button>
+      <button class="btn btn-ghost" type="button" id="entCancelar" style="margin-top:8px">Cancelar</button></div>`;
+    capa.hidden = false; capa.scrollTop = 0;
+    const marcar = v => { $e('entMsg').textContent = ''; est.todoBien = v; $e('entBien').setAttribute('aria-pressed', String(v === true)); $e('entMal').setAttribute('aria-pressed', String(v === false)); $e('entProblema').hidden = v !== false; };
+    $e('entBien').onclick = () => marcar(true); $e('entMal').onclick = () => marcar(false);
+    capa.querySelectorAll('[data-inctipo]').forEach(b => b.onclick = () => { est.tipo = b.dataset.inctipo; capa.querySelectorAll('[data-inctipo]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
+    $e('entFotos').onchange = async ev => { for(const f of ev.target.files){ const bl = await reducirFoto(f); est.fotos.push(bl); const im = document.createElement('img'); im.src = URL.createObjectURL(bl); $e('entFotosVer').appendChild(im); } ev.target.value = ''; };
+    // firma con el dedo
+    const cv = $e('entFirma');
+    if(cv){
+      const ajustar = () => { const k = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight; cv.width = w * k; cv.height = h * k; const cx = cv.getContext('2d'); cx.scale(k, k); cx.lineWidth = 2.4; cx.lineCap = 'round'; cx.strokeStyle = '#111'; };
+      setTimeout(ajustar, 30);
+      let dib = false; const pos = e => { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+      cv.onpointerdown = e => { dib = true; cv.setPointerCapture(e.pointerId); const cx = cv.getContext('2d'), [x, y] = pos(e); cx.beginPath(); cx.moveTo(x, y); };
+      cv.onpointermove = e => { if(!dib) return; const cx = cv.getContext('2d'), [x, y] = pos(e); cx.lineTo(x, y); cx.stroke(); est.firmado = true; };
+      cv.onpointerup = cv.onpointercancel = () => { dib = false; };
+      $e('entFirmaBorrar').onclick = () => { ajustar(); est.firmado = false; };
+    }
+    const cerrar = v => { capa.hidden = true; fin(v); };
+    $e('entCancelar').onclick = () => cerrar(null);
+    $e('entGuardar').onclick = async () => {
+      const msg = $e('entMsg');
+      if(est.todoBien === null){ msg.textContent = 'Elige «Todo bien» o «Hay un problema».'; return; }
+      if(est.todoBien === false && !est.tipo){ msg.textContent = 'Elige qué ha pasado.'; return; }
+      if(modo === 'obligatoria' && !est.firmado){ msg.textContent = 'Falta la firma de quien recibe.'; return; }
+      let firma = null;
+      if(cv && est.firmado) firma = await new Promise(res => cv.toBlob(res, 'image/png'));
+      cerrar({todoBien: est.todoBien, tipo: est.tipo || null, palets: est.todoBien ? null : (parseFloat($e('entPalets').value) || null),
+        nota: est.todoBien ? null : ($e('entNota').value.trim() || null), fotos: est.todoBien ? [] : est.fotos, firma, receptor: $e('entReceptor') ? $e('entReceptor').value.trim() || null : null});
+    };
+  });
+}
+// Guarda la incidencia (o solo la firma si todo fue bien): fotos y firma al almacén de archivos, y avisa a tráfico si hay problema
+async function subirIncidencia(item){
+  const base = `${SUPABASE_URL}/storage/v1/object/public/decas/`, ts = item.ts || Date.now(), urls = [];
+  for(let i = 0; i < (item.fotos || []).length; i++){
+    const ruta = `incidencias/${item.fila.deca_id}-${ts}-${i + 1}.jpg`;
+    const { error } = await sb.storage.from('decas').upload(ruta, item.fotos[i], {contentType:'image/jpeg', upsert:true});
+    if(error) return {error};
+    urls.push(base + ruta);
+  }
+  let firma_url = null;
+  if(item.firma){ const ruta = `incidencias/${item.fila.deca_id}-${ts}-firma.png`; const { error } = await sb.storage.from('decas').upload(ruta, item.firma, {contentType:'image/png', upsert:true}); if(error) return {error}; firma_url = base + ruta; }
+  const { data, error } = await sb.from('incidencias').insert({...item.fila, fotos: urls, firma_url}).select('id').single();
+  if(error) return {error};
+  if(!item.fila.todo_bien){
+    const nom = (TIPOS_INC.find(x => x[0] === item.fila.tipo) || [null, 'Incidencia'])[1].replace(/^\S+\s/, '');
+    sb.from('alertas').insert({tipo:'incidencia', persona_id: item.fila.persona_id, persona_nombre: item.fila.persona_nombre, deca_id: item.fila.deca_id,
+      mensaje: `⚠️ ${item.fila.persona_nombre}: ${nom}${item.fila.palets ? ' · ' + item.fila.palets + ' palets' : ''} en ${item.fila.destino || 'destino'} (${item.fila.deca_id})${item.fila.nota ? ' — «' + item.fila.nota + '»' : ''}${urls.length ? ' · ' + urls.length + ' foto' + (urls.length === 1 ? '' : 's') : ''}`}).then(()=>{});
+  }
+  return {id: data && data.id};
+}
+async function guardarIncidencia(r, ent){
+  if(!ent || (ent.todoBien && !ent.firma)) return;   // todo bien y sin firma: no hay nada que guardar
+  const item = {tipo:'incidencia', ts: Date.now(), fotos: ent.fotos, firma: ent.firma,
+    fila: {deca_row_id: String(r.id), deca_id: r.deca_id, destino: r.destino || null, todo_bien: !!ent.todoBien, tipo: ent.tipo, palets: ent.palets, nota: ent.nota, receptor: ent.receptor,
+           persona_id: choferActual ? String(choferActual.id) : null, persona_nombre: choferActual ? choferActual.nombre : null}};
+  const res = navigator.onLine === false ? {error: {message: 'Failed to fetch'}} : await subirIncidencia(item);
+  if(res.error){
+    if(esErrorRed(res.error)){ try{ await colaAnadir(item); pintarCola(); }catch(e){} }
+    else alert('La descarga se ha guardado, pero no la incidencia: ' + (res.error.message || res.error) + (/incidencias/.test(res.error.message || '') ? ' (falta la actualización 49)' : ''));
+  }
+}
+async function guardarDescargaSinRed(r, base, extra, lejos, g, dist){
+  const alerta = (lejos || !g) ? {tipo: lejos ? 'descarga_lejos' : 'descarga_sin_gps', persona_id: String(choferActual.id), persona_nombre: choferActual.nombre, deca_id: r.deca_id,
+    mensaje: lejos ? `${choferActual.nombre} ha marcado la descarga de ${r.deca_id} (${r.destino || '—'}) a ${(dist/1000).toLocaleString('es-ES', {maximumFractionDigits:1})} km del destino (sin cobertura).` : `${choferActual.nombre} ha marcado la descarga de ${r.deca_id} (${r.destino || '—'}) sin ubicación GPS (sin cobertura).`, lat: g ? g.lat : null, lng: g ? g.lng : null} : null;
+  try{ await colaAnadir({tipo:'descarga', id: r.id, deca_id: r.deca_id, base, extra, alerta}); }catch(e){ alert('No hay cobertura y no se ha podido guardar en el móvil. Inténtalo otra vez en un momento.'); return; }
+  try{ localStorage.removeItem('descq_' + r.id); }catch(e){}
+  descargasEnCola.add(String(r.id));
+  pintarCola();
+  const it = document.querySelector(`[data-entregar="${r.id}"]`); if(it) it.closest('.hist-item').remove();
+  alert('📴 No hay cobertura: la descarga queda guardada en el móvil y se enviará sola en cuanto haya señal.');
+}
+// Marca un DeCA como descargado. Si el GPS dice que está en el destino, no se pregunta «¿Confirmas?» (una pregunta menos)
+async function marcarDescargado(r, btn, yaConfirmado){
+  const txtBtn = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '📍 Comprobando ubicación…'; }
+  const g = await capturarUbicacion();
+  const l = lugares[String(r.destino || '').toLowerCase()];
+  const radio = +ajustesApp.radio_descarga_m || 1000;
+  const dist = (g && l && l.lat != null && l.lng != null) ? distanciaM(g.lat, g.lng, +l.lat, +l.lng) : null;
+  const lejos = dist != null && dist > radio;
+  let entrega = null;
+  if(!yaConfirmado){
+    entrega = await dialogoEntrega(r);   // sustituye al «¿Confirmas…?»: Todo bien / Hay un problema (+ fotos y firma)
+    if(!entrega){ if(btn){ btn.disabled = false; btn.textContent = txtBtn; } return false; }
+  }
+  if(btn) btn.textContent = 'Guardando…';
+  {
+    {
       const base = {entregado:true, fecha_entrega: new Date().toISOString()};
       const extra = {geo_entrega: g ? `${g.lat.toFixed(5)}, ${g.lng.toFixed(5)}` : null, distancia_entrega_m: dist != null ? Math.round(dist) : null, fuera_zona: lejos};
-      let { data: hechos, error } = await sb.from('decas').update({...base, ...extra}).eq('id', btn.dataset.entregar).select('id');
-      if(error && /geo_entrega|distancia_entrega|fuera_zona/.test(error.message || '')) ({ data: hechos, error } = await sb.from('decas').update(base).eq('id', btn.dataset.entregar).select('id'));   // falta la actualización 25
-      if(error || !hechos || !hechos.length){ alert('No se pudo guardar' + (error ? ': ' + error.message : ': la base de datos no lo permite todavía (actualización 18).')); btn.disabled = false; btn.textContent = '✅ Marcar descargado en destino'; return; }
+      if(navigator.onLine === false){ await guardarDescargaSinRed(r, base, extra, lejos, g, dist); guardarIncidencia(r, entrega); return true; }
+      let { data: hechos, error } = await sb.from('decas').update({...base, ...extra}).eq('id', r.id).select('id');
+      if(error && esErrorRed(error)){ await guardarDescargaSinRed(r, base, extra, lejos, g, dist); guardarIncidencia(r, entrega); return true; }
+      if(error && /geo_entrega|distancia_entrega|fuera_zona/.test(error.message || '')) ({ data: hechos, error } = await sb.from('decas').update(base).eq('id', r.id).select('id'));   // falta la actualización 25
+      if(error || !hechos || !hechos.length){ alert('No se pudo guardar' + (error ? ': ' + error.message : ': la base de datos no lo permite todavía (actualización 18).')); if(btn){ btn.disabled = false; btn.textContent = '✅ Marcar descargado en destino'; } return false; }
+      try{ localStorage.removeItem('descq_' + r.id); }catch(e){}
+      guardarIncidencia(r, entrega);
       if(lejos || !g){
         const txt = lejos ? `${choferActual.nombre} ha marcado la descarga de ${r.deca_id} (${r.destino || '—'}) a ${(dist/1000).toLocaleString('es-ES', {maximumFractionDigits:1})} km del destino.`
                           : `${choferActual.nombre} ha marcado la descarga de ${r.deca_id} (${r.destino || '—'}) sin ubicación GPS (la tiene desactivada).`;
@@ -1301,9 +1464,92 @@ async function pollDescargas(){
         alarmaDescarga(lejos ? `⚠️ Estás a ${(dist/1000).toLocaleString('es-ES', {maximumFractionDigits:1})} km de ${r.destino || 'el destino'}. Se ha avisado a la oficina.` : '⚠️ No se ha podido leer tu ubicación: activa el GPS del móvil. Se ha avisado a la oficina.');
       }
       pollDescargas();
-    };
+      return true;
+    }
+  }
+}
+// ====== ¿HAS DESCARGADO? Para los conductores que no marcan la descarga ======
+// 1) Con GPS: si ha estado en el destino y se va sin marcarla, se le pregunta.
+// 2) Sin GPS (no lo deja en segundo plano o lo tiene apagado): se calcula a qué hora debería llegar desde que sale
+//    (velocidad media de camión, pausas de 45' cada 4 h 30 de conducción —o 15'+30'—, descanso diario si pasa de 9 h al volante
+//    y el tiempo de cada descarga) y, pasado el margen, se le pregunta. Si no contesta, se avisa a la oficina.
+let ultimaRevisionDesc = 0, preguntandoDesc = false;
+const descEstado = id => { try{ return JSON.parse(localStorage.getItem('descq_' + id) || '{}'); }catch(e){ return {}; } };
+const descGuardar = (id, o) => { try{ localStorage.setItem('descq_' + id, JSON.stringify(o)); }catch(e){} };
+function fechaHist(txt){ const m = String(txt || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/); return m ? new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]).getTime() : 0; }
+const coordsTxt = t => { const m = String(t || '').match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/); return m ? {lat:+m[1], lng:+m[2]} : null; };
+const coordsLugar = n => { const l = lugares[String(n || '').toLowerCase()]; return l && l.lat != null && l.lat !== '' && l.lng != null && l.lng !== '' ? {lat:+l.lat, lng:+l.lng} : null; };
+// Horas reales de viaje para unas horas de conducción: pausas de 45' cada 4 h 30 y descanso diario cada 9 h de volante
+function horasConPausas(h){
+  const descanso = +ajustesApp.descanso_diario_h || 11;
+  let total = h;
+  for(let k = 1; k * 4.5 < h; k++) total += k % 2 ? 0.75 : descanso;   // cada 4 h 30 de volante: pausa de 45'; cada 9 h: descanso diario
+  return total;
+}
+// Hora estimada de llegada a cada destino desde que el camión salió
+function estimarLlegadas(data){
+  const vel = +ajustesApp.velocidad_media || 70, porDescarga = (+ajustesApp.minutos_por_descarga || 40) / 60;
+  const salidaDe = r => Math.max(new Date(r.fecha).getTime() || 0, ...((Array.isArray(r.matricula_historial) ? r.matricula_historial : []).map(h => fechaHist(h.fecha))));
+  const conSalida = data.map(r => ({r, salida: salidaDe(r)})).filter(x => x.salida);
+  if(!conSalida.length) return {};
+  const ultima = conSalida.reduce((a, b) => b.salida > a.salida ? b : a);   // el camión sale después de cargar lo último
+  let punto = coordsTxt(ultima.r.geo) || coordsLugar(ultima.r.origen); if(!punto) return {};
+  const t0 = ultima.salida, pend = conSalida.filter(x => coordsLugar(x.r.destino)), out = {};
+  let km = 0, paradas = 0;
+  while(pend.length){   // el siguiente destino, el más cercano
+    pend.sort((a, b) => distanciaM(punto.lat, punto.lng, coordsLugar(a.r.destino).lat, coordsLugar(a.r.destino).lng) - distanciaM(punto.lat, punto.lng, coordsLugar(b.r.destino).lat, coordsLugar(b.r.destino).lng));
+    const x = pend.shift(), d = coordsLugar(x.r.destino);
+    km += distanciaM(punto.lat, punto.lng, d.lat, d.lng) / 1000 * 1.25;   // la carretera nunca es en línea recta
+    out[x.r.id] = t0 + (horasConPausas(km / vel) + paradas * porDescarga) * 3600000;
+    paradas++; punto = d;
+  }
+  return out;
+}
+async function vigilarDescargas(data, forzar){
+  if(ajustesApp.aviso_descarga === 'no' || !sb || !choferActual || !data.length || preguntandoDesc) return;
+  if(!forzar && Date.now() - ultimaRevisionDesc < 60000) return;   // se mira cada minuto
+  ultimaRevisionDesc = Date.now();
+  const margen = (+ajustesApp.aviso_descarga_margen || 30) * 60000, ahora = Date.now();
+  const radio = +ajustesApp.radio_descarga_m || 1000;
+  const g = await capturarUbicacion();
+  const llegadas = g ? {} : estimarLlegadas(data);
+  for(const r of data){
+    const st = descEstado(r.id);
+    if(st.pospuesto && ahora < st.pospuesto) continue;
+    let preguntar = false;
+    if(g){
+      const d = coordsLugar(r.destino); if(!d) continue;
+      const dist = distanciaM(g.lat, g.lng, d.lat, d.lng);
+      if(dist <= radio){ if(!st.llego){ st.llego = ahora; descGuardar(r.id, st); } continue; }
+      if(st.llego && dist > radio * 1.5 && ahora - st.llego > 5 * 60000) preguntar = true;   // estuvo allí y se ha ido sin marcarla
+    } else if(llegadas[r.id] && ahora > llegadas[r.id] + margen){
+      preguntar = true;
+      if(!st.oficina && ahora > llegadas[r.id] + 3 * margen){   // lleva mucho sin contestar: se avisa a tráfico (una vez)
+        st.oficina = true; descGuardar(r.id, st);
+        sb.from('alertas').insert({tipo:'descarga_sin_confirmar', persona_id:String(choferActual.id), persona_nombre:choferActual.nombre, deca_id:r.deca_id,
+          mensaje:`❓ ${choferActual.nombre} no ha confirmado la descarga de ${r.deca_id} en ${r.destino || 'destino'}: por el tiempo ya debería haber llegado (sin GPS).`}).then(()=>{});
+      }
+    }
+    if(preguntar){ await preguntarDescarga(r, st); return; }   // de una en una
+  }
+}
+function preguntarDescarga(r, st){
+  return new Promise(fin => {
+    preguntandoDesc = true;
+    let capa = $e('descPregunta');
+    if(!capa){ capa = document.createElement('div'); capa.id = 'descPregunta'; capa.className = 'voz-capa'; capa.setAttribute('role', 'dialog'); document.body.appendChild(capa); }
+    capa.innerHTML = `<div class="voz-caja"><div class="voz-paso">Descargas</div>
+      <div class="voz-pregunta">¿Has descargado ya en<span class="voz-mat" style="white-space:normal">${escH(r.destino || 'el destino')}</span><span class="voz-sub">${escH(r.deca_id || '')}${r.cargador_nombre ? ' · ' + escH(r.cargador_nombre) : ''}</span></div>
+      <div class="voz-botones"><button class="btn btn-ghost" type="button" id="descNo">⏳ Todavía no</button><button class="btn btn-primary" type="button" id="descSi">✅ Sí, ya he descargado</button></div></div>`;
+    capa.hidden = false;
+    avisoSonoro('¿Has descargado ya en ' + (r.destino || 'el destino') + '? Toca para contestar.');
+    const cerrar = () => { capa.hidden = true; preguntandoDesc = false; fin(); };
+    $e('descSi').onclick = async () => { cerrar(); await marcarDescargado(r, null, true); };
+    $e('descNo').onclick = () => { st.pospuesto = Date.now() + (+ajustesApp.aviso_descarga_margen || 30) * 60000; st.llego = null; descGuardar(r.id, st); cerrar(); };
   });
 }
+// Al volver a abrir la app (si estaba en segundo plano sin GPS), se revisa enseguida
+document.addEventListener('visibilitychange', () => { if(!document.hidden && choferActual && choferActual.puesto !== 'cargador') setTimeout(() => { ultimaRevisionDesc = 0; pollDescargas(); }, 1500); });
 // ====== ALARMA POR TIEMPO DE ESPERA (se activa en Ajustes del cartón): si el chófer lleva en el destino más del máximo sin descargar ======
 let ultimaRevisionEspera = 0;
 async function vigilarEspera(data){
@@ -1397,6 +1643,71 @@ async function pollEntregasHub(){
   const todo = document.getElementById('entregarTodoHub');
   if(todo) todo.onclick = ()=>{ if(confirm(`¿Confirmas que has dejado las ${lista.length} cargas en la nave?`)) marcar(lista.map(r=>r.id), todo); };
 }
+
+// ====== SIN COBERTURA: lo que no se puede enviar se guarda en el móvil y se envía solo al volver la señal ======
+const DB_COLA = 'deca-cola';
+const descargasEnCola = new Set();   // descargas marcadas sin cobertura (ya no se enseñan como pendientes)
+const esErrorRed = err => navigator.onLine === false || /failed to fetch|networkerror|network request|load failed|fetch failed|timeout|internet/i.test(String((err && (err.message || err)) || ''));
+function abrirCola(){ return new Promise((res, rej) => { try{ const rq = indexedDB.open(DB_COLA, 1); rq.onupgradeneeded = () => rq.result.createObjectStore('cola', {keyPath:'k', autoIncrement:true}); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }catch(e){ rej(e); } }); }
+async function colaOp(modo, fn){ const db = await abrirCola(); return new Promise((res, rej) => { const tx = db.transaction('cola', modo); const st = tx.objectStore('cola'); const q = fn(st); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); }); }
+const colaAnadir = item => colaOp('readwrite', st => st.add({...item, creado: Date.now(), persona_id: choferActual ? String(choferActual.id) : ''}));
+const colaLeer = () => colaOp('readonly', st => st.getAll()).catch(() => []);
+const colaBorrar = k => colaOp('readwrite', st => st.delete(k));
+async function pintarCola(){
+  const items = await colaLeer(), n = items.length;
+  items.filter(x => x.tipo === 'descarga').forEach(x => descargasEnCola.add(String(x.id)));
+  let tag = $e('colaTag');
+  if(!tag){ tag = document.createElement('span'); tag.id = 'colaTag'; tag.className = 'badge'; tag.style.cssText = 'background:var(--warn);color:#1a1000;cursor:pointer'; tag.title = 'Se enviarán solos cuando haya cobertura'; tag.onclick = () => enviarCola(true); $e('syncTag').before(tag); }
+  tag.style.display = n ? '' : 'none'; tag.textContent = `📤 ${n} sin enviar`;
+}
+// Sube el PDF y guarda el DeCA (lo usa el botón de generar y la cola)
+async function subirDeca(item){
+  const { error: upErr } = await sb.storage.from('decas').upload(`${item.publicId}.pdf`, item.blob, {contentType:'application/pdf', upsert:true, cacheControl:'0'});
+  if(upErr) return {error: upErr, paso: 'pdf'};
+  const filaDeca = {...item.fila};
+  let { error: insErr } = await sb.from('decas').insert(filaDeca);
+  if(insErr && /duplicate|unique/i.test(insErr.message || '')) insErr = null;   // ya se había guardado en un intento anterior
+  if(insErr && /prevista/.test(insErr.message || '')){ delete filaDeca.fecha_prevista_descarga; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 42: se guarda sin ese dato (el PDF sí lo lleva)
+  if(insErr && /direccion|domicilio|contractual/.test(insErr.message || '')){   // falta la actualización 33 o 37: se guarda sin esos datos (el PDF sí los lleva)
+    delete filaDeca.transportista_domicilio; delete filaDeca.origen_direccion; delete filaDeca.destino_direccion;
+    delete filaDeca.transportista_contractual_nombre; delete filaDeca.transportista_contractual_nif; delete filaDeca.transportista_contractual_domicilio;
+    ({ error: insErr } = await sb.from('decas').insert(filaDeca));
+  }
+  if(insErr) return {error: insErr, paso: 'fila'};
+  if(item.manual){ if(item.cargaManual) guardarDatosNuevos(item.cargaManual); }
+  else if(item.cargaId){ cargasCerradasAqui.add(String(item.cargaId)); await sb.from('cargas_planificadas').update({estado:'cerrada'}).eq('id', item.cargaId); }
+  return {};
+}
+let enviandoCola = false;
+async function enviarCola(avisar){
+  if(enviandoCola || !sb || navigator.onLine === false) return;
+  enviandoCola = true;
+  let ok = 0, fallos = 0;
+  try{
+    for(const it of await colaLeer()){
+      let r = {};
+      try{
+        if(it.tipo === 'deca') r = await subirDeca(it);
+        else if(it.tipo === 'incidencia') r = await subirIncidencia(it);
+        else if(it.tipo === 'descarga'){
+          let { data: hechos, error } = await sb.from('decas').update({...it.base, ...it.extra}).eq('id', it.id).select('id');
+          if(error && /geo_entrega|distancia_entrega|fuera_zona/.test(error.message || '')) ({ data: hechos, error } = await sb.from('decas').update(it.base).eq('id', it.id).select('id'));
+          r = error ? {error} : {};
+          if(!error && it.alerta) sb.from('alertas').insert(it.alerta).then(()=>{});
+        }
+      }catch(e){ r = {error: e}; }
+      if(!r.error){ await colaBorrar(it.k); ok++; }
+      else if(esErrorRed(r.error)){ fallos++; break; }   // sigue sin cobertura: se reintenta más tarde
+      else { fallos++; console.warn('No se pudo enviar de la cola:', r.error); }
+    }
+  }finally{ enviandoCola = false; }
+  await pintarCola();
+  if(ok){ pollHistorial(); pollCargasPendientes(); pollDescargas(); if(avisar !== false) avisoSonoro(`✅ Enviado${ok === 1 ? '' : 's'} ${ok} ${ok === 1 ? 'DeCA o descarga' : 'DeCAs o descargas'} que tenías guardado${ok === 1 ? '' : 's'} sin cobertura`); }
+  else if(avisar === true && fallos) alert('Todavía no hay cobertura suficiente. Se enviará solo en cuanto la haya.');
+}
+window.addEventListener('online', () => setTimeout(() => enviarCola(), 2000));
+setInterval(() => { if(navigator.onLine !== false) enviarCola(false); }, 30000);
+setTimeout(() => { pintarCola(); enviarCola(false); }, 4000);
 
 // ====== COPIA EN EL MÓVIL (para enseñar DeCAs sin cobertura) ======
 const DB_MOVIL = 'deca-movil';
@@ -1570,7 +1881,7 @@ if(!yaInstalada && /iphone|ipad|ipod/i.test(navigator.userAgent)){
 // ====== Aviso sonoro al recibir algo nuevo ======
 let audioCtx = null;
 document.addEventListener('click', ()=>{ try{ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state === 'suspended') audioCtx.resume(); }catch(e){} }, {capture:true});
-function avisoSonoro(){
+function avisoSonoro(texto){
   try{
     if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
     const t0 = audioCtx.currentTime;
@@ -1582,7 +1893,7 @@ function avisoSonoro(){
     });
   }catch(e){}
   try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){}
-  if(document.hidden) avisoNativo('myDeCaS', 'Tienes cargas o avisos nuevos. Toca para abrir la app.');
+  if(document.hidden) avisoNativo('myDeCaS', texto || 'Tienes cargas o avisos nuevos. Toca para abrir la app.');
 }
 
 // ====== APP NATIVA (Android) — todo esto solo funciona dentro de la app instalada; en el navegador no hace nada ======
@@ -1645,13 +1956,42 @@ document.getElementById('gpsAceptar').onclick = ()=>{
   revisarGpsFondo();
 };
 document.getElementById('gpsAhoraNo').onclick = ()=>{ document.getElementById('gpsAviso').style.display = 'none'; gpsAhoraNo = true; };   // se vuelve a preguntar la próxima vez que entre
+// ====== PANTALLA: letra grande y modo noche (se recuerda en este móvil) ======
+const PANT = (() => { try{ return JSON.parse(localStorage.getItem('pantalla') || '{}'); }catch(e){ return {}; } })();
+function aplicarPantalla(){
+  document.documentElement.style.fontSize = (PANT.letra || 100) + '%';
+  const h = new Date().getHours(), tema = PANT.tema || 'auto';
+  const t = tema === 'hora' ? (h >= 20 || h < 8 ? 'dark' : 'light') : tema;
+  if(t === 'dark' || t === 'light') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  document.querySelectorAll('[data-letra]').forEach(b => b.setAttribute('aria-pressed', String(String(PANT.letra || 100) === b.dataset.letra)));
+  document.querySelectorAll('[data-tema]').forEach(b => b.setAttribute('aria-pressed', String((PANT.tema || 'auto') === b.dataset.tema)));
+}
+function guardarPantalla(){ try{ localStorage.setItem('pantalla', JSON.stringify(PANT)); }catch(e){} aplicarPantalla(); }
+aplicarPantalla(); setInterval(aplicarPantalla, 5 * 60000);   // «noche automática» cambia sola a las 20:00 y a las 8:00
+document.querySelectorAll('[data-letra]').forEach(b => b.onclick = () => { PANT.letra = +b.dataset.letra; guardarPantalla(); });
+document.querySelectorAll('[data-tema]').forEach(b => b.onclick = () => { PANT.tema = b.dataset.tema; guardarPantalla(); });
+function pintarEstadoAvisos(){
+  const st = $e('avisosEstado'), bt = $e('avisosBtn');
+  if(CAPN.LocalNotifications){ st.textContent = 'En la app instalada los avisos salen aunque tengas el móvil bloqueado.'; bt.style.display = 'none'; return; }
+  if(!('Notification' in window)){ st.textContent = 'Este navegador no permite avisos con el móvil bloqueado. Instala la app para tenerlos.'; bt.style.display = 'none'; return; }
+  const p = Notification.permission;
+  st.textContent = p === 'granted' ? '✅ Avisos activados (con la app abierta en segundo plano).' : p === 'denied' ? 'Los avisos están bloqueados: actívalos en los ajustes del navegador para esta página.' : 'Activa los avisos para enterarte de las cargas nuevas aunque no estés mirando la pantalla.';
+  bt.style.display = p === 'default' ? '' : 'none';
+}
+$e('pantallaBtn').onclick = () => { aplicarPantalla(); pintarEstadoAvisos(); $e('pantallaCapa').hidden = false; };
+$e('pantallaCerrar').onclick = () => { $e('pantallaCapa').hidden = true; };
+$e('pantallaCapa').addEventListener('click', e => { if(e.target.id === 'pantallaCapa') $e('pantallaCapa').hidden = true; });
+$e('avisosBtn').onclick = async () => { try{ await Notification.requestPermission(); }catch(e){} pintarEstadoAvisos(); };
 function pedirPermisoAvisos(){
   if(notifPedido || !CAPN.LocalNotifications) return;
   notifPedido = true;
   try{ CAPN.LocalNotifications.requestPermissions().catch(()=>{}); }catch(e){}
 }
 function avisoNativo(titulo, texto){
-  if(!CAPN.LocalNotifications) return;
+  if(!CAPN.LocalNotifications){   // en el navegador: aviso del sistema si el conductor los ha activado
+    try{ if('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) navigator.serviceWorker.ready.then(r => r.showNotification(titulo, {body: texto, icon: 'icon-192.png', vibrate: [200,100,200], tag: 'mydecas'})).catch(()=>{}); }catch(e){}
+    return;
+  }
   try{ CAPN.LocalNotifications.schedule({notifications: [{id: notifId++, title: titulo, body: texto}]}).catch(()=>{}); }catch(e){}
 }
 // En la app instalada, los PDF no se pueden «descargar» como en el navegador: se guardan en el móvil y se abren con el visor de PDF
@@ -1855,13 +2195,13 @@ async function pollCargasPendientes(){
   document.getElementById('syncTag').textContent = 'Sincronizado · ' + new Date().toLocaleTimeString('es-ES');
   cargasPendientes = data || [];
   const idsAhora = new Set(cargasPendientes.map(c=>String(c.id)));
-  let suena = idsCargasVistas && [...idsAhora].some(id=>!idsCargasVistas.has(id));
+  let suena = idsCargasVistas && [...idsAhora].some(id=>!idsCargasVistas.has(id)), txtAviso = suena ? '📦 Tienes una carga nueva' : '';
   // Si tráfico cambia una orden que ya tenías (más palets, otro destino…), se marca y suena
   const firmas = {};
   cargasPendientes.forEach(c => { firmas[String(c.id)] = [c.detalle_planificado, c.almacen, c.destino, c.cliente_id, c.referencia, c.matricula].join('|'); });
-  if(firmasCargas) Object.keys(firmas).forEach(id => { if(firmasCargas[id] != null && firmasCargas[id] !== firmas[id]){ cargasCambiadas.add(id); suena = true; } });
+  if(firmasCargas) Object.keys(firmas).forEach(id => { if(firmasCargas[id] != null && firmasCargas[id] !== firmas[id]){ cargasCambiadas.add(id); suena = true; txtAviso = txtAviso || '🔔 Tráfico ha cambiado una de tus cargas'; } });
   firmasCargas = firmas;
-  if(suena) avisoSonoro();
+  if(suena) avisoSonoro(txtAviso);
   idsCargasVistas = idsAhora;
   // La carga en la que estás trabajando: si tráfico la ha cambiado, se pone al día y te lo dice
   const nc = currentCarga && !currentCarga.manual && cargasPendientes.find(c=>c.id===currentCarga.id);
@@ -1877,7 +2217,7 @@ async function pollCargasPendientes(){
     const quitada = !cargasCerradasAqui.has(String(currentCarga.id)) ? currentCarga : null;
     currentCarga = null;
     document.getElementById('trabajandoCard').style.display = 'none';
-    if(quitada){ avisoSonoro(); setTimeout(() => alert(`Tráfico te ha quitado la carga de ${quitada.almacen || quitada.origen || '—'} → ${quitada.destino || '—'} (se la ha pasado a otro camión o la ha anulado). No la cargues.`), 50); }
+    if(quitada){ avisoSonoro('⚠️ Tráfico te ha quitado una carga: no la cargues'); setTimeout(() => alert(`Tráfico te ha quitado la carga de ${quitada.almacen || quitada.origen || '—'} → ${quitada.destino || '—'} (se la ha pasado a otro camión o la ha anulado). No la cargues.`), 50); }
   }
   hayCargas = cargasPendientes.length > 0;
   revisarMatricula();
@@ -2367,12 +2707,8 @@ document.getElementById('confirmBtn').onclick = async ()=>{
 
   // 3. Subir el PDF al bucket público de Supabase Storage y guardar el registro
   const pdfBlob = pdfFinal(doc, now, now);
+  let sinCobertura = false;
   if(sb){
-    const blob = pdfBlob;
-    const { error: upErr } = await sb.storage.from('decas')
-      .upload(`${publicId}.pdf`, blob, {contentType:'application/pdf', upsert:true, cacheControl:'0'});
-    if(upErr){ alert('No se pudo subir el PDF al servidor: ' + upErr.message); return; }
-
     const filaDeca = {
       deca_id: decaId, carga_id: currentCarga && !currentCarga.manual ? currentCarga.id : null,
       conductor: driver, matricula: plate, detalle: detail, ldm: ldm.toFixed(1), geo,
@@ -2384,18 +2720,15 @@ document.getElementById('confirmBtn').onclick = async ()=>{
       transportista_domicilio: record.transportistaDomicilio || null, origen_direccion: record.origenDireccion || null, destino_direccion: record.destinoDireccion || null,
       ...(record.contractual ? {transportista_contractual_nombre: record.contractual.nombre || null, transportista_contractual_nif: record.contractual.nif || null, transportista_contractual_domicilio: record.contractual.domicilio || null} : {})
     };
-    let { error: insErr } = await sb.from('decas').insert(filaDeca);
-    if(insErr && /prevista/.test(insErr.message || '')){ delete filaDeca.fecha_prevista_descarga; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 42: se guarda sin ese dato (el PDF sí lo lleva)
-    if(insErr && /direccion|domicilio|contractual/.test(insErr.message || '')){   // falta la actualización 33 o 37: se guarda sin esos datos (el PDF sí los lleva)
-      delete filaDeca.transportista_domicilio; delete filaDeca.origen_direccion; delete filaDeca.destino_direccion;
-      delete filaDeca.transportista_contractual_nombre; delete filaDeca.transportista_contractual_nif; delete filaDeca.transportista_contractual_domicilio;
-      ({ error: insErr } = await sb.from('decas').insert(filaDeca));
-    }
-    if(insErr){ alert('No se pudo guardar en el servidor: ' + insErr.message); return; }
-
-    if(currentCarga.manual) guardarDatosNuevos(currentCarga);
-    else { cargasCerradasAqui.add(String(currentCarga.id)); await sb.from('cargas_planificadas').update({estado:'cerrada'}).eq('id', currentCarga.id); }
-    pollHistorial(); pollCargasPendientes();
+    const item = {tipo:'deca', publicId, blob: pdfBlob, fila: filaDeca, cargaId: currentCarga && !currentCarga.manual ? currentCarga.id : null,
+      manual: !!(currentCarga && currentCarga.manual), cargaManual: currentCarga && currentCarga.manual ? JSON.parse(JSON.stringify(currentCarga)) : null};
+    const r = navigator.onLine === false ? {error: {message: 'Failed to fetch'}} : await subirDeca(item);
+    if(r.error){
+      if(!esErrorRed(r.error)){ alert((r.paso === 'pdf' ? 'No se pudo subir el PDF al servidor: ' : 'No se pudo guardar en el servidor: ') + (r.error.message || r.error)); return; }
+      try{ await colaAnadir(item); sinCobertura = true; }catch(e){ alert('No hay cobertura y no se ha podido guardar en el móvil. Inténtalo otra vez en un momento.'); return; }
+      if(!item.manual && item.cargaId){ cargasCerradasAqui.add(String(item.cargaId)); cargasPendientes = cargasPendientes.filter(c => c.id !== item.cargaId); pintarCargas(); }
+      pintarCola();
+    } else { pollHistorial(); pollCargasPendientes(); }
   }
   // Deja la app lista para la siguiente carga pendiente del mismo viaje
   const eraManual = currentCarga && currentCarga.manual;
@@ -2408,6 +2741,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   render();
   guardarBlobEnMovil({deca_id: record.id, pdf_url: record.url, origen: record.origen, destino: record.destino, matricula: record.plate, fecha: now.toISOString()}, pdfBlob);
   showResult(record, pdfBlob);
+  if(sinCobertura) alert('📴 No hay cobertura: el DeCA está hecho y guardado en el móvil (puedes enseñar el PDF y el QR). Se enviará solo en cuanto haya señal.');
 };
 
 function showResult(r, pdfBlob){

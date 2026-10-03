@@ -1,6 +1,6 @@
 // Service worker de la app del conductor: permite abrirla sin cobertura.
 // Sube el número de versión cuando cambies index.html para que los móviles se actualicen antes.
-const CACHE = 'deca-conductor-v2';
+const CACHE = 'deca-conductor-v3';
 const BASICOS = [
   './', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js',
@@ -29,4 +29,13 @@ self.addEventListener('fetch', e => {
     if(resp.ok && (url.origin === location.origin || /cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com/.test(url.hostname))){ const copia = resp.clone(); caches.open(CACHE).then(c => c.put(req, copia)); }
     return resp;
   })));
+});
+
+// Al tocar un aviso (carga nueva, «¿has descargado?»…) se abre la app
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(cs => {
+    const c = cs.find(x => /index(-prueba)?\.html|\/$/.test(new URL(x.url).pathname));
+    return c ? c.focus() : self.clients.openWindow('./index.html');
+  }));
 });
