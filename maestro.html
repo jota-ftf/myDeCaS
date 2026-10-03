@@ -196,7 +196,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 let empresas = [], pagos = [], ajustes = {}, admins = [], miEmail = '', editando = null, cobrando = null, filtro = '';
 let planes = [], extrasCat = [], hay40 = false;   // planes y extras (editables con la actualización 40)
-const MODULOS = [['app','App del conductor'],['carton','Cartón de Tráfico'],['admin','Administración'],['contractual','Transportista contractual']];
+const MODULOS = [['app','App del conductor'],['carton','Cartón de Tráfico'],['admin','Administración']];   // (el transportista contractual ya no es opcional: va siempre)
 const planDe = k => planes.find(p => p.clave === k) || null;
 const nombrePlan = k => (planDe(k) || {}).nombre || k || '—';
 const extrasDe = e => Array.isArray(e.extras) ? e.extras : (e.extra_contractual ? ['contractual'] : []);

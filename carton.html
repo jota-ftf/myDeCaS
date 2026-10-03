@@ -1708,10 +1708,10 @@ function render(){
 let editandoId = null;
 // ====== TRANSPORTISTA CONTRACTUAL: extra de la suscripción (se enciende desde el programa maestro) ======
 // En el DeCA sale encima del transportista efectivo (si es distinto de él)
-const hayExtraContractual = () => !!licencia && (tieneModulo('contractual') || !!licencia.extra_contractual);
+const hayExtraContractual = () => true;   // por norma el transportista contractual va siempre en el DeCA (encima del efectivo): ya no es un extra
 function opcionesContractual(sel, valor){
   const pr = transPropia();
-  sel.innerHTML = '<option value="">Sin transportista contractual</option>' + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
+  sel.innerHTML = '<option value="">Contractual: tu empresa (por defecto)</option>' + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
   sel.value = valor !== undefined && valor !== null ? valor : (pr ? pr.id : '');
 }
 function pintarContractual(){
@@ -2011,7 +2011,7 @@ async function escribirComprobado(query, okMsg){
 const FICHEROS = {
   clientes: {titulo:'Clientes (cargador contractual)', aviso:'El NIF y el domicilio salen en el DeCA: complétalos siempre.', tablas:[
     {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax']]}]},
-  transportistas: {titulo:'Transportista contractual', aviso:'Empresas con las que el cliente contrata el transporte (incluida la tuya). Si tu empresa tiene contratado el extra «Transportista contractual», al apuntar el pedido se elige y sale en el DeCA encima del transportista efectivo. Marca cuál es tu empresa (sale por defecto en los pedidos). Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
+  transportistas: {titulo:'Transportista contractual', aviso:'Empresas con las que el cliente contrata el transporte (incluida la tuya). Por norma, el transportista contractual sale siempre en el DeCA, encima del transportista efectivo (aunque sean la misma empresa). Por defecto es tu empresa: márcala como «propia». Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
   autonomos: {titulo:'Transportista efectivo', aviso:'Camioneros autónomos que hacen el transporte: son el transportista efectivo del DeCA. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},

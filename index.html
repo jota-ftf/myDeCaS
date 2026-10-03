@@ -252,7 +252,7 @@
     <input type="text" id="ndTransNif" placeholder="NIF" autocomplete="off">
     <label>Domicilio transportista</label>
     <input type="text" id="ndTransDom" placeholder="Calle, población" autocomplete="off">
-    <details id="ndContrDet" style="margin-top:8px"><summary class="pmeta" style="cursor:pointer">➕ Hay transportista contractual (el cliente contrató con otra empresa)</summary>
+    <details id="ndContrDet" style="margin-top:8px"><summary class="pmeta" style="cursor:pointer">➕ Transportista contractual (si el cliente contrató con otra empresa; si no, sale tu empresa)</summary>
       <label>Transportista contractual</label><input type="text" id="ndContr" list="ndListaTrans" placeholder="Empresa con la que contrató el cliente" autocomplete="off">
       <label>NIF transportista contractual</label><input type="text" id="ndContrNif" autocomplete="off">
       <label>Domicilio transportista contractual</label><input type="text" id="ndContrDom" autocomplete="off">
@@ -678,7 +678,7 @@ $e('nuevoDecaBtn').onclick = ()=>{
   document.querySelectorAll('.pend-item').forEach(el=> el.classList.remove('activa'));
   ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndOrigenDir','ndDestino','ndDestinoDir','ndPeso','ndRef','ndAut','ndContr','ndContrNif','ndContrDom'].forEach(id => $e(id).value = '');
   $e('ndContrDet').open = false;
-  $e('ndContrDet').hidden = !(licenciaApp && (licenciaApp.extra_contractual || (Array.isArray(licenciaApp.modulos) && licenciaApp.modulos.includes('contractual'))));   // solo si la empresa tiene contratado el extra (o su plan lo incluye)
+  $e('ndContrDet').hidden = false;   // el transportista contractual va siempre por norma (si es otra empresa distinta del efectivo)
   $e('ndMercancia').value = 'Frutas y hortalizas frescas'; $e('ndPesoAprox').checked = true; $e('ndMsg').textContent = '';
   const t = transportistaPorDefecto();
   $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : ''; $e('ndTransDom').value = t ? (t.domicilio || '') : '';
@@ -2140,11 +2140,15 @@ const dirLugar = n => (lugares[String(n || '').toLowerCase()] || {}).direccion |
 const horarioCarga = n => { const l = lugares[String(n || '').toLowerCase()] || {}; return l.horarioCarga || l.horario || ''; };
 const horarioDescarga = n => (lugares[String(n || '').toLowerCase()] || {}).horario || '';
 const lineaHorario = (txt, h) => h ? `<div class="info-camion">🕐 ${txt}: <b>${escH(h)}</b></div>` : '';
-// Transportista contractual de una orden (con el extra contratado sale siempre, encima del efectivo)
-function contractualDe(c){
-  const id = c && c.transportista_contractual_id; if(!id) return null;
-  const t = (listaTrans || []).find(x => String(x.id) === String(id));
-  return t ? {nombre: t.nombre, nif: t.nif, domicilio: t.domicilio || ''} : null;
+// Transportista contractual: por norma sale SIEMPRE en el DeCA, encima del efectivo (aunque sean la misma empresa).
+// Si la orden no dice otro, el contractual es tu empresa (la que contrata con el cliente)
+const mismoTrans = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+function contractualDe(c, efectivoNombre){
+  const id = c && c.transportista_contractual_id;
+  let t = id ? (listaTrans || []).find(x => String(x.id) === String(id)) : null;
+  if(!t) t = (listaTrans || []).find(x => x.propia) || null;
+  if(!t) return null;   // sale siempre, aunque sea la misma empresa que el efectivo
+  return {nombre: t.nombre, nif: t.nif, domicilio: t.domicilio || ''};
 }
 // ====== Recogidas (ida) y Retorno: las órdenes de carga se reparten según la caja del cartón de donde vienen ======
 let idsRetorno = new Set();
@@ -2251,7 +2255,7 @@ function mostrarCarga(c, id){
     ${c.camion_info ? `<div class="info-camion">🚛 ${c.camion_info}</div>` : ''}
     ${lineaHorario('Horario de carga', horarioCarga(c.almacen))}${lineaHorario('Horario de descarga en ' + (c.destino || 'destino'), horarioDescarga(c.destino))}
     <b>Cargador:</b> ${cli.nombre||'—'} (NIF ${cli.nif||'—'})<br>
-    ${contractualDe(c) ? `<b>Transportista contractual:</b> ${escH(contractualDe(c).nombre)} (NIF ${escH(contractualDe(c).nif || '—')})<br>` : ''}
+    ${contractualDe(c, t.nombre) ? `<b>Transportista contractual:</b> ${escH(contractualDe(c, t.nombre).nombre)} (NIF ${escH(contractualDe(c, t.nombre).nif || '—')})<br>` : ''}
     <b>Domicilio cargador:</b> ${cli.domicilio||'—'}<br>
     <b>Transportista:</b> ${t.nombre||'—'} (NIF ${t.nif||'—'})<br>
     <b>Origen:</b> ${c.origen||'—'}<br>
@@ -2414,7 +2418,9 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
     transportistaNombre: cambiaTrans ? tNuevo.nombre : row.transportista_nombre, transportistaNif: cambiaTrans ? (tNuevo.nif || '') : row.transportista_nif, transportistaDomicilio: cambiaTrans ? (tNuevo.domicilio || '') : (row.transportista_domicilio || ''),
     origen: row.origen, destino: row.destino, mercancia: row.mercancia, peso: row.peso,
     origenDireccion: row.origen_direccion || '', destinoDireccion: row.destino_direccion || '',
-    contractual: row.transportista_contractual_nombre ? {nombre: row.transportista_contractual_nombre, nif: row.transportista_contractual_nif, domicilio: row.transportista_contractual_domicilio || ''} : null,
+    contractual: (() => { const ef = cambiaTrans ? tNuevo.nombre : row.transportista_nombre;   // al salir de la nave con un autónomo, tu empresa pasa a contractual
+      if(row.transportista_contractual_nombre) return {nombre: row.transportista_contractual_nombre, nif: row.transportista_contractual_nif, domicilio: row.transportista_contractual_domicilio || ''};
+      return contractualDe({}, ef); })(),
     autorizacionEspecial: row.autorizacion_especial || '',
     descargaPrevista: row.fecha_prevista_descarga ? fechaIsoATexto(row.fecha_prevista_descarga) : fechaPrevistaDescarga(new Date(row.fecha)).txt,
     matriculaHistorial: nuevoHistorial
@@ -2457,7 +2463,8 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
 
   const { error: updErr } = await sb.from('decas')
     .update({matricula: nuevaLimpia, matricula_historial: nuevoHistorial, matricula_pendiente: null, chofer_destino_id: null,
-      ...(cambiaTrans ? {transportista_nombre: tNuevo.nombre, transportista_nif: tNuevo.nif || null, transportista_domicilio: tNuevo.domicilio || null} : {})})
+      ...(cambiaTrans ? {transportista_nombre: tNuevo.nombre, transportista_nif: tNuevo.nif || null, transportista_domicilio: tNuevo.domicilio || null,
+          transportista_contractual_nombre: record.contractual ? record.contractual.nombre : null, transportista_contractual_nif: record.contractual ? record.contractual.nif || null : null, transportista_contractual_domicilio: record.contractual ? record.contractual.domicilio || null : null} : {})})
     .eq('id', row.id);
   if(updErr){ alert('No se pudo guardar el cambio: ' + updErr.message); return; }
   guardarBlobEnMovil({deca_id: row.deca_id, pdf_url: row.pdf_url, origen: row.origen, destino: row.destino, matricula: nuevaLimpia, fecha: row.fecha}, blob);
@@ -2683,7 +2690,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
     cargadorNombre: c.nombre, cargadorNif: c.nif, cargadorDomicilio: c.domicilio,
     transportistaNombre: t.nombre, transportistaNif: t.nif, transportistaDomicilio: t.domicilio || '',
     origen: currentCarga.origen, destino: currentCarga.destino, mercancia: currentCarga.mercancia,
-    contractual: currentCarga.manual ? currentCarga.contractualManual : contractualDe(currentCarga),
+    contractual: currentCarga.manual ? (currentCarga.contractualManual || contractualDe({}, t.nombre)) : contractualDe(currentCarga, t.nombre),
     origenDireccion: currentCarga.origen_direccion || dirLugar(currentCarga.almacen) || dirLugar(currentCarga.origen),
     destinoDireccion: currentCarga.destino_direccion || dirLugar(currentCarga.destino),
     peso: currentCarga.peso + (currentCarga.peso_aproximado ? ' (aprox.)' : ''),
