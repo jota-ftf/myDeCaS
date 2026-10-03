@@ -396,7 +396,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // =====================================================================
 
 // Si no hay cobertura y la librería no se pudo cargar, la app sigue abriendo en modo "sin cobertura"
-const EMPRESA = (() => { let q = ''; try{ q = new URLSearchParams(location.search).get('e') || ''; if(q) localStorage.setItem('empresa_codigo', q); return q || localStorage.getItem('empresa_codigo') || ''; }catch(_){ return q; } })();
+const EMPRESA = (() => { let q = ''; try{ q = new URLSearchParams(location.search).get('e') || ''; const antes = localStorage.getItem('empresa_codigo') || '';
+  // Si se abre el enlace de OTRA empresa en este móvil, se cierra la sesión de la anterior (cada uno entra en la suya con su PIN)
+  if(q && antes && q.toLowerCase() !== antes.toLowerCase()) ['persona_token','persona_id','persona_verificada','persona_pin_huella'].forEach(k => localStorage.removeItem(k));
+  if(q) localStorage.setItem('empresa_codigo', q); return q || antes; }catch(_){ return q; } })();
 const sb = (SUPABASE_URL.includes('TU-PROYECTO') || !window.supabase) ? null :
   window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth: {storageKey: 'mydecas-' + (EMPRESA || 'principal').toLowerCase(), persistSession: true, autoRefreshToken: true}});   // un «usuario» de Supabase por empresa en este móvil
 // ====== FASE 2: varias empresas. Cada empresa tiene su enlace (index.html?e=codigo); sin código = la empresa principal ======

@@ -785,7 +785,11 @@ table.fichero td.acc{white-space:nowrap;width:1%}
 const SUPABASE_URL = 'https://abeutxnyyyaxrmhoeemv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiZXV0eG55eXlheHJtaG9lZW12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyODIyNTAsImV4cCI6MjEwNTg1ODI1MH0.qQ0q0H3HbR6Dcno35uCWFYRPhKYHbSEIZAXf-_HtTfY';
 // =======================================================================================
-const EMPRESA = (() => { let q = ''; try{ q = new URLSearchParams(location.search).get('e') || ''; if(q) localStorage.setItem('empresa_codigo', q); return q || localStorage.getItem('empresa_codigo') || ''; }catch(_){ return q; } })();
+const EMPRESA = (() => { let q = ''; try{ q = new URLSearchParams(location.search).get('e') || ''; const antes = localStorage.getItem('empresa_codigo') || '';
+  // La sesión del cartón va POR EMPRESA en este navegador: abrir el enlace de otra empresa no reutiliza la sesión de la tuya
+  const viejo = localStorage.getItem('carton_token'); if(viejo){ const k = 'carton_token@' + antes.toLowerCase(); if(!localStorage.getItem(k)) localStorage.setItem(k, viejo); localStorage.removeItem('carton_token'); }
+  if(q) localStorage.setItem('empresa_codigo', q); return q || antes; }catch(_){ return q; } })();
+const CLAVE_TOKEN = 'carton_token@' + String(EMPRESA || '').toLowerCase();
 // Cada empresa tiene su propio «usuario» de Supabase en este navegador (así se pueden abrir dos empresas sin mezclarse),
 // y el soporte que entra con permiso usa uno solo para esa pestaña (no toca la sesión normal de este ordenador)
 const MODO_SOPORTE = (() => { try{ return new URLSearchParams(location.search).has('soporte') || !!sessionStorage.getItem('carton_soporte'); }catch(_){ return false; } })();
@@ -2967,9 +2971,9 @@ function renderAjustes(box){
 let usuario = null, arrancado = false;
 const ROL_TXT = {trafico:'Tráfico', direccion:'Dirección'};
 // Acceso seguro (actualización 34): el PIN se comprueba en la base de datos y se guarda solo un «pase de sesión»
-const tokenCarton = () => { try{ return sessionStorage.getItem('carton_soporte') || localStorage.getItem('carton_token') || ''; }catch(_){ return ''; } };
+const tokenCarton = () => { try{ return sessionStorage.getItem('carton_soporte') || localStorage.getItem(CLAVE_TOKEN) || ''; }catch(_){ return ''; } };
 function guardarToken(t){ try{ if(sessionStorage.getItem('carton_soporte')){ if(!t) sessionStorage.removeItem('carton_soporte'); else sessionStorage.setItem('carton_soporte', t); return; } }catch(_){}
-  try{ if(t) localStorage.setItem('carton_token', t); else localStorage.removeItem('carton_token'); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
+  try{ if(t) localStorage.setItem(CLAVE_TOKEN, t); else localStorage.removeItem(CLAVE_TOKEN); localStorage.removeItem('carton_usuario'); localStorage.removeItem('carton_huella'); }catch(_){} }
 async function rpcAcceso(nombre, args){
   const { data, error } = await sb.rpc(nombre, args);
   if(error) return {error: /function|schema cache|not find/i.test(error.message || '') ? 'Falta ejecutar la actualización 34 en Supabase.' : error.message};
