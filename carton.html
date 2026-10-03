@@ -225,6 +225,7 @@ table.adm input.field{width:90px;padding:3px 6px}
 .rem-btn.on{background:var(--warn);border-color:var(--warn);color:#fff;font-weight:800}
 .orden-bloq td{opacity:.55}
 .line .dst{color:var(--muted);font-size:12.5px}
+.line .dst-alm{font-weight:700;color:var(--ink)}
 .line .ref{font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:4px}
 .line .qty{font-family:var(--f-hand);font-weight:700;font-size:23px;color:var(--pen);white-space:nowrap;line-height:1;text-align:right}
 .tipo{display:inline-block;font-family:var(--f-ui, system-ui, sans-serif);font-size:10.5px;font-weight:700;line-height:1;padding:2px 3px;margin:0 2px 0 1px;border-radius:4px;border:1px solid currentColor;text-align:center;vertical-align:.35em;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -345,12 +346,18 @@ body:not([data-modo="hoja"]) #hoja{display:none}
 /* Vista en columnas: pedidos sin asignar a la izquierda (fijos al bajar) y camiones a la derecha */
 #columnasBtn[aria-pressed="true"]{background:var(--accent,#3b6fd4);color:#fff;border-color:transparent}
 @media (min-width:900px){
-  body[data-columnas="si"]:not([data-modo="hoja"]) main.carton{display:grid;grid-template-columns:minmax(300px,36%) minmax(0,1fr);gap:14px;align-items:start}
+  /* pedidos sin asignar: una columna por zona (las que tengan pedidos), siempre a la vista; camiones: una columna por dirección */
+  body[data-columnas="si"]:not([data-modo="hoja"]) main.carton{display:grid;grid-template-columns:minmax(300px, min(calc(var(--nz,1) * 330px), 62%)) minmax(0,1fr);gap:14px;align-items:start}
+  body[data-columnas="si"]:not([data-modo="hoja"]) #trayZonas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 12px;align-items:start}
+  body[data-columnas="si"]:not([data-modo="hoja"]) #trayZonas > .tray-zona + .tray-zona{border-left:1px dashed var(--line);padding-left:10px}
+  body[data-columnas="si"]:not([data-modo="hoja"]) #dirBlocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px;align-items:start}
+  body[data-columnas="si"]:not([data-modo="hoja"]) #dirBlocks .trucks{grid-template-columns:1fr}
+  body[data-columnas="si"]:not([data-modo="hoja"]) .dirblock.vacia{display:none}
   body[data-columnas="si"]:not([data-modo="hoja"]) main.carton > .carton-head{grid-column:1 / -1}
   body[data-columnas="si"]:not([data-modo="hoja"]) #tray{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto;margin:0}
   body[data-columnas="si"]:not([data-modo="hoja"]) #dirBlocks{min-width:0}
-  body[data-columnas="si"] .hoja{grid-template-columns:minmax(300px,40%) minmax(0,1fr)}
-  body[data-columnas="si"] .hoja-cols{column-count:1}
+  body[data-columnas="si"] .hoja{grid-template-columns:minmax(300px, min(calc(var(--nzh,1) * 340px), 64%)) minmax(0,1fr);overflow:visible;align-items:start}
+  body[data-columnas="si"] .hoja-izq{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto;align-self:start}
 }
 .hcam{border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:0 0 10px;background:var(--surface)}
 .hcam .hsalen{border-bottom:1px dashed var(--line);margin-bottom:4px}
@@ -362,8 +369,19 @@ body:not([data-modo="hoja"]) #hoja{display:none}
 @media (max-width:900px){.hoja{grid-template-columns:1fr}.hoja-der{border-left:0;border-top:2px solid var(--muted)}}
 .hoja-grupo{break-inside:avoid;margin:0 0 14px}
 .hoja-grupo h4{margin:4px 0 2px;font-family:var(--f-hand);font-size:17px;font-weight:700;text-transform:uppercase;text-decoration:underline;text-underline-offset:3px}
-.hrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) minmax(0,.6fr) minmax(0,.9fr) 128px 16px 16px 16px;gap:6px;align-items:end;min-height:27px;border-bottom:1px solid var(--line);font-family:var(--f-hand);font-size:14px;text-transform:uppercase;line-height:1.1;padding:2px 0}
-.hrow > span{overflow-wrap:anywhere;white-space:normal}   /* en la Hoja se ve el nombre entero (si no cabe, baja de línea) */
+.hrow{display:grid;grid-template-columns:minmax(0,1fr) auto 16px 18px 16px;grid-template-areas:"a q st ed x" "b b b b b";gap:2px 6px;align-items:center;border-bottom:1px solid var(--line);font-family:var(--f-hand);font-size:14px;text-transform:uppercase;line-height:1.15;padding:4px 0}
+/* 1ª línea: almacén (→ destino), en nombre corto · 2ª línea: cliente, cargador y camión. Todo se ve entero: si no cabe, baja de línea */
+.hr-a{grid-area:a;min-width:0;overflow-wrap:break-word}
+.hrow > .hq{grid-area:q}.hrow > .st{grid-area:st}.hrow > .edit-btn{grid-area:ed}.hrow > .xbtn{grid-area:x}
+.hr-b{grid-area:b;display:flex;flex-wrap:wrap;align-items:center;gap:3px 8px;min-width:0}
+.hcli{font:12px var(--f-body, system-ui, sans-serif);color:var(--muted);text-transform:none;min-width:0;overflow-wrap:break-word;flex:1 1 140px}
+.hops{display:flex;align-items:center;gap:4px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.hops .hsel{width:130px}
+.hdest{font-weight:700}
+.hzonas{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:0 14px;align-items:start}
+.hzona{border-left:2px solid var(--muted);padding-left:12px}
+.hzona-t{margin:0 0 4px;font:700 12px var(--f-ui, system-ui, sans-serif);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.hcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;align-items:start}
 .hrow .hsub{font-size:11px;color:var(--muted);font-family:var(--f-mono);text-transform:none}
 .hrow .hq{text-align:right;font-weight:700;color:var(--pen);font-size:20px;min-width:58px}
 .hrow > span.hq{overflow:visible;white-space:normal;line-height:1.35}
@@ -839,8 +857,16 @@ function zonaPorUbicacion(x){
   if(isNaN(lat) || isNaN(lng)) return '';
   return zonaDeCoords(lat, lng);
 }
-const zonaDestino = d => zonasDestino[normTxt(d || '')] || '';
+const zonaDestino = d => zonasDestino[normTxt(d || '')] || zonasDestino[normTxt(nCorto(d))] || '';
 // Zona de un pedido: la del camión si ya va en uno con dirección; si no, la de su destino
+// En el cartón sale el nombre corto del almacén o destino (la razón social, «Nombre en el DeCA», queda para el DeCA)
+function nCorto(txt){
+  const t = String(txt || '').trim(); if(!t) return '';
+  const k = t.toLowerCase();
+  if(lugares[k]) return lugares[k].nombre || t;
+  const e = Object.values(lugares).find(x => x.nombreDeca && x.nombreDeca.trim().toLowerCase() === k);
+  return e && e.nombre ? e.nombre : t;
+}
 function zonaLinea(l){ const cam = l.camion_id && camion(l.camion_id); if(cam && cam.direccion && cam.direccion !== 'X' && ZONA_NOMBRE[cam.direccion]) return cam.direccion; return zonaDestino(l.destino) || 'X'; }
 // Botones de zona de arriba: Todos, Levante, Sur y las demás zonas solo si hoy tienen pedidos o camiones
 function pintarFiltroZonas(conCosas){
@@ -1039,7 +1065,7 @@ async function cargarMaestros(){
   ]);
   destinosNombres = (de.data || []).map(x => x.nombre);
   zonasDestino = {}; (de.data || []).forEach(x => { const z = zonaPorUbicacion(x); if(z) zonasDestino[normTxt(x.nombre)] = z; });
-  (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url, horario:x.horario || '', pais:x.pais || '', nombreDeca:x.nombre_deca || ''});
+  (de.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lng, url:x.maps_url, horario:x.horario || '', pais:x.pais || '', nombreDeca:x.nombre_deca || '', nombre:x.nombre});
   personalTodos = p.data || []; clientesTodos = c.data || []; transportistasTodos = t.data || [];
   // en los desplegables solo salen los que no están de baja
   personal = personalTodos.filter(x => !x.baja); clientes = clientesTodos.filter(x => !x.baja); transportistas = transportistasTodos.filter(x => !x.baja);
@@ -1053,7 +1079,7 @@ async function cargarMaestros(){
   $('#destinosList').innerHTML = (de.data || []).map(x => `<option value="${esc(x.nombre)}">`).join('');
   // Almacenes: si hay tabla en Supabase se usa; si no, los que ya se han apuntado alguna vez
   const al = await leerTodo(() => sb.from('almacenes').select('*').order('nombre').order('id'));
-  (al.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = Object.assign(lugares[String(x.nombre).toLowerCase()] || {}, {lat:x.lat, lng:x.lon, url:x.maps_url, nombreDeca:x.nombre_deca || ''}));
+  (al.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = Object.assign(lugares[String(x.nombre).toLowerCase()] || {}, {lat:x.lat, lng:x.lon, url:x.maps_url, nombreDeca:x.nombre_deca || '', nombre:x.nombre}));
   const hist = await sb.from('carton_lineas').select('almacen').limit(1000);
   const nombres = new Set([...(al.data||[]).map(x => x.nombre), ...(hist.data||[]).map(x => x.almacen)].filter(Boolean));
   almacenesNombres = [...nombres].sort((a,b) => a.localeCompare(b,'es'));
@@ -1134,7 +1160,7 @@ async function cargarDia(){
 // ====== ORDEN DE DESCARGA SUGERIDO Y HOJA DE CARGA EN LA NAVE ======
 // Por la distancia (GPS de cada destino) y la hora a la que descargan (horario de su ficha), con las pausas obligatorias.
 // Se puede aplicar y luego cambiar a mano. La hoja de carga es al revés: lo último que se descarga entra primero (al fondo).
-const ptLugar = n => { const l = lugares[String(n || '').toLowerCase()]; if(!l) return null; const la = parseFloat(String(l.lat ?? '').replace(',', '.')), lo = parseFloat(String(l.lng ?? '').replace(',', '.')); return !isNaN(la) && !isNaN(lo) ? {lat:la, lng:lo} : coordsDe(l.url); };
+const ptLugar = n => { const l = lugares[String(n || '').toLowerCase()] || lugares[String(nCorto(n)).toLowerCase()]; if(!l) return null; const la = parseFloat(String(l.lat ?? '').replace(',', '.')), lo = parseFloat(String(l.lng ?? '').replace(',', '.')); return !isNaN(la) && !isNaN(lo) ? {lat:la, lng:lo} : coordsDe(l.url); };
 const distKm = (a, b) => { const R = 6371, r = x => x * Math.PI / 180, dA = r(b.lat - a.lat), dO = r(b.lng - a.lng); const h = Math.sin(dA/2)**2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dO/2)**2; return 2 * R * Math.asin(Math.sqrt(h)); };
 function ventanasHorario(txt){   // «6:00-14:00», «de 5 a 13 h», «22:00-6:00»… → [[min apertura, min cierre], …]
   const out = [], re = /(\d{1,2})(?:[:.h](\d{2}))?\s*(?:-|–|a|hasta)\s*(\d{1,2})(?:[:.h](\d{2}))?/gi; let m;
@@ -1553,7 +1579,7 @@ function lineHTML(l, idx, total){
   const d = decas[l.carga_id];
   return `<li class="line" draggable="true" data-id="${l.id}">
     <button type="button" class="st ${est}" data-act="problema" title="${ST_NAME[est]}${d ? ' · ' + esc(d.deca_id) : ''} (toca para marcar/quitar problema)" aria-label="Estado: ${ST_NAME[est]}">${ST_TXT[est]}</button>
-    <div class="what">${enCamion ? `<div class="dst-big">→ ${esc(l.destino || 'sin destino')}</div>` : ''}${enCamion ? `<span class="rn" title="Orden de ruta">${idx+1}</span>` : ''}${l.fecha !== fecha ? `<span class="old">${fechaBonita(l.fecha)}</span>` : ''}${(() => { const pa = (lugares[String(l.destino || '').toLowerCase()] || {}).pais; return ajustes.cmr_activo === 'si' && pa && !/^espa/i.test(pa) ? `<span class="rn" style="background:#6a4bc4" title="Destino en ${esc(pa)}: se hace CMR en lugar de DeCA">🌍 CMR</span>` : ''; })()}${l.orden_descarga != null && enCamion && !l.retorno ? `<span class="rn" style="background:var(--ok,#2e9d6b)" title="Orden de descarga">⬇${l.orden_descarga + 1}</span>` : ''}<b>${esc(l.almacen)}</b><a class="maplink" href="${esc(urlMapa(l.almacen))}" target="_blank" rel="noopener" title="Ver en el mapa" draggable="false">📍</a> – <span class="cli">${esc(l.cliente_nombre)}</span>${l.referencia ? `<span class="ref">${esc(l.referencia)}</span>` : ''}${l.mercancia && l.mercancia !== 'fruta y verdura' ? `<span class="tag">${esc(l.mercancia)}</span>` : ''}${l.autorizacion_especial ? `<span class="tag" title="Autorización especial">Aut. ${esc(l.autorizacion_especial)}</span>` : ''}${enCamion ? '' : `<br><span class="dst">→ ${esc(l.destino || 'sin destino')}</span>`}${d && d.pdf_url ? ` · <a href="${esc(d.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener" class="dst">ver DeCA</a>` : ''}</div>
+    <div class="what">${enCamion ? `<div class="dst-big">→ ${esc(nCorto(l.destino) || 'sin destino')}</div>` : ''}${enCamion ? `<span class="rn" title="Orden de ruta">${idx+1}</span>` : ''}${l.fecha !== fecha ? `<span class="old">${fechaBonita(l.fecha)}</span>` : ''}${(() => { const pa = (lugares[String(l.destino || '').toLowerCase()] || {}).pais; return ajustes.cmr_activo === 'si' && pa && !/^espa/i.test(pa) ? `<span class="rn" style="background:#6a4bc4" title="Destino en ${esc(pa)}: se hace CMR en lugar de DeCA">🌍 CMR</span>` : ''; })()}${l.orden_descarga != null && enCamion && !l.retorno ? `<span class="rn" style="background:var(--ok,#2e9d6b)" title="Orden de descarga">⬇${l.orden_descarga + 1}</span>` : ''}<b title="${esc(l.almacen)}">${esc(nCorto(l.almacen))}</b><a class="maplink" href="${esc(urlMapa(l.almacen))}" target="_blank" rel="noopener" title="Ver en el mapa" draggable="false">📍</a>${enCamion ? '' : ` <span class="dst-alm" title="${esc(l.destino || '')}">→ ${esc(nCorto(l.destino) || 'sin destino')}</span>`}<br><span class="cli">${esc(l.cliente_nombre)}</span>${l.referencia ? `<span class="ref">${esc(l.referencia)}</span>` : ''}${l.mercancia && l.mercancia !== 'fruta y verdura' ? `<span class="tag">${esc(l.mercancia)}</span>` : ''}${l.autorizacion_especial ? `<span class="tag" title="Autorización especial">Aut. ${esc(l.autorizacion_especial)}</span>` : ''}${d && d.pdf_url ? ` · <a href="${esc(d.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener" class="dst">ver DeCA</a>` : ''}</div>
     <span class="qty">${qtyHTML(l)}${l.remonta ? '<span class="x2" title="Va a dos alturas">×2</span>' : ''}${d && incidenciasPor[d.deca_id] ? (incidenciasPor[d.deca_id].some(x => !x.todo_bien) ? `<button type="button" class="inc-btn mal" data-verinc="${esc(d.deca_id)}" title="Incidencia en la descarga: ver fotos y firma">⚠️</button>` : `<button type="button" class="inc-btn" data-verinc="${esc(d.deca_id)}" title="Entregado con firma: ver">✍️</button>`) : ''}</span>
     <div class="ops">${enCamion ? `<span class="ord"><button type="button" data-act="subir" ${idx === 0 ? 'disabled' : ''} aria-label="Subir en la ruta">▲</button><button type="button" data-act="bajar" ${idx === total-1 ? 'disabled' : ''} aria-label="Bajar en la ruta">▼</button></span>` : ''}${modoSel}${cgSel}<select data-act="mover" aria-label="Mover a camión">${camOpts}</select>${envio}
       ${enCamion ? `<button type="button" class="rem-btn ${l.remonta ? 'on' : ''}" data-act="remonta" title="${l.remonta ? 'Va remontado (toca para quitar)' : '¿Va remontado encima de otra carga? Toca para marcarlo: al chófer le saldrá «¡OJO! este palet va remontado»'}">⇅</button>` : ''}<button type="button" class="edit-btn" data-act="editar" title="Editar el pedido" aria-label="Editar el pedido">✏️</button><button type="button" class="xbtn" data-act="borrar" title="Anular pedido" aria-label="Anular pedido">×</button></div>
@@ -1710,13 +1736,15 @@ function render(){
   $('#trayZonas').innerHTML = zonasVer.map(z => { const ls = tray.filter(l => zonaLinea(l) === z);
     if(!ls.length && !(z === 'X' && !tray.length)) return '';
     return `<div class="tray-zona">${tray.length ? `<div class="tray-zona-t">${ZT[z]} · ${ls.length} pedido${ls.length === 1 ? '' : 's'} · ${qtyHTML(sumaBultos(ls))} · ${camionesPara(ls)} ${camionesPara(ls) === 1 ? 'camión' : 'camiones'}</div>` : ''}<ul class="lines ${ls.length ? '' : 'empty'}" data-zone="tray">${ls.map(l => lineHTML(l)).join('')}</ul></div>`; }).join('');
+  document.body.style.setProperty('--nz', String(Math.max(1, $('#trayZonas').querySelectorAll(':scope > .tray-zona').length)));
   $('#trayLoad').textContent = tray.length ? `${tray.length} líneas · ${fmt(ldmDe(tray))} m de carga` : '';
 
   const dirs = filter === 'all' ? DIRS : [filter];
+  const hayCam = dirs.some(d => camiones.some(t => (t.direccion || 'X') === d));
   $('#dirBlocks').innerHTML = dirs.map(d => {
     const ts = camiones.filter(t => (t.direccion || 'X') === d);
     if(!ts.length && !nec[d] && !['V','S'].includes(d)) return '';   // las zonas sin nada hoy no salen (Levante y Sur siempre)
-    return `<section class="dirblock"><h3>${DIR_TXT[d]} · ${ts.length} camiones${d !== 'X' && nec[d] ? ` <span class="nec ${nec[d] > ts.length ? 'falta' : ''}">· hacen falta ${nec[d]}${nec[d] > ts.length ? ` (faltan ${nec[d] - ts.length})` : ''}</span>` : ''}</h3>
+    return `<section class="dirblock ${hayCam && !ts.length ? 'vacia' : ''}"><h3>${DIR_TXT[d]} · ${ts.length} camiones${d !== 'X' && nec[d] ? ` <span class="nec ${nec[d] > ts.length ? 'falta' : ''}">· hacen falta ${nec[d]}${nec[d] > ts.length ? ` (faltan ${nec[d] - ts.length})` : ''}</span>` : ''}</h3>
       <div class="trucks">${ts.map(truckHTML).join('') || '<p class="hint">Nadie sale en esta dirección.</p>'}</div></section>`;
   }).join('');
   if(modoVista === 'hoja') renderHoja();
@@ -1979,9 +2007,9 @@ function renderHoja(){
   const ls = lineas.filter(l => !l.retorno && dirOk(l));
   // agrupadas por destino, como en el cartón de papel
   const grupos = {};
-  ls.forEach(l => { const k = (l.destino || 'Sin destino').trim().toUpperCase(); (grupos[k] = grupos[k] || []).push(l); });
+  ls.forEach(l => { const k = (nCorto(l.destino) || 'Sin destino').trim().toUpperCase(); (grupos[k] = grupos[k] || []).push(l); });
   const nombreCam = id => (camion(id) || {}).nombre || '';
-  const filasGrupo = lista => {
+  const filasGrupo = (lista, conDest) => {
     lista.sort((a,b) => nombreCam(a.camion_id).localeCompare(nombreCam(b.camion_id), 'es') || ((a.orden ?? 1e9) - (b.orden ?? 1e9)) || String(a.created_at).localeCompare(String(b.created_at)));
     let prev = null;
     return lista.map(l => {
@@ -1990,15 +2018,16 @@ function renderHoja(){
       const opts = `<option value="">______</option>` + camiones.map(t => `<option value="${t.id}" ${t.id === l.camion_id ? 'selected' : ''}>${t.id === l.camion_id && ditto ? '〃' : esc(t.nombre)}</option>`).join('');
       const cgMini = l.retorno ? '' : l.modo === 'ruta' ? '<span class="hcg-txt" title="Lo recoge el chófer en ruta">chófer</span>'
         : `<select class="hcg ${l.cargador_id ? '' : 'vacio'}" data-hcg="1" aria-label="Cargador" title="Cargador" ${HECHA(est) ? 'disabled' : ''}>${opcionesCargador(l.cargador_id).replace('¿Cargador?', 'cargador?')}</select>`;
+      const envioH = l.modo === 'hub' && !l.retorno ? (enviada(l) ? '<span class="hcg-txt" title="Orden enviada">✓ enviada</span>' : `<button type="button" class="btn small primary hsend" data-act="enviar" ${l.cargador_id ? '' : 'disabled'} title="Enviar la orden al cargador">Enviar</button>`) : '';
+      const lleno = l.camion_id && huecoTxt(l.camion_id).cls === 'over';
       return `<div class="hrow" data-id="${l.id}">
-        <span title="${esc(l.cliente_nombre)}">${esc(l.cliente_nombre)}</span>
-        <span class="halm" title="${esc(l.almacen)}"><span class="halm-n">${esc(l.almacen)}</span>${cgMini}${l.modo === 'hub' && !l.retorno ? (enviada(l) ? '<span class="hcg-txt" title="Orden enviada">✓ enviada</span>' : `<button type="button" class="btn small primary hsend" data-act="enviar" ${l.cargador_id ? '' : 'disabled'} title="Enviar la orden al cargador">Enviar</button>`) : ''}</span>
-        <span class="hsub" title="Nº de pedido">${esc(l.referencia || '')}</span>
-        <select class="hsel ${l.camion_id ? '' : 'vacio'} ${l.camion_id && huecoTxt(l.camion_id).cls === 'over' ? 'over' : ''}" data-hmover="1" aria-label="Chófer" ${l.camion_id && huecoTxt(l.camion_id).cls === 'over' ? 'title="Este camión ya va lleno: no entra"' : ''}>${opts}</select>
+        <div class="hr-a"><b class="halm-n" title="Almacén: ${esc(l.almacen)}">${esc(nCorto(l.almacen))}</b>${conDest ? ` <span class="hdest" title="Destino: ${esc(l.destino || '')}">→ ${esc(nCorto(l.destino) || 'sin destino')}</span>` : ''}</div>
         <span class="hq">${qtyHTML(l)}${l.remonta ? '<span class="x2">×2</span>' : ''}</span>
         <button type="button" class="st ${est}" data-act="problema" title="${ST_NAME[est]}" aria-label="Estado: ${ST_NAME[est]}">${ST_TXT[est]}</button>
         <button type="button" class="edit-btn" data-act="editar" title="Editar el pedido" aria-label="Editar el pedido">✏️</button>
         <button type="button" class="xbtn" data-act="borrar" title="Anular pedido" aria-label="Anular pedido">×</button>
+        <div class="hr-b"><span class="hcli" title="Cliente: ${esc(l.cliente_nombre)}">${esc(l.cliente_nombre)}${l.referencia ? ` <span class="hsub" title="Nº de pedido">${esc(l.referencia)}</span>` : ''}</span>
+          <span class="hops">${cgMini}${envioH}<select class="hsel ${l.camion_id ? '' : 'vacio'} ${lleno ? 'over' : ''}" data-hmover="1" aria-label="Chófer" ${lleno ? 'title="Este camión ya va lleno: no entra"' : 'title="Camión"'}>${opts}</select></span></div>
       </div>`;
     }).join('');
   };
@@ -2020,20 +2049,28 @@ function renderHoja(){
       <span class="hpal ${huecoTxt(t.id).cls}" title="Lo mismo que en la vista Cajas">${huecoTxt(t.id).txt}</span>${acc}</div>`;
   }).join('');
   if(enColumnas){
-    const sinAsig = ls.filter(l => !l.camion_id), gs = {};
-    sinAsig.forEach(l => { const k = (l.destino || 'Sin destino').trim().toUpperCase(); (gs[k] = gs[k] || []).push(l); });
-    const camsHtml = cams.map(t => { const suyas = lineas.filter(l => l.camion_id === t.id && !l.retorno);
+    // Pedidos sin asignar: una columna por zona (solo las que tienen pedidos), fijos a la izquierda; camiones: una columna por dirección
+    const sinAsig = ls.filter(l => !l.camion_id);
+    const ZT = {...ZONA_NOMBRE, X:'Sin zona'};
+    const zonas = DIRS.filter(z => (filter === 'all' || z === filter || z === 'X') && sinAsig.some(l => zonaLinea(l) === z));
+    const colZona = z => { const gs = {}; sinAsig.filter(l => zonaLinea(l) === z).forEach(l => { const k = (nCorto(l.destino) || 'Sin destino').trim().toUpperCase(); (gs[k] = gs[k] || []).push(l); });
+      const n = Object.values(gs).reduce((t, x) => t + x.length, 0);
+      return `<div class="hzona"><h4 class="hzona-t">${esc(ZT[z] || z)} · ${n}</h4>${Object.entries(gs).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista, false)}</div>`).join('')}</div>`; };
+    const camCard = t => { const suyas = lineas.filter(l => l.camion_id === t.id && !l.retorno);
       const cab = salen.split('<div class="hsalen">').filter(Boolean)[cams.indexOf(t)] || '';
-      return `<div class="hcam"><div class="hsalen">${cab}${suyas.length ? filasGrupo(suyas.slice()) : '<p class="hint" style="margin:4px 0">Sin pedidos todavía: elígelo en el desplegable de un pedido de la izquierda.</p>'}</div>`; }).join('');
+      return `<div class="hcam"><div class="hsalen">${cab}${suyas.length ? filasGrupo(suyas.slice(), true) : '<p class="hint" style="margin:4px 0">Sin pedidos todavía: elígelo en el desplegable de un pedido de la izquierda.</p>'}</div>`; };
+    const dirsCam = DIRS.filter(d => cams.some(t => (t.direccion || 'X') === d));
+    const camsHtml = dirsCam.map(d => `<div class="hcol"><h4 class="hzona-t">${esc(DIR_TXT[d])} · ${cams.filter(t => (t.direccion || 'X') === d).length}</h4>${cams.filter(t => (t.direccion || 'X') === d).map(camCard).join('')}</div>`).join('');
+    box.style.setProperty('--nzh', String(Math.max(1, zonas.length)));
     box.innerHTML = `<div class="hoja-izq">${nueva}
         <h4 style="margin:8px 0 6px;font-family:var(--f-hand);font-size:17px;text-decoration:underline">PEDIDOS SIN ASIGNAR · ${sinAsig.length}</h4>
-        <div class="hoja-cols">${Object.entries(gs).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista)}</div>`).join('') || '<p class="hint">No hay pedidos sin asignar. 👍</p>'}</div>
+        ${zonas.length ? `<div class="hzonas">${zonas.map(colZona).join('')}</div>` : '<p class="hint">No hay pedidos sin asignar. 👍</p>'}
       </div>
-      <div class="hoja-der"><h4 style="margin:4px 0 6px;font-family:var(--f-hand);font-size:17px;text-decoration:underline">CAMIONES · ${cams.length}</h4>${camsHtml || '<p class="hint">Añade los camiones en «Salen hoy» (panel de la izquierda).</p>'}</div>`;
+      <div class="hoja-der"><h4 style="margin:4px 0 6px;font-family:var(--f-hand);font-size:17px;text-decoration:underline">CAMIONES · ${cams.length}</h4>${camsHtml ? `<div class="hcols">${camsHtml}</div>` : '<p class="hint">Añade los camiones en «Salen hoy» (panel de la izquierda).</p>'}</div>`;
     return;
   }
   box.innerHTML = `<div class="hoja-izq">${nueva}
-      <div class="hoja-cols">${Object.entries(grupos).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista)}</div>`).join('') || '<p class="hint">Aún no hay pedidos. Apúntalos en la fila de arriba: almacén, cliente, destino y cantidad (por ejemplo 4+1E).</p>'}</div>
+      <div class="hoja-cols">${Object.entries(grupos).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista, false)}</div>`).join('') || '<p class="hint">Aún no hay pedidos. Apúntalos en la fila de arriba: almacén, cliente, destino y cantidad (por ejemplo 4+1E).</p>'}</div>
     </div>
     <div class="hoja-der"><h4 style="margin:4px 0 6px;font-family:var(--f-hand);font-size:17px;text-decoration:underline">SALEN HOY</h4>${salen || '<p class="hint">Añade los camiones en «Salen hoy» (panel de la izquierda).</p>'}
       <p class="hint" style="margin-top:10px">Para matrículas, orden de ruta, retorno u observaciones, cambia a la vista ▦ Cajas.</p></div>`;
@@ -3510,7 +3547,7 @@ function imprimirHoja(){
   const dirOk = l => !l.camion_id || filter === 'all' || ((camion(l.camion_id) || {}).direccion || 'X') === filter;
   const ls = lineas.filter(l => !l.retorno && dirOk(l));
   const grupos = {};
-  ls.forEach(l => { const k = (l.destino || 'Sin destino').trim().toUpperCase(); (grupos[k] = grupos[k] || []).push(l); });
+  ls.forEach(l => { const k = (nCorto(l.destino) || 'Sin destino').trim().toUpperCase(); (grupos[k] = grupos[k] || []).push(l); });
   const nombreCam = id => (camion(id) || {}).nombre || '';
   const cams = camiones.filter(t => filter === 'all' || (t.direccion || 'X') === filter);
   let h = prCabecera(cams);
@@ -3522,7 +3559,7 @@ function imprimirHoja(){
       const ditto = l.camion_id && l.camion_id === prev; prev = l.camion_id;
       const chof = l.camion_id ? (ditto ? '〃' : esc(nombreCam(l.camion_id))) : '______';
       const cgN = l.modo === 'hub' && l.cargador_id ? (persona(l.cargador_id) || {}).nombre : l.modo === 'ruta' ? 'chófer' : '';
-      return `<tr><td>${esc(l.cliente_nombre)}</td><td class="alm">${esc(l.almacen)}${cgN ? ` <span style="font-size:7pt;text-transform:none">(${esc(cgN)})</span>` : ''}</td><td class="ref">${esc(l.referencia || '')}</td><td class="chof">${chof}</td><td class="q">${qtyHTML(l)}${l.remonta ? ' ×2' : ''}</td><td class="m">${PR_MARCA[estadoLinea(l)]}</td></tr>`;
+      return `<tr><td>${esc(l.cliente_nombre)}</td><td class="alm">${esc(nCorto(l.almacen))}${cgN ? ` <span style="font-size:7pt;text-transform:none">(${esc(cgN)})</span>` : ''}</td><td class="ref">${esc(l.referencia || '')}</td><td class="chof">${chof}</td><td class="q">${qtyHTML(l)}${l.remonta ? ' ×2' : ''}</td><td class="m">${PR_MARCA[estadoLinea(l)]}</td></tr>`;
     }).join('');
     return `<div class="prh-grupo"><h4>${esc(k)}</h4><table>${filas}</table></div>`;
   }).join('') || '<p>Sin pedidos.</p>';
