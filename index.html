@@ -583,7 +583,7 @@ async function cargarLugares(){
     leerTodo(() => sb.from('clientes').select('*').order('nombre').order('id')), leerTodo(() => sb.from('transportistas').select('*').order('nombre').order('id'))]);
   lugares = {};
   (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || ''});
-  (d.data || []).forEach(x => { const k = String(x.nombre).toLowerCase(), prev = lugares[k] || {}; lugares[k] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || '', horarioCarga: prev.horario || ''}; });
+  (d.data || []).forEach(x => { const k = String(x.nombre).toLowerCase(), prev = lugares[k] || {}; lugares[k] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || '', pais:x.pais || '', horarioCarga: prev.horario || ''}; });
   // Listas para rellenar rápido el «Nuevo DeCA»
   listaClientes = cl.data || []; listaTrans = tr.data || [];
   const opts = arr => [...new Set(arr.filter(Boolean).map(String))].map(v => `<option value="${escA(v)}">`).join('');
@@ -1151,7 +1151,39 @@ document.getElementById('pinGuardar').onclick = async ()=>{
 };
 document.getElementById('cambiarPinBtn').onclick = ()=> mostrarPin(false);
 
+// ====== VARIOS PUESTOS: si alguien puede hacer de cargador y de chófer, al entrar elige qué hace hoy (se recuerda hasta mañana) ======
+const NOM_PUESTO = {cargador:'Cargador', chofer:'Chófer', trafico:'Oficina (tráfico)', direccion:'Oficina (dirección)'};
+function puestosApp(persona){ return [...new Set([persona.puesto, ...((Array.isArray(persona.puestos_extra) ? persona.puestos_extra : []).filter(x => x === 'cargador' || x === 'chofer'))])].filter(Boolean); }
+const clavePuestoHoy = id => `puesto_hoy_${id}_${hoyLocal()}`;
+function elegirPuestoHoy(persona, ops){
+  return new Promise(fin => {
+    let capa = $e('puestoCapa');
+    if(!capa){ capa = document.createElement('div'); capa.id = 'puestoCapa'; capa.className = 'voz-capa'; capa.setAttribute('role', 'dialog'); document.body.appendChild(capa); }
+    capa.innerHTML = `<div class="voz-caja"><div class="voz-paso">Hola, ${escH(persona.nombre)}</div><div class="voz-pregunta">¿Hoy trabajas de…?</div>
+      <div class="voz-botones">${ops.map(o => `<button class="btn btn-primary" type="button" data-puestohoy="${o}">${o === 'cargador' ? '📦 ' : o === 'chofer' ? '🚛 ' : '🏢 '}${NOM_PUESTO[o] || o}</button>`).join('')}</div>
+      <div class="pmeta" style="color:#aab4c8;margin-top:14px">Se recuerda hasta mañana. Puedes cambiarlo arriba, en «Hoy: …».</div></div>`;
+    capa.hidden = false;
+    capa.querySelectorAll('[data-puestohoy]').forEach(b => b.onclick = () => { capa.hidden = true; fin(b.dataset.puestohoy); });
+  });
+}
+function pintarPuestoHoy(persona, ops){
+  let tag = $e('puestoHoyTag');
+  if(!tag){ tag = document.createElement('span'); tag.id = 'puestoHoyTag'; tag.className = 'badge'; tag.style.cssText = 'cursor:pointer;margin-right:6px'; $e('pantallaBtn').before(tag); }
+  tag.style.display = ops.length > 1 ? '' : 'none';
+  tag.textContent = `👷 Hoy: ${NOM_PUESTO[persona.puesto] || persona.puesto} · cambiar`;
+  tag.onclick = () => { try{ localStorage.removeItem(clavePuestoHoy(persona.id)); }catch(e){} activarPersona(Object.assign({}, persona, {puesto: persona._puestoPrincipal || persona.puesto})); };
+}
 function activarPersona(persona){
+  const ops = puestosApp(Object.assign({}, persona, {puesto: persona._puestoPrincipal || persona.puesto}));
+  if(ops.length > 1){
+    let elegido = null; try{ elegido = localStorage.getItem(clavePuestoHoy(persona.id)); }catch(e){}
+    if(!elegido || !ops.includes(elegido)){
+      elegirPuestoHoy(persona, ops).then(r => { try{ localStorage.setItem(clavePuestoHoy(persona.id), r); }catch(e){} activarPersona(Object.assign({}, persona, {_puestoPrincipal: persona._puestoPrincipal || persona.puesto, puesto: r})); });
+      return;
+    }
+    if(elegido !== persona.puesto) persona = Object.assign({}, persona, {_puestoPrincipal: persona._puestoPrincipal || persona.puesto, puesto: elegido});
+  }
+  setTimeout(() => pintarPuestoHoy(persona, ops), 0);
   choferActual = {id: persona.id, nombre: persona.nombre, puesto: persona.puesto, pinTemporal: !!persona.pin_temporal};
   document.getElementById('cambiarPinBtn').style.display = 'inline-block';
   if(!(persona.tiene_pin || persona.pin) || persona.pin_temporal) mostrarPin(true); else document.getElementById('pinCard').style.display = 'none';
@@ -1670,6 +1702,7 @@ async function subirDeca(item){
   const filaDeca = {...item.fila};
   let { error: insErr } = await sb.from('decas').insert(filaDeca);
   if(insErr && /duplicate|unique/i.test(insErr.message || '')) insErr = null;   // ya se había guardado en un intento anterior
+  if(insErr && /tipo_documento/.test(insErr.message || '')){ delete filaDeca.tipo_documento; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 53
   if(insErr && /prevista/.test(insErr.message || '')){ delete filaDeca.fecha_prevista_descarga; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 42: se guarda sin ese dato (el PDF sí lo lleva)
   if(insErr && /direccion|domicilio|contractual/.test(insErr.message || '')){   // falta la actualización 33 o 37: se guarda sin esos datos (el PDF sí los lleva)
     delete filaDeca.transportista_domicilio; delete filaDeca.origen_direccion; delete filaDeca.destino_direccion;
@@ -2254,6 +2287,7 @@ function mostrarCarga(c, id){
   document.getElementById('ordenDatos').innerHTML = `
     <div class="cargaGrande"><div class="cg-l">📦 Carga a recoger</div><div class="cg-q">${cargaBonita(c.detalle_planificado)}</div>
       <div class="cg-w">en <b style="color:var(--text)">${c.almacen||c.origen||'—'}</b> ${enlaceMapa(c.almacen || c.origen, 'Ir a cargar')}</div></div>
+    ${paisDestino(c.destino) ? `<div class="info-camion">🌍 Destino en <b>${escH(paisDestino(c.destino))}</b>: en lugar del DeCA se hará el <b>CMR</b> (transporte internacional).</div>` : ''}
     ${c.aviso_carga ? `<div class="aviso-carga">⚠️ ${c.aviso_carga}</div>` : ''}
     ${c.camion_info ? `<div class="info-camion">🚛 ${c.camion_info}</div>` : ''}
     ${lineaHorario('Horario de carga', horarioCarga(c.almacen))}${lineaHorario('Horario de descarga en ' + (c.destino || 'destino'), horarioDescarga(c.destino))}
@@ -2435,7 +2469,8 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
     qrObj = qr; qrDataUrl = qr.createDataURL(6, 8);
   }catch(e){ /* seguimos sin QR visual si falla */ }
 
-  const doc = buildPdf(record, qrDataUrl, qrObj);
+  if(row.tipo_documento === 'CMR' || /^CMR-/.test(row.deca_id || '')){ record.tipo = 'CMR'; record.pais = paisDestino(row.destino); record.destinoDeca = nombreEnDeca(row.destino); }
+  const doc = docDe(record, qrDataUrl, qrObj);
   // Metadatos: se conserva la fecha de creación original y se pone la de esta modificación
   const blob = pdfFinal(doc, new Date(row.fecha), new Date());
 
@@ -2502,6 +2537,80 @@ function pdfFinal(doc, fechaCreacion, fechaModificacion){
 
 // En el DeCA sale el nombre largo del destino/almacén si su ficha lo tiene («Nombre en el DeCA»); en la app y el cartón se usa el corto
 const nombreEnDeca = n => { const l = lugares[String(n || '').toLowerCase()]; return (l && l.nombreDeca) || n; };
+// ====== CMR: si el destino está fuera de España, en lugar del DeCA se hace la carta de porte internacional (CMR) ======
+const PAISES = /\b(portugal|francia|france|italia|italy|alemania|germany|deutschland|holanda|pa[ií]ses bajos|netherlands|b[eé]lgica|belgium|reino unido|united kingdom|suiza|switzerland|austria|polonia|poland|marruecos|morocco|dinamarca|suecia|noruega|irlanda|chequia|hungr[ií]a|ruman[ií]a)\b/i;
+function paisDestino(destino){
+  const l = lugares[String(destino || '').toLowerCase()] || {};
+  if(l.pais && !/^espa/i.test(String(l.pais).trim())) return String(l.pais).trim();
+  const m = String(l.direccion || '').match(PAISES); return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1) : '';
+}
+function buildCmr(r, qrObj){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({compress: true});
+  doc.setProperties({title: 'CMR ' + r.id, subject: 'Carta de porte internacional (CMR)', author: String(r.transportistaNombre || ''), creator: 'myDeCaS', keywords: HUECO_MODDATE});
+  const M = 10, W = 190, H2 = W / 2;
+  doc.setDrawColor(20,40,90); doc.setLineWidth(0.35);
+  const caja = (x, y, w, h, n, tit, lineas, negr) => {
+    doc.rect(x, y, w, h);
+    doc.setFontSize(6.3); doc.setTextColor(90,90,90); doc.setFont('helvetica','normal');
+    const lt = doc.splitTextToSize((n ? n + '  ' : '') + tit, w - 3); doc.text(lt, x + 1.8, y + 3.3);
+    doc.setTextColor(15,15,15); let yy = y + 8 + (lt.length - 1) * 2.6;   // si el título ocupa dos líneas, los datos empiezan más abajo
+    (lineas || []).filter(v => v != null && v !== '').forEach((t, i) => { doc.setFont('helvetica', i === 0 && negr ? 'bold' : 'normal'); doc.setFontSize(i === 0 && negr ? 9 : 8.2);
+      const parts = doc.splitTextToSize(String(t), w - 4); parts.slice(0, Math.max(1, Math.floor((y + h - yy) / 3.6))).forEach(pt => { if(yy < y + h - 1) { doc.text(pt, x + 2, yy); yy += 3.6; } }); });
+    doc.setFont('helvetica','normal');
+  };
+  doc.setFillColor(20,40,90); doc.rect(M, M, W, 11, 'F'); doc.setTextColor(255,255,255);
+  doc.setFontSize(10.5); doc.text('CARTA DE PORTE INTERNACIONAL · CMR', M + 3, M + 7.3); doc.setFontSize(8.5); doc.text('Nº ' + r.id, M + W - 3, M + 7.3, {align:'right'});
+  let y = M + 11;
+  const rem = [r.cargadorNombre, r.cargadorNif ? 'NIF: ' + r.cargadorNif : '', r.cargadorDomicilio];
+  caja(M, y, H2, 24, 1, 'REMITENTE (nombre, domicilio, país)', rem, true);
+  caja(M + H2, y, H2, 24, '', 'Este transporte queda sometido, no obstante toda cláusula contraria, al Convenio relativo al contrato de transporte internacional de mercancías por carretera (CMR).', ['', 'Documento generado con myDeCaS · ' + (r.date || '')]);
+  y += 24;
+  caja(M, y, H2, 24, 2, 'CONSIGNATARIO (nombre, domicilio, país)', [r.destinoDeca || r.destino, r.destinoDireccion, r.pais], true);
+  caja(M + H2, y, H2, 24, 16, 'TRANSPORTISTA (nombre, domicilio, país)', r.contractual ? [r.contractual.nombre, r.contractual.nif ? 'NIF: ' + r.contractual.nif : '', r.contractual.domicilio] : [r.transportistaNombre, r.transportistaNif ? 'NIF: ' + r.transportistaNif : '', r.transportistaDomicilio], true);
+  y += 24;
+  caja(M, y, H2, 20, 3, 'LUGAR PREVISTO PARA LA ENTREGA DE LA MERCANCÍA (lugar, país)', [r.destino, r.destinoDireccion, r.pais], true);
+  caja(M + H2, y, H2, 20, 17, 'PORTEADORES SUCESIVOS (nombre, domicilio, país)', r.contractual ? [r.transportistaNombre, r.transportistaNif ? 'NIF: ' + r.transportistaNif : '', r.transportistaDomicilio] : ['—'], !!r.contractual);
+  y += 20;
+  caja(M, y, H2, 20, 4, 'LUGAR Y FECHA DE CARGA DE LA MERCANCÍA (lugar, país, fecha)', [r.origen, r.origenDireccion, 'España · ' + (r.date || '')], true);
+  caja(M + H2, y, H2, 20, 18, 'RESERVAS Y OBSERVACIONES DEL PORTEADOR', ['']);
+  y += 20;
+  caja(M, y, W, 12, 5, 'DOCUMENTOS ANEXOS', ['Certificados fitosanitarios y de origen, si los requiere la mercancía.']);
+  y += 12;
+  // mercancía
+  const bultos = String(r.detail || '').split(',').reduce((t, x) => t + (parseFloat(x) || 0), 0);
+  const cols = [[6, 'MARCAS Y NÚMEROS', 30], [7, 'Nº DE BULTOS', 22], [8, 'CLASE DE EMBALAJE', 46], [9, 'NATURALEZA DE LA MERCANCÍA', 40], [11, 'PESO BRUTO (kg)', 26], [12, 'VOLUMEN (m3)', 26]];
+  let x = M; const hM = 26;
+  const valM = {6: r.ref ? 'Pedido ' + r.ref : '—', 7: bultos ? String(bultos) : '—', 8: r.detail || '—', 9: r.mercancia || '—', 11: r.peso || '—', 12: '—'};
+  cols.forEach(([n, t, w]) => { caja(x, y, w, hM, n, t, [valM[n]], n === 9 || n === 7); x += w; });
+  y += hM;
+  caja(M, y, H2, 16, 13, 'INSTRUCCIONES DEL REMITENTE', [r.autorizacionEspecial ? 'Autorización especial: ' + r.autorizacionEspecial : 'Mercancía perecedera: mantener la cadena de frío.']);
+  caja(M + H2, y, H2, 16, 19, 'ESTIPULACIONES PARTICULARES', ['']);
+  y += 16;
+  caja(M, y, H2, 12, 14, 'FORMA DE PAGO', ['Porte pagado']);
+  caja(M + H2, y, H2, 12, 20, 'A PAGAR POR', ['Remitente']);
+  y += 12;
+  caja(M, y, H2, 12, 21, 'FORMALIZADO EN', [(r.origen || '—') + ', el ' + (r.date || '')]);
+  caja(M + H2, y, H2, 12, '', 'MATRÍCULA (tractora / remolque)', [r.plate || '—'], true);
+  y += 12;
+  const w3 = W / 3;
+  caja(M, y, w3, 26, 22, 'FIRMA Y SELLO DEL REMITENTE', ['']);
+  caja(M + w3, y, w3, 26, 23, 'FIRMA Y SELLO DEL TRANSPORTISTA', [r.driver ? 'Conductor: ' + r.driver : '']);
+  caja(M + 2 * w3, y, w3, 26, 24, 'RECIBO DE LA MERCANCÍA (lugar, fecha, firma y sello del consignatario)', ['']);
+  y += 26;
+  // QR de verificación
+  const hq = 40; doc.rect(M, y, W, hq);
+  doc.setFontSize(6.3); doc.setTextColor(90,90,90); doc.text('VERIFICACIÓN — ESCANEE EL CÓDIGO', M + 1.8, y + 3.3);
+  if(qrObj){ const n = qrObj.getModuleCount(), lado = 33, cel = lado / (n + 4), x0 = M + 3 + 2 * cel, y0 = y + 5 + 2 * cel;
+    doc.setFillColor(255,255,255); doc.rect(M + 3, y + 5, lado, lado, 'F'); doc.setFillColor(0,0,0);
+    for(let f = 0; f < n; f++) for(let c = 0; c < n; c++){ if(!qrObj.isDark(f, c)) continue; let fin = c; while(fin + 1 < n && qrObj.isDark(f, fin + 1)) fin++; doc.rect(x0 + c * cel, y0 + f * cel, (fin - c + 1) * cel + 0.01, cel + 0.01, 'F'); c = fin; } }
+  doc.setFontSize(8); doc.setTextColor(15,15,15);
+  doc.text('El código QR lleva a una dirección pública, sin contraseña, donde se puede ver este documento.', M + 42, y + 14, {maxWidth: W - 48});
+  doc.setTextColor(20,80,180); doc.text(String(r.url || '(sin dirección pública)'), M + 42, y + 24, {maxWidth: W - 48});
+  if(r.url) doc.link(M + 42, y + 20, W - 48, 6, {url: r.url});
+  return doc;
+}
+const docDe = (record, qrDataUrl, qrObj) => record.tipo === 'CMR' ? buildCmr(record, qrObj) : buildPdf(record, qrDataUrl, qrObj);
 // Construye el PDF nativo (texto real, no imagen) con el QR ya embebido
 function buildPdf(r, qrDataUrl, qrObj){
   const { jsPDF } = window.jspdf;
@@ -2672,7 +2781,8 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   { const kgT = pesoDeEstaCarga() + (choferActual && choferActual.puesto !== 'cargador' ? kgEnCamion : 0);
     if(kgT > cargaMaxima() && !confirm(`⚖️ El camión llevaría unos ${kgT.toLocaleString('es-ES')} kg y la carga máxima es ${cargaMaxima().toLocaleString('es-ES')} kg.\n\n¿Generar el DeCA igualmente?`)) return; }
   if(!matConfirmada()){ revisarMatricula(true); document.getElementById('matCard').scrollIntoView({behavior:'smooth', block:'center'}); alert('Antes de generar el DeCA, confirma que las matrículas son las correctas (arriba).'); return; }
-  const decaId = 'DECA-' + Date.now().toString(36).toUpperCase(); // etiqueta legible
+  const paisInt = paisDestino(currentCarga.destino);   // fuera de España → CMR en lugar de DeCA
+  const decaId = (paisInt ? 'CMR-' : 'DECA-') + Date.now().toString(36).toUpperCase(); // etiqueta legible
   const publicId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (decaId + '-' + Math.random().toString(36).slice(2));
   const driver = choferActual ? choferActual.nombre : 'Sin especificar';
   const plate = document.getElementById('plate').value || 'Sin especificar';
@@ -2715,7 +2825,8 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   }catch(e){ /* seguimos sin QR visual si falla */ }
 
   // 2. PDF nativo con el QR ya dentro
-  const doc = buildPdf(record, qrDataUrl, qrObj);
+  if(paisInt){ record.tipo = 'CMR'; record.pais = paisInt; record.destinoDeca = nombreEnDeca(record.destino); record.ref = currentCarga.referencia || ''; }
+  const doc = docDe(record, qrDataUrl, qrObj);
 
   // 3. Subir el PDF al bucket público de Supabase Storage y guardar el registro
   const pdfBlob = pdfFinal(doc, now, now);
@@ -2724,7 +2835,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
     const filaDeca = {
       deca_id: decaId, carga_id: currentCarga && !currentCarga.manual ? currentCarga.id : null,
       conductor: driver, matricula: plate, detalle: detail, ldm: ldm.toFixed(1), geo,
-      fecha: now.toISOString(), pdf_url: publicUrl,
+      fecha: now.toISOString(), pdf_url: publicUrl, ...(paisInt ? {tipo_documento: 'CMR'} : {}),
       cargador_nombre: record.cargadorNombre, cargador_nif: record.cargadorNif, cargador_domicilio: record.cargadorDomicilio,
       transportista_nombre: record.transportistaNombre, transportista_nif: record.transportistaNif,
       origen: record.origen, destino: record.destino, mercancia: record.mercancia, peso: record.peso,
