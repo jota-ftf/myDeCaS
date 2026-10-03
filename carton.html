@@ -547,8 +547,8 @@ table.fichero td.acc{white-space:nowrap;width:1%}
   <nav class="seg vistas" id="vistas" aria-label="Secciones">
     <button type="button" data-v="carton" aria-pressed="true">Cartón</button>
     <button type="button" data-v="clientes" aria-pressed="false">Clientes</button>
-    <button type="button" data-v="transportistas" aria-pressed="false">Transportista Contractual</button>
-    <button type="button" data-v="autonomos" aria-pressed="false">Transportista Efectivo</button>
+    <button type="button" data-v="transportistas" aria-pressed="false">Empresas de transporte</button>
+    <button type="button" data-v="autonomos" aria-pressed="false">Autónomos</button>
     <button type="button" data-v="personal" aria-pressed="false">Personal</button>
     <button type="button" data-v="flota" aria-pressed="false">Flota</button>
     <button type="button" data-v="destinos" aria-pressed="false">Destinos</button>
@@ -647,7 +647,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
           <div class="combo"><input class="field" id="lnCli" placeholder="Cliente (cargador contractual)" data-combo="clientes" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnCli" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
           <div class="combo"><input class="field" id="lnDest" placeholder="Destino" data-combo="destinos" required autocomplete="off"><button type="button" class="limpiar" data-limpiar="lnDest" aria-label="Borrar" title="Borrar">×</button><div class="combo-list" hidden></div></div>
           <div class="combo"><input class="field" id="lnRef" placeholder="Nº pedido / referencia (opcional)"><button type="button" class="limpiar" data-limpiar="lnRef" aria-label="Borrar" title="Borrar">×</button></div>
-          <select class="field full" id="lnContr" aria-label="Transportista contractual" title="Sale en el DeCA encima del transportista efectivo" hidden></select>
+          <select class="field full" id="lnContr" aria-label="Contratado con" title="Con qué empresa contrató el cliente este transporte (normalmente la tuya). Sirve para poner bien el cargador contractual del DeCA" hidden></select>
           <select class="field full" id="lnTrans" aria-label="Transportista efectivo" hidden></select>
           <p class="hint full" style="margin:0">🚚 El transportista efectivo se pone solo: el de quien lleve la carga (cargador o chófer). Cambia cada vez que cambies la asignación, hasta que se haga el DeCA.</p>
           <select class="field full" id="lnMerc" aria-label="Naturaleza de la mercancía"></select>
@@ -752,7 +752,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       <label>Camión (chófer)<select class="field" id="edCam"></select></label>
       <label>Quién lo recoge<select class="field" id="edModo"><option value="hub">Cargador → nave</option><option value="ruta">El chófer en ruta</option></select></label>
       <label>Cargador<select class="field" id="edCg"></select></label>
-      <label id="edContrL" hidden>Transportista contractual<select class="field" id="edContr"></select></label>
+      <label id="edContrL" hidden>Contratado con (empresa con la que contrató el cliente)<select class="field" id="edContr"></select></label>
       <label hidden>Transportista efectivo<select class="field" id="edTrans"></select></label>
       <p class="hint full" id="edTransTxt" style="margin:0"></p>
       <label>Naturaleza de la mercancía<select class="field" id="edMerc"></select></label>
@@ -874,6 +874,7 @@ function nCorto(txt){
 // Caja provisional: se apuntó con una zona o un cliente (p. ej. «Murcia») y todavía no tiene chófer ni autónomo
 const esProvisional = t => !!t && t.tipo !== 'autonomo' && !t.chofer_id && !personalTodos.some(p => p.nombre === t.nombre);
 const etiquetaCaja = t => (String(t.nombre || '').match(/ \(([^)]+)\)$/) || [])[1] || (esProvisional(t) ? t.nombre : '');
+const mismoNombre = (a, b) => normTxt(a) === normTxt(b);
 function zonaLinea(l){ const cam = l.camion_id && camion(l.camion_id); if(cam && cam.direccion && cam.direccion !== 'X' && ZONA_NOMBRE[cam.direccion]) return cam.direccion; return zonaDestino(l.destino) || 'X'; }
 // Botones de zona de arriba: Todos, Levante, Sur y las demás zonas solo si hoy tienen pedidos o camiones
 function pintarFiltroZonas(conCosas){
@@ -1356,7 +1357,7 @@ async function enviarLinea(l, silencioso){
   // si está vinculado a un autónomo, ese autónomo; si no, tu empresa. Al salir de la nave, la app del chófer lo cambia por el suyo.
   const conductor = persona(asignado);
   const trans = l.transportista_id || (conductor && conductor.transportista_id) || (l.modo === 'ruta' && cam && cam.tipo === 'autonomo' && cam.transportista_id) || (transPropia() || {}).id;
-  if(!trans){ toast('Falta el transportista efectivo: marca tu empresa como «propia» en la pestaña Transportista Contractual.', true); return false; }
+  if(!trans){ toast('Falta el transportista efectivo: marca tu empresa como «propia» en la pestaña Empresas de transporte.', true); return false; }
   if(!l.cliente_id){ toast(`«${l.almacen}»: el cliente no está en la lista de clientes.`, true); return false; }
   if(!l.destino){ toast(`«${l.almacen}»: falta el destino.`, true); return false; }
   if(!asignado){ toast(l.modo === 'hub' ? `«${l.almacen}»: elige el cargador.` : `«${l.almacen}»: el camión no tiene chófer de la lista.`, true); return false; }
@@ -1765,10 +1766,10 @@ function render(){
 let editandoId = null;
 // ====== TRANSPORTISTA CONTRACTUAL: extra de la suscripción (se enciende desde el programa maestro) ======
 // En el DeCA sale encima del transportista efectivo (si es distinto de él)
-const hayExtraContractual = () => true;   // por norma el transportista contractual va siempre en el DeCA (encima del efectivo): ya no es un extra
+const hayExtraContractual = () => true;   // «Contratado con»: siempre disponible. Ya no sale en el DeCA; decide quién es el cargador contractual
 function opcionesContractual(sel, valor){
   const pr = transPropia();
-  sel.innerHTML = `<option value="">Contractual: ${pr ? esc(pr.nombre) : 'tu empresa'} (por defecto)</option>` + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
+  sel.innerHTML = `<option value="">Contratado con: ${pr ? esc(pr.nombre) : 'tu empresa'} (por defecto)</option>` + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contratado con: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
   sel.value = valor !== undefined && valor !== null ? valor : (pr ? pr.id : '');
 }
 function pintarContractual(){
@@ -2222,7 +2223,7 @@ async function escribirComprobado(query, okMsg){
 const FICHEROS = {
   clientes: {titulo:'Clientes (cargador contractual)', aviso:'El NIF y el domicilio salen en el DeCA: complétalos siempre.', tablas:[
     {tabla:'clientes', orden:'nombre', campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio'],['telefono','Teléfono'],['contacto','Contacto'],['email','Email'],['fax','Fax']]}]},
-  transportistas: {titulo:'Transportista contractual', aviso:'Empresas con las que el cliente contrata el transporte (incluida la tuya). Por norma, el transportista contractual sale siempre en el DeCA, encima del transportista efectivo (aunque sean la misma empresa). Por defecto es tu empresa: márcala como «propia». Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
+  transportistas: {titulo:'Empresas de transporte', aviso:'Tu empresa (márcala como «propia») y las empresas de transporte con las que trabajas. En el DeCA, el cargador contractual se pone solo: si la carga la lleva la empresa con la que contrató el cliente, es el cliente; si la lleva otro (un autónomo o una subcontrata), es la empresa que le contrata, y el cliente sale «por cuenta de». Los autónomos tienen su propia pestaña: si marcas «Autónomo», pasa allí.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !f.autonomo, campos:[['nombre','Nombre'],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['propia','Empresa propia','bool'],['autonomo','Autónomo','bool']]}]},
   autonomos: {titulo:'Transportista efectivo', aviso:'Camioneros autónomos que hacen el transporte: son el transportista efectivo del DeCA. Salen en «Salen hoy» para añadirlos al cartón, y su nombre y NIF salen en el DeCA. No usan la app: las cargas se les mandan por WhatsApp, así que pon bien el teléfono.', tablas:[
     {tabla:'transportistas', orden:'nombre', filtro: f => !!f.autonomo, fijo:{autonomo:true, propia:false}, campos:[['nombre','Nombre'],['puesto','Puesto',['chofer','cargador']],['nif','NIF'],['domicilio','Domicilio (sale en el DeCA)'],['telefono','Teléfono (WhatsApp)'],['matricula_actual','Matrícula actual (tractora / remolque)']]}]},
@@ -2716,7 +2717,13 @@ async function decasDe(tabla, fila){
     [a, b].forEach(x => (x.data || []).forEach(r => { if(!vistos.has(r.id)){ vistos.add(r.id); out.push(r); } }));
     return out;
   }
-  q = tabla === 'clientes' ? sb.from('decas').select('*').eq('cargador_nombre', fila.nombre) : sb.from('decas').select('*').eq('transportista_nombre', fila.nombre);
+  if(tabla === 'clientes'){
+    const [a, b] = await Promise.all([sb.from('decas').select('*').eq('cargador_nombre', fila.nombre).limit(5000), sb.from('decas').select('*').eq('cliente_nombre', fila.nombre).limit(5000)]);   // (sin la actualización 55, la 2ª no trae nada)
+    const vistos = new Set(); const out = [];
+    [a, b].forEach(x => (x.data || []).forEach(r => { if(!vistos.has(r.id) && (!r.cliente_nombre || normTxt(r.cliente_nombre) === normTxt(fila.nombre))){ vistos.add(r.id); out.push(r); } }));
+    return out;
+  }
+  q = sb.from('decas').select('*').eq('transportista_nombre', fila.nombre);
   const { data } = await q.limit(5000);
   return data || [];
 }
@@ -3285,8 +3292,8 @@ async function zipDeDecas(lista, nombreZip, avisoQuien){
   if(!lista.length){ toast('No hay DeCAs en este periodo.', true); return; }
   toast(`Preparando ${lista.length} DeCA${lista.length === 1 ? '' : 's'}…`);
   const zip = new JSZip();
-  const cab = ['Nº DeCA','Fecha','Conductor','Matrícula','Origen','Destino','Cargador','Transportista','Mercancía','Detalle','PDF'];
-  const csv = [cab].concat(lista.map(r => [r.deca_id, r.fecha, r.conductor, r.matricula, r.origen, r.destino, r.cargador_nombre, r.transportista_nombre, r.mercancia, r.detalle, r.pdf_url]))
+  const cab = ['Nº DeCA','Fecha','Conductor','Matrícula','Origen','Destino','Cliente','Cargador contractual','Transportista efectivo','Mercancía','Detalle','PDF'];
+  const csv = [cab].concat(lista.map(r => [r.deca_id, r.fecha, r.conductor, r.matricula, r.origen, r.destino, r.cliente_nombre || r.cargador_nombre, r.cargador_nombre, r.transportista_nombre, r.mercancia, r.detalle, r.pdf_url]))
     .map(f => f.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';')).join('\r\n');
   zip.file('resumen.csv', '\ufeff' + csv);
   let ok = 0;
@@ -3459,7 +3466,7 @@ async function hacerBusqueda(){
   busq.res = (data || []).filter(r =>
     tiene(r.deca_id, busq.num) &&
     (!busq.mat || sinEsp(r.matricula).includes(sinEsp(busq.mat)) || (r.matricula_historial || []).some(h => sinEsp(h.anterior).includes(sinEsp(busq.mat)) || sinEsp(h.nueva).includes(sinEsp(busq.mat)))) &&
-    tiene(r.conductor, busq.cond) && tiene(r.cargador_nombre, busq.cli) && tiene(r.transportista_nombre, busq.trans) &&
+    tiene(r.conductor, busq.cond) && (tiene(r.cliente_nombre || r.cargador_nombre, busq.cli) || tiene(r.cargador_nombre, busq.cli)) && tiene(r.transportista_nombre, busq.trans) &&
     tiene(r.origen, busq.orig) && tiene(r.destino, busq.dest) &&
     (!busq.estado || estadoDeca(r)[0] === busq.estado) &&
     (!a || normTxt(r.transportista_nombre) === normTxt(a.nombre) || (a.nif && normTxt(r.transportista_nif) === normTxt(a.nif)) || normTxt(r.conductor) === normTxt(a.nombre)
@@ -3476,16 +3483,16 @@ function pintarResultadosBusqueda(){
       <button type="button" class="btn small" data-bqexcel="1">📤 Descargar en Excel</button></p>
     <div class="tabla-wrap"><table class="adm"><thead><tr><th>Fecha</th><th>Nº DeCA</th><th>Cliente</th><th>Origen → destino</th><th>Matrícula</th><th>Conductor</th><th>Transportista</th><th>Estado</th><th></th></tr></thead><tbody>
     ${res.slice(0, 500).map(r => { const [ek, et] = estadoDeca(r), ab = busq.abiertos.has(r.id);
-      return `<tr><td class="n">${new Date(r.fecha).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</td><td><b>${esc(r.deca_id)}</b></td><td>${esc(r.cargador_nombre || '—')}</td>
+      return `<tr><td class="n">${new Date(r.fecha).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}</td><td><b>${esc(r.deca_id)}</b></td><td>${esc(r.cliente_nombre || r.cargador_nombre || '—')}</td>
         <td>${esc(r.origen || '—')} → ${esc(r.destino || '—')}</td><td class="n">${esc(r.matricula || '—')}${(r.matricula_historial || []).length ? ` <span title="Ha cambiado de matrícula">↺${r.matricula_historial.length}</span>` : ''}</td>
         <td>${esc(r.conductor || '—')}</td><td>${esc(r.transportista_nombre || '—')}</td><td><span class="st ${ek === 'ruta' ? 'reco' : ek === 'anulado' ? 'prob' : ek}" style="display:inline-grid;vertical-align:middle">${ST_TXT[ek === 'ruta' ? 'reco' : ek === 'anulado' ? 'prob' : ek] || ''}</span> ${et}</td>
         <td class="n">${r.pdf_url ? `<a class="btn small" href="${esc(r.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener">PDF</a>` : ''} <button type="button" class="btn small" data-bqver="${r.id}">${ab ? 'Ocultar' : 'QR e historial'}</button></td></tr>
         ${ab ? `<tr class="det"><td colspan="9"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
           <div>${r.pdf_url ? qrDe(r.pdf_url) : ''}</div>
           <div style="flex:1;min-width:260px"><b>Detalle:</b> ${esc(r.detalle || '—')} · ${esc(r.peso || '—')} kg · ${esc(r.mercancia || '')}<br>
-            <b>Cliente:</b> ${esc(r.cargador_nombre || '—')} (NIF ${esc(r.cargador_nif || '—')}) · <b>Transportista:</b> ${esc(r.transportista_nombre || '—')} (NIF ${esc(r.transportista_nif || '—')})<br>
+            <b>Cliente:</b> ${esc(r.cliente_nombre || r.cargador_nombre || '—')}${r.cliente_nombre && !mismoNombre(r.cliente_nombre, r.cargador_nombre) ? ` · <b>Cargador contractual:</b> ${esc(r.cargador_nombre || '—')} (NIF ${esc(r.cargador_nif || '—')})` : ` (NIF ${esc(r.cargador_nif || '—')})`} · <b>Transportista efectivo:</b> ${esc(r.transportista_nombre || '—')} (NIF ${esc(r.transportista_nif || '—')})<br>
             <b>GPS al generarlo:</b> ${esc(r.geo || '—')}${r.fecha_entrega_hub ? ` · <b>En la nave:</b> ${new Date(r.fecha_entrega_hub).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}` : ''}${r.fecha_entrega ? ` · <b>Descargado:</b> ${new Date(r.fecha_entrega).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${r.distancia_entrega_m != null ? ` (a ${Math.round(r.distancia_entrega_m)} m del destino)` : ''}` : ''}<br>
-            <b>Historial de matrícula:</b> ${(r.matricula_historial || []).length ? `<ul style="margin:4px 0">${r.matricula_historial.map(h => `<li>${esc(h.fecha || '')}: ${esc(h.anterior || '—')} → <b>${esc(h.nueva || '')}</b> · ${esc(h.cambiado_por || '')}</li>`).join('')}</ul>` : 'sin cambios.'}
+            <b>Modificaciones:</b> ${(r.matricula_historial || []).length ? `<ul style="margin:4px 0">${r.matricula_historial.map(h => `<li>${esc(h.fecha || '')} · ${esc(({matricula:'Matrícula', transportista:'Transportista efectivo', cargador:'Cargador contractual'})[h.campo || 'matricula'] || h.campo)}: ${esc(h.anterior || '—')} → <b>${esc(h.nueva || '')}</b>${h.motivo ? ' · ' + esc(h.motivo) : ''} · ${esc(h.cambiado_por || '')}</li>`).join('')}</ul>` : 'sin cambios.'}
             <div id="bqv-${r.id}" class="hint">Buscando versiones anteriores del PDF…</div></div></div></td></tr>` : ''}`; }).join('')}
     </tbody></table></div>${res.length > 500 ? '<p class="hint">Se enseñan los 500 primeros; el Excel lleva todos.</p>' : ''}`;
   // versiones anteriores del PDF de los que están abiertos
@@ -3519,9 +3526,9 @@ function renderBuscar(box){
 }
 function exportarBusqueda(){
   if(typeof XLSX === 'undefined' || !busq.res) return;
-  const filas = busq.res.map(r => ({'Fecha': new Date(r.fecha).toLocaleString('es-ES'), 'Nº DeCA': r.deca_id, 'Cliente': r.cargador_nombre || '', 'NIF cliente': r.cargador_nif || '', 'Origen': r.origen || '', 'Dirección origen': r.origen_direccion || '', 'Destino': r.destino || '', 'Dirección destino': r.destino_direccion || '',
-    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista contractual': r.transportista_contractual_nombre || '', 'NIF contractual': r.transportista_contractual_nif || '', 'Transportista': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Domicilio transportista': r.transportista_domicilio || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
-    'Estado': estadoDeca(r)[1], 'Cambios de matrícula': (r.matricula_historial || []).map(h => `${h.anterior || '—'} → ${h.nueva} (${h.fecha || ''})`).join(' | '), 'PDF': r.pdf_url || ''}));
+  const filas = busq.res.map(r => ({'Fecha': new Date(r.fecha).toLocaleString('es-ES'), 'Nº DeCA': r.deca_id, 'Cliente': r.cliente_nombre || r.cargador_nombre || '', 'NIF cliente': r.cliente_nif || r.cargador_nif || '', 'Cargador contractual': r.cargador_nombre || '', 'NIF cargador contractual': r.cargador_nif || '', 'Origen': r.origen || '', 'Dirección origen': r.origen_direccion || '', 'Destino': r.destino || '', 'Dirección destino': r.destino_direccion || '',
+    'Matrícula': r.matricula || '', 'Conductor': r.conductor || '', 'Transportista efectivo': r.transportista_nombre || '', 'NIF transportista': r.transportista_nif || '', 'Domicilio transportista': r.transportista_domicilio || '', 'Bultos': r.detalle || '', 'Peso (kg)': r.peso || '',
+    'Estado': estadoDeca(r)[1], 'Modificaciones': (r.matricula_historial || []).map(h => `${h.campo && h.campo !== 'matricula' ? h.campo + ': ' : ''}${h.anterior || '—'} → ${h.nueva} (${h.fecha || ''})`).join(' | '), 'PDF': r.pdf_url || ''}));
   const libro = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(libro, XLSX.utils.json_to_sheet(filas), 'DeCAs');
   XLSX.writeFile(libro, `decas_${busq.desde || 'todas'}_${busq.hasta || ''}.xlsx`);
 }

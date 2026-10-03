@@ -255,10 +255,10 @@
     <input type="text" id="ndTransNif" placeholder="NIF" autocomplete="off">
     <label>Domicilio transportista</label>
     <input type="text" id="ndTransDom" placeholder="Calle, población" autocomplete="off">
-    <details id="ndContrDet" style="margin-top:8px"><summary class="pmeta" style="cursor:pointer">➕ Transportista contractual (si el cliente contrató con otra empresa; si no, sale tu empresa)</summary>
-      <label>Transportista contractual</label><input type="text" id="ndContr" list="ndListaTrans" placeholder="Empresa con la que contrató el cliente" autocomplete="off">
-      <label>NIF transportista contractual</label><input type="text" id="ndContrNif" autocomplete="off">
-      <label>Domicilio transportista contractual</label><input type="text" id="ndContrDom" autocomplete="off">
+    <details id="ndContrDet" style="margin-top:8px"><summary class="pmeta" style="cursor:pointer">➕ ¿El cliente contrató el transporte con otra empresa? (si no, se entiende que con la tuya)</summary>
+      <label>Empresa con la que contrató el cliente</label><input type="text" id="ndContr" list="ndListaTrans" placeholder="Empresa con la que contrató el cliente" autocomplete="off">
+      <label>NIF de esa empresa</label><input type="text" id="ndContrNif" autocomplete="off">
+      <label>Domicilio de esa empresa</label><input type="text" id="ndContrDom" autocomplete="off">
     </details>
     <label style="margin-top:10px;display:block">Origen (dónde se carga) *</label>
     <input type="text" id="ndOrigen" list="ndListaAlmacenes" placeholder="Almacén o población" autocomplete="off">
@@ -681,7 +681,7 @@ $e('nuevoDecaBtn').onclick = ()=>{
   document.querySelectorAll('.pend-item').forEach(el=> el.classList.remove('activa'));
   ['ndCargador','ndCargadorNif','ndCargadorDom','ndOrigen','ndOrigenDir','ndDestino','ndDestinoDir','ndPeso','ndRef','ndAut','ndContr','ndContrNif','ndContrDom'].forEach(id => $e(id).value = '');
   $e('ndContrDet').open = false;
-  $e('ndContrDet').hidden = false;   // el transportista contractual va siempre por norma (si es otra empresa distinta del efectivo)
+  $e('ndContrDet').hidden = false;   // con quién contrató el cliente: decide quién es el cargador contractual del DeCA
   $e('ndMercancia').value = 'Frutas y hortalizas frescas'; $e('ndPesoAprox').checked = true; $e('ndMsg').textContent = '';
   const t = transportistaPorDefecto();
   $e('ndTrans').value = t ? (t.nombre || '') : ''; $e('ndTransNif').value = t ? (t.nif || '') : ''; $e('ndTransDom').value = t ? (t.domicilio || '') : '';
@@ -1729,6 +1729,7 @@ async function subirDeca(item){
   const filaDeca = {...item.fila};
   let { error: insErr } = await sb.from('decas').insert(filaDeca);
   if(insErr && /duplicate|unique/i.test(insErr.message || '')) insErr = null;   // ya se había guardado en un intento anterior
+  if(insErr && /cliente_n/.test(insErr.message || '')){ delete filaDeca.cliente_nombre; delete filaDeca.cliente_nif; delete filaDeca.cliente_domicilio; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 55
   if(insErr && /tipo_documento/.test(insErr.message || '')){ delete filaDeca.tipo_documento; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 53
   if(insErr && /prevista/.test(insErr.message || '')){ delete filaDeca.fecha_prevista_descarga; ({ error: insErr } = await sb.from('decas').insert(filaDeca)); }   // falta la actualización 42: se guarda sin ese dato (el PDF sí lo lleva)
   if(insErr && /direccion|domicilio|contractual/.test(insErr.message || '')){   // falta la actualización 33 o 37: se guarda sin esos datos (el PDF sí los lleva)
@@ -2203,8 +2204,8 @@ const dirLugar = n => (lugares[String(n || '').toLowerCase()] || {}).direccion |
 const horarioCarga = n => { const l = lugares[String(n || '').toLowerCase()] || {}; return l.horarioCarga || l.horario || ''; };
 const horarioDescarga = n => (lugares[String(n || '').toLowerCase()] || {}).horario || '';
 const lineaHorario = (txt, h) => h ? `<div class="info-camion">🕐 ${txt}: <b>${escH(h)}</b></div>` : '';
-// Transportista contractual: por norma sale SIEMPRE en el DeCA, encima del efectivo (aunque sean la misma empresa).
-// Si la orden no dice otro, el contractual es tu empresa (la que contrata con el cliente)
+// «Contratado con»: la empresa con la que contrató el cliente (tu empresa si la orden no dice otra). Ya no sale en el DeCA:
+// solo sirve para saber quién es el CARGADOR CONTRACTUAL (Orden FOM/2861/2012, art. 4: quien contrata directamente con el transportista efectivo).
 const mismoTrans = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 function contractualDe(c, efectivoNombre){
   const id = c && c.transportista_contractual_id;
@@ -2212,6 +2213,15 @@ function contractualDe(c, efectivoNombre){
   if(!t) t = (listaTrans || []).find(x => x.propia) || null;
   if(!t) return null;   // sale siempre, aunque sea la misma empresa que el efectivo
   return {nombre: t.nombre, nif: t.nif, domicilio: t.domicilio || ''};
+}
+// Cargador contractual del DeCA, automático:
+//  · si lo lleva la misma empresa con la que contrató el cliente → el cargador contractual es el cliente;
+//  · si lo lleva otro (un autónomo, una subcontrata) → el cargador contractual es esa empresa, y el cliente va «por cuenta de».
+function cargadorLegal(cli, contr, efectivoNombre){
+  cli = cli || {};
+  if(contr && contr.nombre && efectivoNombre && !mismoTrans(contr.nombre, efectivoNombre))
+    return {nombre: contr.nombre, nif: contr.nif || '', domicilio: contr.domicilio || '', porCuenta: cli.nombre ? {nombre: cli.nombre, nif: cli.nif || ''} : null};
+  return {nombre: cli.nombre, nif: cli.nif || '', domicilio: cli.domicilio || '', porCuenta: null};
 }
 // ====== Recogidas (ida) y Retorno: las órdenes de carga se reparten según la caja del cartón de donde vienen ======
 let idsRetorno = new Set();
@@ -2352,9 +2362,8 @@ function mostrarCarga(c, id){
     ${c.aviso_carga ? `<div class="aviso-carga">⚠️ ${c.aviso_carga}</div>` : ''}
     ${c.camion_info ? `<div class="info-camion">🚛 ${c.camion_info}</div>` : ''}
     ${lineaHorario('Horario de carga', horarioCarga(c.almacen))}${lineaHorario('Horario de descarga en ' + (c.destino || 'destino'), horarioDescarga(c.destino))}
-    <b>Cargador:</b> ${cli.nombre||'—'} (NIF ${cli.nif||'—'})<br>
-    ${contractualDe(c, t.nombre) ? `<b>Transportista contractual:</b> ${escH(contractualDe(c, t.nombre).nombre)} (NIF ${escH(contractualDe(c, t.nombre).nif || '—')})<br>` : ''}
-    <b>Domicilio cargador:</b> ${cli.domicilio||'—'}<br>
+    <b>Cliente:</b> ${cli.nombre||'—'} (NIF ${cli.nif||'—'})<br>
+    <b>Domicilio cliente:</b> ${cli.domicilio||'—'}<br>
     <b>Transportista:</b> ${t.nombre||'—'} (NIF ${t.nif||'—'})<br>
     <b>Origen:</b> ${c.origen||'—'}<br>
     <b>Destino:</b> ${c.destino||'—'} ${enlaceMapa(c.destino, 'Cómo llegar')}<br>
@@ -2501,25 +2510,34 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   }
 
   const historialPrevio = Array.isArray(row.matricula_historial) ? row.matricula_historial : [];
-  const nuevoHistorial = nuevaLimpia === row.matricula ? historialPrevio : [...historialPrevio, {
-    anterior: row.matricula || null,
-    nueva: nuevaLimpia,
-    fecha: new Date().toLocaleString('es-ES'),
-    cambiado_por: choferActual ? choferActual.nombre : 'Sin identificar',
-    origen_cambio: eraPendiente ? 'Propuesta de Tráfico, confirmada por el chófer' : 'Cambiado directamente por el chófer'
-  }];
+  const esCmr = row.tipo_documento === 'CMR' || /^CMR-/.test(row.deca_id || '');
+  // Datos que pueden cambiar: transportista efectivo y, con él, el cargador contractual (quien contrata directamente al efectivo)
+  const efNuevo = cambiaTrans ? {nombre: tNuevo.nombre, nif: tNuevo.nif || '', domicilio: tNuevo.domicilio || ''} : {nombre: row.transportista_nombre, nif: row.transportista_nif || '', domicilio: row.transportista_domicilio || ''};
+  const contr = row.transportista_contractual_nombre ? {nombre: row.transportista_contractual_nombre, nif: row.transportista_contractual_nif, domicilio: row.transportista_contractual_domicilio || ''} : contractualDe({}, efNuevo.nombre);
+  const cliente = row.cliente_nombre ? {nombre: row.cliente_nombre, nif: row.cliente_nif || '', domicilio: row.cliente_domicilio || ''}
+    : (contr && mismoTrans(row.cargador_nombre, contr.nombre) ? null : {nombre: row.cargador_nombre, nif: row.cargador_nif || '', domicilio: row.cargador_domicilio || ''});   // DeCAs de antes de la actualización 55
+  const cg = esCmr || !cliente ? {nombre: row.cargador_nombre, nif: row.cargador_nif || '', domicilio: row.cargador_domicilio || '', porCuenta: null} : cargadorLegal(cliente, contr, efNuevo.nombre);
+  const cambiaCargador = !esCmr && !mismoTrans(cg.nombre, row.cargador_nombre);
+  const ahora = new Date().toLocaleString('es-ES'), quien = choferActual ? choferActual.nombre : 'Sin identificar';
+  const nuevos = [];
+  if(nuevaLimpia !== row.matricula) nuevos.push({campo: 'matricula', anterior: row.matricula || null, nueva: nuevaLimpia, fecha: ahora, cambiado_por: quien,
+    origen_cambio: eraPendiente ? 'Propuesta de Tráfico, confirmada por el chófer' : 'Cambiado directamente por el chófer',
+    motivo: eraPendiente ? 'transbordo en la nave a otro vehículo' : 'cambio de vehículo indicado por el conductor'});
+  if(cambiaTrans) nuevos.push({campo: 'transportista', anterior: row.transportista_nombre || null, nueva: efNuevo.nombre, fecha: ahora, cambiado_por: quien,
+    motivo: 'la mercancía sale de la nave en un vehículo de otro transportista'});
+  if(cambiaCargador) nuevos.push({campo: 'cargador', anterior: row.cargador_nombre || null, nueva: cg.nombre, fecha: ahora, cambiado_por: quien,
+    motivo: 'cambia el transportista efectivo; el cargador contractual es quien le contrata directamente'});
+  const nuevoHistorial = [...historialPrevio, ...nuevos];
 
   // Reconstruye los datos que necesita el PDF a partir de la fila guardada
   const record = {
     id: row.deca_id, driver: row.conductor, plate: nuevaLimpia, detail: row.detalle,
     ldm: row.ldm, date: new Date(row.fecha).toLocaleString('es-ES'), geo: row.geo, url: row.pdf_url,
-    cargadorNombre: row.cargador_nombre, cargadorNif: row.cargador_nif, cargadorDomicilio: row.cargador_domicilio,
-    transportistaNombre: cambiaTrans ? tNuevo.nombre : row.transportista_nombre, transportistaNif: cambiaTrans ? (tNuevo.nif || '') : row.transportista_nif, transportistaDomicilio: cambiaTrans ? (tNuevo.domicilio || '') : (row.transportista_domicilio || ''),
+    cargadorNombre: cg.nombre, cargadorNif: cg.nif, cargadorDomicilio: cg.domicilio, porCuenta: cg.porCuenta,
+    transportistaNombre: efNuevo.nombre, transportistaNif: efNuevo.nif, transportistaDomicilio: efNuevo.domicilio,
     origen: row.origen, destino: row.destino, mercancia: row.mercancia, peso: row.peso,
     origenDireccion: row.origen_direccion || '', destinoDireccion: row.destino_direccion || '',
-    contractual: (() => { const ef = cambiaTrans ? tNuevo.nombre : row.transportista_nombre;   // al salir de la nave con un autónomo, tu empresa pasa a contractual
-      if(row.transportista_contractual_nombre) return {nombre: row.transportista_contractual_nombre, nif: row.transportista_contractual_nif, domicilio: row.transportista_contractual_domicilio || ''};
-      return contractualDe({}, ef); })(),
+    contractual: contr,
     autorizacionEspecial: row.autorizacion_especial || '',
     descargaPrevista: row.fecha_prevista_descarga ? fechaIsoATexto(row.fecha_prevista_descarga) : fechaPrevistaDescarga(new Date(row.fecha)).txt,
     matriculaHistorial: nuevoHistorial
@@ -2552,7 +2570,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   const { error: verErr } = await sb.from('deca_versiones').insert({
     deca_row_id: String(row.id), deca_id: row.deca_id, version: numVersion,
     datos: row, pdf_url_version: urlVersion,
-    motivo: [row.pdf_regenerar ? `PDF del DeCA nuevo${row.dividido_de ? ' (partida dividida de ' + row.dividido_de + ')' : ''}` : '', nuevaLimpia !== row.matricula ? `Matrícula ${row.matricula || '—'} → ${nuevaLimpia}` : '', cambiaTrans ? `Transportista efectivo ${row.transportista_nombre || '—'} → ${tNuevo.nombre} (sale de la nave)` : ''].filter(Boolean).join(' · '), cambiado_por: choferActual ? choferActual.nombre : 'Sin identificar'
+    motivo: [row.pdf_regenerar ? `PDF del DeCA nuevo${row.dividido_de ? ' (partida dividida de ' + row.dividido_de + ')' : ''}` : '', nuevaLimpia !== row.matricula ? `Matrícula ${row.matricula || '—'} → ${nuevaLimpia}` : '', cambiaTrans ? `Transportista efectivo ${row.transportista_nombre || '—'} → ${tNuevo.nombre} (sale de la nave)` : '', cambiaCargador ? `Cargador contractual ${row.cargador_nombre || '—'} → ${cg.nombre}` : ''].filter(Boolean).join(' · '), cambiado_por: choferActual ? choferActual.nombre : 'Sin identificar'
   });
   if(verErr){ alert('No se pudo guardar la versión anterior del DeCA, así que no se ha cambiado nada: ' + verErr.message); return; }
 
@@ -2561,11 +2579,13 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
     if(upErr){ alert('No se pudo regenerar el PDF: ' + upErr.message); return; }
   }
 
-  const { error: updErr } = await sb.from('decas')
-    .update({matricula: nuevaLimpia, matricula_historial: nuevoHistorial, matricula_pendiente: null, chofer_destino_id: null, ...(row.pdf_regenerar ? {pdf_regenerar: false} : {}),
+  const cambiosFila = {matricula: nuevaLimpia, matricula_historial: nuevoHistorial, matricula_pendiente: null, chofer_destino_id: null, ...(row.pdf_regenerar ? {pdf_regenerar: false} : {}),
       ...(cambiaTrans ? {transportista_nombre: tNuevo.nombre, transportista_nif: tNuevo.nif || null, transportista_domicilio: tNuevo.domicilio || null,
-          transportista_contractual_nombre: record.contractual ? record.contractual.nombre : null, transportista_contractual_nif: record.contractual ? record.contractual.nif || null : null, transportista_contractual_domicilio: record.contractual ? record.contractual.domicilio || null : null} : {})})
-    .eq('id', row.id);
+          transportista_contractual_nombre: record.contractual ? record.contractual.nombre : null, transportista_contractual_nif: record.contractual ? record.contractual.nif || null : null, transportista_contractual_domicilio: record.contractual ? record.contractual.domicilio || null : null} : {}),
+      ...(cambiaCargador ? {cargador_nombre: cg.nombre, cargador_nif: cg.nif || null, cargador_domicilio: cg.domicilio || null} : {}),
+      ...(cambiaCargador && !row.cliente_nombre && cliente ? {cliente_nombre: cliente.nombre, cliente_nif: cliente.nif || null, cliente_domicilio: cliente.domicilio || null} : {})};
+  let { error: updErr } = await sb.from('decas').update(cambiosFila).eq('id', row.id);
+  if(updErr && /cliente_/.test(updErr.message || '')){ delete cambiosFila.cliente_nombre; delete cambiosFila.cliente_nif; delete cambiosFila.cliente_domicilio; ({ error: updErr } = await sb.from('decas').update(cambiosFila).eq('id', row.id)); }   // falta la actualización 55
   if(updErr){ alert('No se pudo guardar el cambio: ' + updErr.message); return; }
   guardarBlobEnMovil({deca_id: row.deca_id, pdf_url: row.pdf_url, origen: row.origen, destino: row.destino, matricula: nuevaLimpia, fecha: row.fecha}, blob);
 
@@ -2633,7 +2653,7 @@ function buildCmr(r, qrObj){
   caja(M + H2, y, H2, 24, 16, 'TRANSPORTISTA (nombre, domicilio, país)', r.contractual ? [r.contractual.nombre, r.contractual.nif ? 'NIF: ' + r.contractual.nif : '', r.contractual.domicilio] : [r.transportistaNombre, r.transportistaNif ? 'NIF: ' + r.transportistaNif : '', r.transportistaDomicilio], true);
   y += 24;
   caja(M, y, H2, 20, 3, 'LUGAR PREVISTO PARA LA ENTREGA DE LA MERCANCÍA (lugar, país)', [r.destino, r.destinoDireccion, r.pais], true);
-  caja(M + H2, y, H2, 20, 17, 'PORTEADORES SUCESIVOS (nombre, domicilio, país)', r.contractual ? [r.transportistaNombre, r.transportistaNif ? 'NIF: ' + r.transportistaNif : '', r.transportistaDomicilio] : ['—'], !!r.contractual);
+  caja(M + H2, y, H2, 20, 17, 'PORTEADORES SUCESIVOS (nombre, domicilio, país)', r.contractual && !mismoTrans(r.contractual.nombre, r.transportistaNombre) ? [r.transportistaNombre, r.transportistaNif ? 'NIF: ' + r.transportistaNif : '', r.transportistaDomicilio] : ['—'], !!(r.contractual && !mismoTrans(r.contractual.nombre, r.transportistaNombre)));
   y += 20;
   caja(M, y, H2, 20, 4, 'LUGAR Y FECHA DE CARGA DE LA MERCANCÍA (lugar, país, fecha)', [r.origen, r.origenDireccion, 'España · ' + (r.date || '')], true);
   caja(M + H2, y, H2, 20, 18, 'RESERVAS Y OBSERVACIONES DEL PORTEADOR', ['']);
@@ -2707,20 +2727,16 @@ function buildPdf(r, qrDataUrl, qrObj){
   let y = M+12;
 
   // Fila 1: Cargador contractual (1) | Transportista efectivo (16)
-  const hC = r.contractual ? 22 : 0;   // con transportista contractual, la fila crece para que quepan los dos
-  const h1 = 26 + hC, wA = W*0.55, wB = W-wA;
+  // Cargador contractual = quien contrata directamente con el transportista efectivo (Orden FOM/2861/2012, art. 4)
+  const hPC = r.porCuenta ? 5 : 0;
+  const h1 = 26 + hPC, wA = W*0.55, wB = W-wA;
   box(M, y, wA, h1); label(M, y, '1  CARGADOR CONTRACTUAL (nombre, NIF, domicilio)');
   negrita(String(r.cargadorNombre||'—'), M+2, y+9, {maxWidth:wA-4});
   doc.text('NIF: ' + (r.cargadorNif||'—'), M+2, y+15);
   doc.text(String(r.cargadorDomicilio||'—'), M+2, y+21, {maxWidth:wA-4});
-
-  if(r.contractual){
-    box(M+wA, y, wB, hC); label(M+wA, y, 'TRANSPORTISTA CONTRACTUAL (nombre, NIF, domicilio)');
-    negrita(String(r.contractual.nombre||'—'), M+wA+2, y+9, {maxWidth:wB-4});
-    doc.setFontSize(8); doc.text(doc.splitTextToSize('NIF: ' + (r.contractual.nif||'—') + (r.contractual.domicilio ? ' · ' + r.contractual.domicilio : ''), wB-4).slice(0, 2), M+wA+2, y+14); doc.setFontSize(9);
-  }
-  const yE = y + hC;
-  box(M+wA, yE, wB, 26); label(M+wA, yE, '16  TRANSPORTISTA EFECTIVO (nombre, NIF, domicilio)');
+  if(r.porCuenta){ doc.setFontSize(7.5); doc.setTextColor(70,70,70); doc.text(doc.splitTextToSize('Por cuenta de: ' + r.porCuenta.nombre + (r.porCuenta.nif ? ' (NIF ' + r.porCuenta.nif + ')' : ''), wA-4).slice(0, 1), M+2, y+27); doc.setTextColor(0,0,0); doc.setFontSize(9); }
+  const yE = y;
+  box(M+wA, yE, wB, h1); label(M+wA, yE, '16  TRANSPORTISTA EFECTIVO (nombre, NIF, domicilio)');
   negrita(String(r.transportistaNombre||'—'), M+wA+2, yE+9, {maxWidth:wB-4});
   doc.text('NIF: ' + (r.transportistaNif||'—'), M+wA+2, yE+15);
   if(r.transportistaDomicilio) doc.text(doc.splitTextToSize(String(r.transportistaDomicilio), wB-4).slice(0, 1), M+wA+2, yE+21);
@@ -2769,34 +2785,26 @@ function buildPdf(r, qrDataUrl, qrObj){
   doc.text('Autorización especial: ' + (r.autorizacionEspecial || 'no requerida'), M+2, y+13.5, {maxWidth:W-4});
   y += h5;
 
-  // Fila 5bis: histórico de matrícula (trazabilidad de cambios, exigida por la norma)
-  // El texto se ajusta al ancho de la caja, y si no caben todos los cambios en pocas
-  // líneas, se muestran los más recientes y se indica cuántos se han omitido —
-  // así el recuadro nunca se desborda, tenga los cambios que tenga el DeCA.
+  // Fila 5bis: MODIFICACIONES del DeCA (Resolución de 5 de junio de 2026, apartado quinto): en el mismo PDF se añaden
+  // los datos nuevos y el motivo del cambio, y se conservan los antiguos indicando claramente que ya NO son válidos.
   doc.setFontSize(7.5);
   const hist = Array.isArray(r.matriculaHistorial) ? r.matriculaHistorial : [];
   const maxLineWidth = W-4;
-  const maxLineas = 3;
+  const CAMPO = {matricula:'Matrícula', transportista:'Transportista efectivo', cargador:'Cargador contractual'};
+  const lineaCambio = h => `${h.fecha || ''} · ${CAMPO[h.campo || 'matricula'] || h.campo}: ${h.anterior || '—'} (NO VÁLIDO); ahora: ${h.nueva || '—'}. Motivo: ${h.motivo || h.origen_cambio || 'cambio de vehículo'}.`;
+  const maxLineas = 12;
   let lineas;
   if(!hist.length){
-    lineas = ['Sin cambios de matrícula desde la generación de este DeCA.'];
+    lineas = ['Sin modificaciones desde la generación de este DeCA.'];
   } else {
-    let entradas = hist.slice();
-    let omitidas = 0;
-    let texto = entradas.map(h=>`${h.anterior||'—'} → ${h.nueva} (${h.fecha})`).join('  ·  ');
-    lineas = doc.splitTextToSize(texto, maxLineWidth);
-    while(lineas.length > maxLineas && entradas.length > 1){
-      entradas.shift(); // se quita el cambio más antiguo hasta que quepa
-      omitidas++;
-      texto = entradas.map(h=>`${h.anterior||'—'} → ${h.nueva} (${h.fecha})`).join('  ·  ');
-      lineas = doc.splitTextToSize(texto, maxLineWidth);
-    }
-    if(omitidas>0){
-      lineas.push(`(+${omitidas} cambio(s) anterior(es) — histórico completo en la ficha del DeCA)`);
-    }
+    let entradas = hist.slice(), omitidas = 0;
+    const partir = () => entradas.reduce((a, h) => a.concat(doc.splitTextToSize(lineaCambio(h), maxLineWidth)), []);
+    lineas = partir();
+    while(lineas.length > maxLineas && entradas.length > 1){ entradas.shift(); omitidas++; lineas = partir(); }
+    if(omitidas > 0) lineas.unshift(`(${omitidas} modificación(es) más antigua(s): en las versiones anteriores guardadas de este DeCA)`);
   }
   const h5b = 9 + lineas.length*3.6 + 2;
-  box(M, y, W, h5b); label(M, y, 'HISTÓRICO DE MATRÍCULA (TRAZABILIDAD)');
+  box(M, y, W, h5b); label(M, y, 'MODIFICACIONES (los datos marcados «NO VÁLIDO» ya no son válidos)');
   doc.setFontSize(7.5); doc.setTextColor(70,70,70);
   lineas.forEach((linea,i)=> doc.text(linea, M+2, y+9+i*3.6));
   y += h5b;
@@ -2865,10 +2873,10 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   const publicUrl = sb ? `${SUPABASE_URL}/storage/v1/object/public/decas/${publicId}.pdf` : null;
   const record = {
     id: decaId, driver, plate, detail, ldm: ldm.toFixed(1), date: now.toLocaleString('es-ES'), geo, url: publicUrl,
-    cargadorNombre: c.nombre, cargadorNif: c.nif, cargadorDomicilio: c.domicilio,
     transportistaNombre: t.nombre, transportistaNif: t.nif, transportistaDomicilio: t.domicilio || '',
     origen: currentCarga.origen, destino: currentCarga.destino, mercancia: currentCarga.mercancia,
     contractual: currentCarga.manual ? (currentCarga.contractualManual || contractualDe({}, t.nombre)) : contractualDe(currentCarga, t.nombre),
+    cliente: {nombre: c.nombre, nif: c.nif || ''},
     origenDireccion: currentCarga.origen_direccion || dirLugar(currentCarga.almacen) || dirLugar(currentCarga.origen),
     destinoDireccion: currentCarga.destino_direccion || dirLugar(currentCarga.destino),
     peso: currentCarga.peso + (currentCarga.peso_aproximado ? ' (aprox.)' : ''),
@@ -2876,6 +2884,9 @@ document.getElementById('confirmBtn').onclick = async ()=>{
     descargaPrevista: fechaPrevistaDescarga(now).txt, descargaPrevistaIso: fechaPrevistaDescarga(now).iso
   };
 
+  // Cargador contractual automático (en el CMR el remitente es siempre el cliente)
+  { const cg = paisInt ? {nombre: c.nombre, nif: c.nif || '', domicilio: c.domicilio || '', porCuenta: null} : cargadorLegal(c, record.contractual, t.nombre);
+    Object.assign(record, {cargadorNombre: cg.nombre, cargadorNif: cg.nif, cargadorDomicilio: cg.domicilio, porCuenta: cg.porCuenta}); }
   // 1. QR: si hay servidor, codifica la URL pública del PDF (lo que exige la norma);
   //    si no, codifica los datos en crudo como plan B para seguir probando en local.
   const qrTarget = publicUrl || `DECA:${decaId}|COND:${driver}|MATR:${plate}|CARGA:${detail}|LDM:${ldm.toFixed(1)}|GEO:${geo}|FECHA:${record.date}`;
@@ -2904,7 +2915,8 @@ document.getElementById('confirmBtn').onclick = async ()=>{
       origen: record.origen, destino: record.destino, mercancia: record.mercancia, peso: record.peso,
       autorizacion_especial: record.autorizacionEspecial || null, fecha_prevista_descarga: record.descargaPrevistaIso || null,
       transportista_domicilio: record.transportistaDomicilio || null, origen_direccion: record.origenDireccion || null, destino_direccion: record.destinoDireccion || null,
-      ...(record.contractual ? {transportista_contractual_nombre: record.contractual.nombre || null, transportista_contractual_nif: record.contractual.nif || null, transportista_contractual_domicilio: record.contractual.domicilio || null} : {})
+      ...(record.contractual ? {transportista_contractual_nombre: record.contractual.nombre || null, transportista_contractual_nif: record.contractual.nif || null, transportista_contractual_domicilio: record.contractual.domicilio || null} : {}),
+      cliente_nombre: c.nombre || null, cliente_nif: c.nif || null, cliente_domicilio: c.domicilio || null
     };
     const item = {tipo:'deca', publicId, blob: pdfBlob, fila: filaDeca, cargaId: currentCarga && !currentCarga.manual ? currentCarga.id : null,
       manual: !!(currentCarga && currentCarga.manual), cargaManual: currentCarga && currentCarga.manual ? JSON.parse(JSON.stringify(currentCarga)) : null};
