@@ -2304,7 +2304,7 @@ async function ficheroBorrar(tabla, id, nombre){
   const { data, error } = await sb.from(tabla).delete().eq('id', id).select('id');
   if(!error && data && data.length){ toast('Borrado'); await cargarMaestros(); return renderFicheros(); }
   if(error && error.code === '23503' && TABLAS_BAJA.includes(tabla)){
-    const meses = +ajustes.meses_conservacion || 12;
+    const meses = mesesConservacion();
     if(confirm(`«${nombre}» tiene órdenes o DeCAs guardados, y hay que conservarlos ${meses} meses. Todavía no se puede borrar.\n\n¿Lo damos de BAJA? Dejará de salir en las listas, y cuando pase el plazo te avisaré para descargar sus DeCAs y borrarlo del todo.`)){
       try{ await escribirComprobado(sb.from(tabla).update({baja:true, fecha_baja:new Date().toISOString()}).eq('id', id), 'Dado de baja'); await cargarMaestros(); renderFicheros(); }catch(_){}
     }
@@ -2324,7 +2324,7 @@ async function ultimaActividad(tabla, fila){
   return [f1, f2].filter(Boolean).sort((a,b) => b - a)[0] || null;
 }
 async function comprobarBajas(){
-  const meses = +ajustes.meses_conservacion || 12;
+  const meses = mesesConservacion();
   const res = [];
   for(const [tabla, lista] of [['personal', personalTodos], ['clientes', clientesTodos], ['transportistas', transportistasTodos]]){
     for(const f of lista.filter(x => x.baja)){
@@ -2389,7 +2389,7 @@ async function borrarDefinitivo(tabla, id){
   try{ await escribirComprobado(sb.from(tabla).delete().eq('id', id), 'Borrado definitivamente'); await cargarMaestros(); renderFicheros(); }catch(_){}
 }
 async function renderBajas(box){
-  const meses = +ajustes.meses_conservacion || 12;
+  const meses = mesesConservacion();
   const nombreTabla = {personal:'Personal', clientes:'Cliente', transportistas:'Transportista'};
   box.innerHTML = `<div class="fich-head"><div><h2>Bajas y avisos</h2><p class="hint">Quien tiene DeCAs no se puede borrar hasta que pasa el plazo de conservación. Aquí ves cuándo se podrá y, llegado el momento, descargas sus DeCAs y lo borras.</p></div>
       <span class="hint">Los DeCAs se conservan <b>${meses} meses</b>.</span></div>
@@ -2405,9 +2405,11 @@ async function renderBajas(box){
 
 // ====== AJUSTES (solo dirección) ======
 const enPruebas = () => (ajustes.modo_pruebas ?? 'si') !== 'no';
+// Meses que se conservan los DeCAs: los contratados en la suscripción (12 incluidos; con el extra, hasta 60)
+function mesesConservacion(){ return +(licencia && licencia.meses_conservacion) || +ajustes.meses_conservacion || 12; }
 function renderAjustes(box){
   if(!usuario || usuario.puesto !== 'direccion'){ box.innerHTML = '<p class="hint">Solo dirección puede ver los ajustes.</p>'; return; }
-  const meses = +ajustes.meses_conservacion || 12;
+  const meses = mesesConservacion();
   box.innerHTML = `<div class="fich-head"><div><h2>Ajustes</h2><p class="hint">Solo los ve dirección.</p></div></div>
     <div class="fich-cols">
       <div class="baja-card ${enPruebas() ? '' : 'lista'}">

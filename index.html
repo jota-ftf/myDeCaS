@@ -112,13 +112,17 @@
 .voz-caja{width:100%;max-width:560px;text-align:center}
 .voz-paso{color:#aab4c8;font-size:1rem;margin-bottom:8px}
 .voz-pregunta{font-size:1.75rem;font-weight:800;line-height:1.25;color:#fff}
-.voz-capa #vozParar{color:#fff;border-color:#55607a;background:transparent;font-size:1.1rem}
+.voz-capa #vozParar{color:#fff;border-color:#55607a;background:transparent;font-size:1.1rem;width:auto;min-width:270px;display:block;margin-left:auto;margin-right:auto}
+.voz-mat{display:block;margin:14px auto 6px;font-size:2.3rem;font-weight:900;letter-spacing:.06em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.voz-sub{display:block;font-size:1.3rem;font-weight:600;color:#aab4c8;margin-top:4px}
+@media (max-width:420px){.voz-mat{font-size:1.75rem}}
 .voz-estado{margin-top:18px;font-size:1.3rem;color:#5cb8ff;min-height:1.6em}
 .voz-estado.escucha{animation:vozLatido 1.1s ease-in-out infinite}
 @keyframes vozLatido{50%{opacity:.45}}
 .voz-oido{margin-top:10px;font-size:1.45rem;color:#4fe0a6;font-weight:700;min-height:1.5em}
 .voz-botones{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
 .voz-botones .btn{width:auto;min-width:130px;font-size:1.25rem;padding:16px 22px;margin:0}
+.voz-botones .btn-ghost{color:#fff;border-color:#55607a;background:transparent}
 </style>
 </head>
 <body>
@@ -325,6 +329,18 @@
     </div>
     <div id="sinCoberturaAviso" class="pmeta" style="display:none;margin-top:8px;color:var(--warn)"></div>
     <div id="history" style="margin-top:10px"><div class="empty">Cargando…</div></div>
+  </details>
+
+  <!-- Plan Básico (sin cartón): la oficina busca aquí TODOS los DeCAs de la empresa -->
+  <details class="card" id="empDecasCard" style="display:none">
+    <summary><strong>🗂️ Buscar DeCAs de la empresa</strong> <span class="badge" id="empDecasBadge">—</span></summary>
+    <div class="pmeta" style="margin-top:8px">Todos los DeCAs, también los dejados en la nave o ya descargados. Busca por nº de DeCA, cliente, matrícula, conductor, origen o destino.</div>
+    <div class="row" style="gap:8px;margin-top:6px">
+      <label class="pmeta" style="flex:1">Desde<input type="date" id="empDesde" style="margin:2px 0 0;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px;font-size:1rem;width:100%"></label>
+      <label class="pmeta" style="flex:1">Hasta<input type="date" id="empHasta" style="margin:2px 0 0;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px;font-size:1rem;width:100%"></label>
+    </div>
+    <input type="text" id="empTexto" placeholder="Nº DeCA, cliente, matrícula, conductor…" style="margin-top:6px">
+    <div id="empDecasLista" style="margin-top:10px"><div class="empty">Elige las fechas</div></div>
   </details>
   </div><!-- /col-side -->
   </div><!-- /grid -->
@@ -786,12 +802,12 @@ async function vozAvisoMicro(){
   if($e('vozReintentar')) $e('vozReintentar').onclick = async () => { if(await VOZ.prepararMicro()){ $e('vozCapa').hidden = true; VOZ.hablar('Ya funciona el micrófono. Vuelve a pulsar el botón para hablar.'); } else vozAvisoMicro(); };
   try{ await VOZ.hablar(txt); }catch(e){}
 }
-function vozPantalla(paso, pregunta){ $e('vozCapa').hidden = false; $e('vozPaso').textContent = paso || ''; $e('vozPregunta').textContent = pregunta || ''; $e('vozOido').textContent = ''; $e('vozBotones').innerHTML = ''; $e('vozEstado').textContent = ''; $e('vozEstado').classList.remove('escucha'); }
+function vozPantalla(paso, pregunta, html){ $e('vozCapa').hidden = false; $e('vozPaso').textContent = paso || ''; if(html) $e('vozPregunta').innerHTML = html; else $e('vozPregunta').textContent = pregunta || ''; $e('vozOido').textContent = ''; $e('vozBotones').innerHTML = ''; $e('vozEstado').textContent = ''; $e('vozEstado').classList.remove('escucha'); }
 // Pregunta en voz alta y espera la respuesta hablada. En las de «sí o no» también se puede contestar tocando un botón grande
 let vozTocado;
-async function vozPreguntar(paso, texto, valida){
+async function vozPreguntar(paso, texto, valida, pantalla){   // pantalla: lo que se ve (si es distinto de lo que se dice)
   for(let intento = 0; intento < 3 && vozActivo; intento++){
-    vozPantalla(paso, texto);
+    vozPantalla(paso, texto, pantalla);
     vozTocado = undefined;
     if(valida === vozSiNo){
       $e('vozBotones').innerHTML = '<button class="btn btn-ghost" type="button" data-voztoca="no">❌ No</button><button class="btn btn-primary" type="button" data-voztoca="si">✅ Sí</button>';
@@ -870,13 +886,15 @@ function vozMatricula(alts){
   }
   return null;
 }
+// En pantalla, las matrículas se ven juntas y en el centro: «3080JHL - R1637BCJ» (en voz se siguen deletreando)
+function verMatriculas(m){ const [t, r] = String(m || '').split('/').map(x => x.trim().replace(/\s+/g, '').toUpperCase()); return `<span class="voz-mat">${escH(t || '—')}${r ? ' - ' + escH(r) : ''}</span>`; }
 async function asistenteMatricula(dentroDeOtro){
   if(!VOZ.disponible()) return true;
   if(!dentroDeOtro) vozActivo = true;
   const m = matriculaActual();
   try{
     if(m){
-      const r = await vozPreguntar('Matrículas', `¿Llevas la tractora ${decirMatricula(m)}? Di sí o no.`, vozSiNo);
+      const r = await vozPreguntar('Matrículas', `¿Llevas la tractora ${decirMatricula(m)}? Di sí o no.`, vozSiNo, `¿Llevas estas matrículas?${verMatriculas(m)}<span class="voz-sub">Di sí o no.</span>`);
       if(!r){ if(!dentroDeOtro) vozCerrar(); return false; }
       if(r.valor){ $e('matSi').click(); if(!dentroDeOtro) vozCerrar(); return true; }
     }
@@ -885,7 +903,7 @@ async function asistenteMatricula(dentroDeOtro){
     if(!t){ await VOZ.hablar('No la he entendido. Escríbela en la pantalla.'); vozCerrar(); $e('matNo').click(); return false; }
     const re = await vozPreguntar('Matrículas', '¿Y la del remolque? Si no llevas remolque, di ninguno.', alts => /\b(ninguno|ninguna|no|sin remolque|no llevo)\b/.test(vozNorm(alts.join(' '))) ? '' : vozMatricula(alts));
     const nueva = t.valor + (re && re.valor ? ' / ' + re.valor : '');
-    const ok = await vozPreguntar('Matrículas', `He apuntado ${decirMatricula(nueva)}. ¿Está bien?`, vozSiNo);
+    const ok = await vozPreguntar('Matrículas', `He apuntado ${decirMatricula(nueva)}. ¿Está bien?`, vozSiNo, `He apuntado:${verMatriculas(nueva)}<span class="voz-sub">¿Está bien?</span>`);
     if(!ok || !ok.valor){ await VOZ.hablar('Vale. Escríbela en la pantalla.'); vozCerrar(); $e('matNo').click(); return false; }
     const el = $e('plate'); el.value = nueva; el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true}));
     $e('matSi').click();
@@ -1494,6 +1512,37 @@ async function buscarDecas(){
   lista.sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
   pintarResultados(lista.filter(filtroTexto).slice(0, 60), locales, false);
 }
+// ====== PLAN BÁSICO: buscador de todos los DeCAs de la empresa (solo dirección y tráfico, y solo si la empresa no tiene cartón) ======
+function buscadorEmpresaVisible(){
+  const mods = licenciaApp && Array.isArray(licenciaApp.modulos) ? licenciaApp.modulos : null;
+  return !!(choferActual && ['trafico','direccion'].includes(choferActual.puesto) && mods && !mods.includes('carton'));
+}
+function actualizarBuscadorEmpresa(){ const c = $e('empDecasCard'); if(c) c.style.display = buscadorEmpresaVisible() ? 'block' : 'none'; }
+const isoDia = d => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+async function buscarDecasEmpresa(){
+  if(!buscadorEmpresaVisible() || !sb) return;
+  const desde = $e('empDesde').value, hasta = $e('empHasta').value, texto = $e('empTexto').value.trim().toLowerCase();
+  const box = $e('empDecasLista'); box.innerHTML = '<div class="empty">Buscando…</div>';
+  let q = sb.from('decas').select('*').order('fecha', {ascending:false}).limit(500);
+  if(desde) q = q.gte('fecha', new Date(desde + 'T00:00:00').toISOString());
+  if(hasta) q = q.lte('fecha', new Date(hasta + 'T23:59:59').toISOString());
+  const { data, error } = await q;
+  if(error){ box.innerHTML = '<div class="empty">No se pudo buscar: ' + escH(error.message) + '</div>'; return; }
+  const lista = (data || []).filter(r => !texto || [r.deca_id, r.cargador_nombre, r.matricula, r.conductor, r.origen, r.destino, r.transportista_nombre].some(v => String(v || '').toLowerCase().includes(texto)));
+  $e('empDecasBadge').textContent = String(lista.length) + (data && data.length === 500 ? '+' : '');
+  if(!lista.length){ box.innerHTML = '<div class="empty">No hay DeCAs con esos datos</div>'; return; }
+  const estado = r => r.anulado ? '<span class="badge bad">ANULADO</span>' : r.entregado ? '<span class="badge ok">Descargado</span>' : r.entregado_hub ? '<span class="badge">En la nave</span>' : '<span class="badge">En ruta</span>';
+  box.innerHTML = (data && data.length === 500 ? '<div class="pmeta" style="color:var(--warn);margin-bottom:6px">Salen los 500 más recientes: acorta las fechas para ver el resto.</div>' : '') + lista.map((r, i) => `<div class="hist-item" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div class="row" style="cursor:pointer" data-empqr="${i}"><span><b>${escH(r.deca_id)}</b> ${estado(r)}<br>
+        <span class="pmeta">${escH(r.cargador_nombre || '—')} · ${escH(r.origen || '—')} → ${escH(r.destino || '—')}<br>${escH(r.matricula || '—')} · ${escH(r.conductor || '—')} · ${r.fecha ? new Date(r.fecha).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'}) : ''}</span></span><span class="badge">QR</span></div>
+      <div id="empqr-${i}" style="display:none;text-align:center">${r.pdf_url ? qrImg(r.pdf_url) + `<div style="margin-top:6px"><a class="btn btn-sm btn-ghost" href="${escA(r.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener" style="text-decoration:none">Abrir PDF</a></div>` : '<div class="pmeta">Sin PDF</div>'}</div></div>`).join('');
+  box.querySelectorAll('[data-empqr]').forEach(el => el.onclick = () => { const q = $e('empqr-' + el.dataset.empqr); q.style.display = q.style.display === 'none' ? 'block' : 'none'; });
+}
+$e('empHasta').value = isoDia(new Date()); $e('empDesde').value = isoDia(new Date(Date.now() - 7*864e5));
+['empDesde','empHasta'].forEach(id => $e(id).addEventListener('change', buscarDecasEmpresa));
+$e('empTexto').addEventListener('input', () => { clearTimeout(window._tBuscaEmp); window._tBuscaEmp = setTimeout(buscarDecasEmpresa, 300); });
+$e('empDecasCard').addEventListener('toggle', () => { if($e('empDecasCard').open) buscarDecasEmpresa(); });
+setInterval(actualizarBuscadorEmpresa, 3000);
 function mostrarSinCobertura(){
   const d = document.getElementById('histDetails'); d.open = true;
   buscarDecas();

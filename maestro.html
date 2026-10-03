@@ -494,7 +494,10 @@ function abrirEmpresa(e){
   $('#mePlan').innerHTML = planes.filter(p => p.activo !== false || (e && e.plan === p.clave)).map(p => `<option value="${esc(p.clave)}">${esc(p.nombre)}${p.descripcion ? ' — ' + esc(p.descripcion).slice(0, 60) : ''}</option>`).join('');
   v('mePlan', e ? e.plan : (planDe('pro') ? 'pro' : (planes[0] || {}).clave)); v('meCamiones', e ? e.camiones : 1); v('meEstado', e ? e.estado : 'prueba');
   const tiene = e ? extrasDe(e) : [];
-  $('#meExtras').innerHTML = extrasCat.filter(x => x.activo !== false || tiene.includes(x.clave)).length ? '<b style="font-size:.85rem">Extras contratados</b>' + extrasCat.filter(x => x.activo !== false || tiene.includes(x.clave)).map(x => `<label style="flex-direction:row;align-items:center;gap:8px;margin-top:4px"><input type="checkbox" data-extra="${esc(x.clave)}" ${tiene.includes(x.clave) ? 'checked' : ''}> ${esc(x.nombre)}${x.precio != null && x.precio !== '' ? ` (${eur(num(x.precio))} por camión y mes)` : ''}${x.descripcion ? `<span class="hint"> · ${esc(x.descripcion)}</span>` : ''}</label>`).join('') : '';
+  const esCons = x => /^conservacion_\d+$/.test(x.clave);   // los tramos de conservación se eligen en un desplegable (solo uno)
+  const consCat = extrasCat.filter(x => esCons(x) && (x.activo !== false || tiene.includes(x.clave))).sort((a, b) => parseInt(a.clave.split('_')[1], 10) - parseInt(b.clave.split('_')[1], 10));
+  const consSel = consCat.length ? `<label style="margin-top:8px"><b style="font-size:.85rem">Conservación de los DeCAs</b><select class="field" id="meConserva"><option value="">12 meses (incluido en todos los planes)</option>${consCat.map(x => `<option value="${esc(x.clave)}" ${tiene.includes(x.clave) ? 'selected' : ''}>${esc(x.nombre)}${x.precio != null && x.precio !== '' ? ` — ${eur(num(x.precio))} por camión y mes` : ''}</option>`).join('')}</select></label>` : '';
+  $('#meExtras').innerHTML = (extrasCat.filter(x => !esCons(x) && (x.activo !== false || tiene.includes(x.clave))).length ? '<b style="font-size:.85rem">Extras contratados</b>' + extrasCat.filter(x => !esCons(x) && (x.activo !== false || tiene.includes(x.clave))).map(x => `<label style="flex-direction:row;align-items:center;gap:8px;margin-top:4px"><input type="checkbox" data-extra="${esc(x.clave)}" ${tiene.includes(x.clave) ? 'checked' : ''}> ${esc(x.nombre)}${x.precio != null && x.precio !== '' ? ` (${eur(num(x.precio))} por camión y mes)` : ''}${x.descripcion ? `<span class="hint"> · ${esc(x.descripcion)}</span>` : ''}</label>`).join('') : '') + consSel;
   v('meDias', e ? '' : (ajustes.dias_prueba || 30));
   v('mePrueba', e ? e.prueba_hasta : sumarDias(hoy(), +ajustes.dias_prueba || 30)); v('mePagado', e && e.pagado_hasta);
   v('mePrecio', e && e.precio_camion != null ? String(e.precio_camion).replace('.', ',') : ''); v('meMensaje', e && e.mensaje); v('meNotas', e && e.notas);
@@ -529,6 +532,7 @@ $('#meGuardar').onclick = async () => {
   };
   if(empresas.some(x => 'contar_autonomos' in x)) row.contar_autonomos = $('#meAutonomos').checked;   // (con la actualización 37)
   const extrasMarcados = [...document.querySelectorAll('#meExtras [data-extra]:checked')].map(c => c.dataset.extra);
+  if($('#meConserva') && $('#meConserva').value) extrasMarcados.push($('#meConserva').value);   // tramo de conservación elegido (12 meses = sin extra)
   if(hay40) row.extras = extrasMarcados;
   if(empresas.some(x => 'codigo' in x)) row.codigo = codigo;   // (con la actualización 43)
   if(empresas.some(x => 'dias_descarga' in x)){ row.dias_descarga = Math.max(0, parseInt($('#meDiasDesc').value, 10) >= 0 ? parseInt($('#meDiasDesc').value, 10) : 1); row.hora_corte_descarga = +$('#meCorte').value; }   // (con la actualización 42)
