@@ -566,6 +566,16 @@ function capturarUbicacion(){
 
 // ====== Enlaces al mapa (abre Google Maps o el navegador GPS del móvil) ======
 let lugares = {}, ajustesApp = {};
+// Dirección del QR: con dominio propio (se activa en Ajustes del cartón), los DeCAs hechos desde entonces llevan https://decas.mydecas.com/xxx.pdf.
+// El PDF se sigue guardando en el mismo sitio; los DeCAs anteriores conservan su QR (también al modificarlos).
+function urlQr(pdfUrl, fechaDeca){
+  const dom = String(ajustesApp.qr_dominio || '').trim().replace(/\/+$/, '');
+  const m = String(pdfUrl || '').match(/\/storage\/v1\/object\/public\/decas\/([^?#]+)$/);
+  if(!/^https:\/\//.test(dom) || !m) return pdfUrl;
+  const desde = ajustesApp.qr_dominio_desde ? new Date(ajustesApp.qr_dominio_desde) : null;
+  if(desde && fechaDeca && new Date(fechaDeca) < desde) return pdfUrl;
+  return dom + '/' + m[1];
+}
 // Supabase devuelve como mucho 1000 filas por consulta: las listas largas (clientes, destinos…) se leen por tandas
 async function leerTodo(hacer){
   let todo = [], desde = 0;
@@ -2533,7 +2543,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   // Reconstruye los datos que necesita el PDF a partir de la fila guardada
   const record = {
     id: row.deca_id, driver: row.conductor, plate: nuevaLimpia, detail: row.detalle,
-    ldm: row.ldm, date: new Date(row.fecha).toLocaleString('es-ES'), geo: row.geo, url: row.pdf_url,
+    ldm: row.ldm, date: new Date(row.fecha).toLocaleString('es-ES'), geo: row.geo, url: urlQr(row.pdf_url, row.fecha),
     cargadorNombre: cg.nombre, cargadorNif: cg.nif, cargadorDomicilio: cg.domicilio, porCuenta: cg.porCuenta,
     transportistaNombre: efNuevo.nombre, transportistaNif: efNuevo.nif, transportistaDomicilio: efNuevo.domicilio,
     origen: row.origen, destino: row.destino, mercancia: row.mercancia, peso: row.peso,
@@ -2546,7 +2556,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
 
   let qrDataUrl = null, qrObj = null;
   try{
-    const qr = qrcode(0, 'M'); qr.addData(row.pdf_url || row.deca_id); qr.make();
+    const qr = qrcode(0, 'M'); qr.addData(record.url || row.deca_id); qr.make();
     qrObj = qr; qrDataUrl = qr.createDataURL(6, 8);
   }catch(e){ /* seguimos sin QR visual si falla */ }
 
@@ -2873,7 +2883,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
   // Se calcula ANTES de subir, porque el propio QR (dentro del PDF) debe apuntar a ella.
   const publicUrl = sb ? `${SUPABASE_URL}/storage/v1/object/public/decas/${publicId}.pdf` : null;
   const record = {
-    id: decaId, driver, plate, detail, ldm: ldm.toFixed(1), date: now.toLocaleString('es-ES'), geo, url: publicUrl,
+    id: decaId, driver, plate, detail, ldm: ldm.toFixed(1), date: now.toLocaleString('es-ES'), geo, url: urlQr(publicUrl, now),
     transportistaNombre: t.nombre, transportistaNif: t.nif, transportistaDomicilio: t.domicilio || '',
     origen: currentCarga.origen, destino: currentCarga.destino, mercancia: currentCarga.mercancia,
     contractual: currentCarga.manual ? (currentCarga.contractualManual || contractualDe({}, t.nombre)) : contractualDe(currentCarga, t.nombre),
@@ -2890,7 +2900,7 @@ document.getElementById('confirmBtn').onclick = async ()=>{
     Object.assign(record, {cargadorNombre: cg.nombre, cargadorNif: cg.nif, cargadorDomicilio: cg.domicilio, porCuenta: cg.porCuenta}); }
   // 1. QR: si hay servidor, codifica la URL pública del PDF (lo que exige la norma);
   //    si no, codifica los datos en crudo como plan B para seguir probando en local.
-  const qrTarget = publicUrl || `DECA:${decaId}|COND:${driver}|MATR:${plate}|CARGA:${detail}|LDM:${ldm.toFixed(1)}|GEO:${geo}|FECHA:${record.date}`;
+  const qrTarget = record.url || `DECA:${decaId}|COND:${driver}|MATR:${plate}|CARGA:${detail}|LDM:${ldm.toFixed(1)}|GEO:${geo}|FECHA:${record.date}`;
   let qrDataUrl = null, qrObj = null;
   try{
     const qr = qrcode(0, 'M');

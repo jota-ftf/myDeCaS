@@ -2923,6 +2923,13 @@ function renderAjustes(box){
         <button type="button" class="btn small" id="guardarOrigenGps">Guardar</button>
       </div>
       <div class="baja-card">
+        <b>🔗 Dirección del QR de los DeCAs (dominio propio)</b>
+        <span class="hint">Con tu dominio, el QR de los DeCAs nuevos lleva p. ej. <b>https://decas.mydecas.com/…pdf</b> en lugar de la dirección de Supabase. Los DeCAs ya hechos conservan su QR. Antes de guardar, pulsa «Probar» y comprueba que se abre un PDF. Déjalo vacío para no usarlo.</span>
+        <input class="field" id="qrDominio" value="${esc(ajustes.qr_dominio || '')}" placeholder="https://decas.mydecas.com" style="max-width:320px">
+        <span style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small" id="probarQrDominio">🔎 Probar con el último DeCA</button><button type="button" class="btn small" id="guardarQrDominio">Guardar</button></span>
+        ${ajustes.qr_dominio ? `<span class="hint">✅ En uso desde ${ajustes.qr_dominio_desde ? new Date(ajustes.qr_dominio_desde).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'}) : '—'}</span>` : ''}
+      </div>
+      <div class="baja-card">
         <b>🏷️ Etiquetas por partida (nave)</b>
         <span class="hint">Para saber en la nave de quién es cada grupo de palets: una etiqueta por partida con el destino, el cliente, los palets, el nº de DeCA, el camión asignado y un QR. Se imprimen desde «🏷️ Etiquetas» (arriba) o desde la caja de cada camión.</span>
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="etqActivo" ${ajustes.etiquetas_partida === 'si' ? 'checked' : ''}> Activado</label>
@@ -3587,7 +3594,7 @@ function imprimirEtiquetas(lista, que){
       <div class="etq-l"><b>Cliente:</b> ${esc(l.cliente_nombre || d.cliente_nombre || d.cargador_nombre || '—')}</div>
       <div class="etq-l"><b>Almacén:</b> ${esc(nCorto(l.almacen) || '—')}</div>
       <div class="etq-cam">🚛 ${t ? esc(t.nombre) + (t.matricula ? ' · ' + esc(t.matricula) : '') : 'SIN CAMIÓN TODAVÍA'}</div>
-      <div class="etq-pie">${d.pdf_url ? qr(d.pdf_url) : ''}<div><b>${esc(d.deca_id)}</b><br>${fechaBonita(fecha)}${l.referencia ? '<br>Ref. ' + esc(l.referencia) : ''}</div></div>
+      <div class="etq-pie">${d.pdf_url ? qr(urlQr(d.pdf_url, d.fecha)) : ''}<div><b>${esc(d.deca_id)}</b><br>${fechaBonita(fecha)}${l.referencia ? '<br>Ref. ' + esc(l.referencia) : ''}</div></div>
     </div>`; }).join('')}</div>`;
   document.body.classList.add('imprimiendo-etq');
   setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove('imprimiendo-etq'), 500); }, 100);
@@ -3717,6 +3724,15 @@ async function guardarImportados(){
   toast(`${hechos} DeCA${hechos === 1 ? '' : 's'} importado${hechos === 1 ? '' : 's'}${repetidos ? ` · ${repetidos} ya estaban` : ''}${fallos ? ` · ${fallos} con error` : ''}.`, !!fallos);
   if(hechos && vista === 'buscar') renderFicheros();
 }
+// Dirección del QR (igual que en la app): dominio propio para los DeCAs hechos desde que se activó en Ajustes
+function urlQr(pdfUrl, fechaDeca){
+  const dom = String(ajustes.qr_dominio || '').trim().replace(/\/+$/, '');
+  const m = String(pdfUrl || '').match(/\/storage\/v1\/object\/public\/decas\/([^?#]+)$/);
+  if(!/^https:\/\//.test(dom) || !m) return pdfUrl;
+  const desde = ajustes.qr_dominio_desde ? new Date(ajustes.qr_dominio_desde) : null;
+  if(desde && fechaDeca && new Date(fechaDeca) < desde) return pdfUrl;
+  return dom + '/' + m[1];
+}
 function qrDe(url){ try{ const q = qrcode(0, 'M'); q.addData(url); q.make(); return `<img src="${q.createDataURL(4, 6)}" width="140" height="140" alt="QR del DeCA" style="background:#fff;padding:4px;border-radius:6px">`; }catch(_){ return '<span class="hint">(no se pudo dibujar el QR)</span>'; } }
 function buscarDecasDe(autonomoId){
   const a = transportistasTodos.find(t => String(t.id) === String(autonomoId)); if(!a) return;
@@ -3762,7 +3778,7 @@ function pintarResultadosBusqueda(){
         <td>${esc(r.conductor || '—')}</td><td>${esc(r.transportista_nombre || '—')}</td><td><span class="st ${ek === 'ruta' ? 'reco' : ek === 'anulado' ? 'prob' : ek}" style="display:inline-grid;vertical-align:middle">${ST_TXT[ek === 'ruta' ? 'reco' : ek === 'anulado' ? 'prob' : ek] || ''}</span> ${et}</td>
         <td class="n">${r.pdf_url ? `<a class="btn small" href="${esc(r.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener">PDF</a>` : ''} <button type="button" class="btn small" data-bqver="${r.id}">${ab ? 'Ocultar' : 'QR e historial'}</button></td></tr>
         ${ab ? `<tr class="det"><td colspan="9"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-          <div>${r.pdf_url ? qrDe(r.pdf_url) : ''}</div>
+          <div>${r.pdf_url ? qrDe(urlQr(r.pdf_url, r.fecha)) : ''}${r.pdf_url ? `<div class="hint" style="max-width:150px;overflow-wrap:anywhere;margin:2px 0 0">${esc(urlQr(r.pdf_url, r.fecha))}</div>` : ''}</div>
           <div style="flex:1;min-width:260px"><b>Detalle:</b> ${esc(r.detalle || '—')} · ${esc(r.peso || '—')} kg · ${esc(r.mercancia || '')}<br>
             <b>Cliente:</b> ${esc(r.cliente_nombre || r.cargador_nombre || '—')}${r.cliente_nombre && !mismoNombre(r.cliente_nombre, r.cargador_nombre) ? ` · <b>Cargador contractual:</b> ${esc(r.cargador_nombre || '—')} (NIF ${esc(r.cargador_nif || '—')})` : ` (NIF ${esc(r.cargador_nif || '—')})`} · <b>Transportista efectivo:</b> ${esc(r.transportista_nombre || '—')} (NIF ${esc(r.transportista_nif || '—')})<br>
             <b>GPS al generarlo:</b> ${esc(r.geo || '—')}${r.fecha_entrega_hub ? ` · <b>En la nave:</b> ${new Date(r.fecha_entrega_hub).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}` : ''}${r.fecha_entrega ? ` · <b>Descargado:</b> ${new Date(r.fecha_entrega).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${r.distancia_entrega_m != null ? ` (a ${Math.round(r.distancia_entrega_m)} m del destino)` : ''}` : ''}<br>
@@ -3947,6 +3963,22 @@ document.addEventListener('click', async e => {
       if(ok) ok = await guardarAjuste('radio_almacen_m', String(Math.max(100, parseInt($('#radioAlmacen').value, 10) || 1500)));
       if(ok) toast('Guardado: se aplica en las apps en unos minutos'); return; }
     if(b.dataset.importar){ return abrirImportar(); }
+    if(b.id === 'probarQrDominio' || b.id === 'guardarQrDominio'){
+      const dom = $('#qrDominio').value.trim().replace(/\/+$/, '');
+      if(dom && !/^https:\/\/[a-z0-9.-]+\.[a-z]{2,}$/i.test(dom)){ toast('Escribe la dirección completa, por ejemplo https://decas.mydecas.com', true); return; }
+      if(b.id === 'probarQrDominio'){
+        if(!dom){ toast('Escribe primero la dirección.', true); return; }
+        const { data } = await sb.from('decas').select('pdf_url, deca_id').like('pdf_url', '%/storage/v1/object/public/decas/%').order('fecha', {ascending: false}).limit(1);
+        const r = data && data[0]; const m = r && r.pdf_url.match(/\/storage\/v1\/object\/public\/decas\/([^?#]+)$/);
+        if(!m){ toast('No encuentro ningún DeCA para probar.', true); return; }
+        window.open(dom + '/' + m[1], '_blank', 'noopener'); toast(`Abriendo ${r.deca_id} con ${dom}: si ves el PDF, pulsa «Guardar».`); return;
+      }
+      const antes = ajustes.qr_dominio || '';
+      let ok = await guardarAjuste('qr_dominio', dom);
+      if(ok && dom && dom !== antes) ok = await guardarAjuste('qr_dominio_desde', new Date().toISOString());   // desde ahora: los DeCAs anteriores conservan su QR
+      if(ok){ toast(dom ? 'Guardado: los DeCAs nuevos llevarán el QR con ' + dom + ' (en las apps, en unos minutos)' : 'Quitado: los DeCAs nuevos vuelven a la dirección de Supabase'); renderFicheros(); }
+      return;
+    }
     if(b.id === 'guardarEtq'){ if(await guardarAjuste('etiquetas_partida', $('#etqActivo').checked ? 'si' : 'no')){ toast($('#etqActivo').checked ? 'Etiquetas activadas: tienes el botón «🏷️ Etiquetas» arriba y en cada camión' : 'Etiquetas desactivadas'); render(); } return; }
     if(b.id === 'etqNave'){ return imprimirEtiquetas(lineas.filter(l => !l.retorno && decas[l.carga_id] && !decas[l.carga_id].anulado && decas[l.carga_id].entregado_hub && !decas[l.carga_id].entregado), 'en la nave'); }
     if(b.dataset.camact === 'etiquetas'){ const t = camion(b.dataset.cam); return imprimirEtiquetas(lineas.filter(l => l.camion_id === b.dataset.cam && !l.retorno && decas[l.carga_id] && !decas[l.carga_id].anulado && !decas[l.carga_id].entregado), t ? t.nombre : ''); }
