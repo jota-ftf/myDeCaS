@@ -1359,7 +1359,7 @@ async function pollDescargas(){
   const vistos = new Set();
   const data = [];
   resultados.forEach(r=> (r.data||[]).forEach(row=>{
-    if(!vistos.has(row.id)){ vistos.add(row.id); data.push(row); }
+    if(!vistos.has(row.id) && !row.importado){ vistos.add(row.id); data.push(row); }   // (los DeCAs importados de otras plataformas no salen en la app)
   }));
   for(let i = data.length-1; i >= 0; i--) if(data[i].anulado || descargasEnCola.has(String(data[i].id))) data.splice(i,1);   // los anulados no se descargan (ni lo ya descargado sin cobertura)
   const remontados = new Set((await misCam).filter(r=> r._remonta).map(r=> String(r.id)));
@@ -2437,7 +2437,7 @@ async function pollHistorial(){
   const vistos = new Set();
   const data = [];
   resultados.forEach(r=> (r.data||[]).forEach(row=>{
-    if(!vistos.has(row.id)){ vistos.add(row.id); data.push(row); }
+    if(!vistos.has(row.id) && !row.importado){ vistos.add(row.id); data.push(row); }   // (los DeCAs importados de otras plataformas no salen en la app)
   }));
   if(choferActual && choferActual.puesto === 'cargador'){
     // Lo ya entregado en la nave desaparece de la lista del cargador (sigue guardado para Tráfico)
@@ -2571,7 +2571,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   const { error: verErr } = await sb.from('deca_versiones').insert({
     deca_row_id: String(row.id), deca_id: row.deca_id, version: numVersion,
     datos: row, pdf_url_version: urlVersion,
-    motivo: [row.pdf_regenerar ? `PDF del DeCA nuevo${row.dividido_de ? ' (partida dividida de ' + row.dividido_de + ')' : ''}` : '', nuevaLimpia !== row.matricula ? `Matrícula ${row.matricula || '—'} → ${nuevaLimpia}` : '', cambiaTrans ? `Transportista efectivo ${row.transportista_nombre || '—'} → ${tNuevo.nombre} (sale de la nave)` : '', cambiaCargador ? `Cargador contractual ${row.cargador_nombre || '—'} → ${cg.nombre}` : ''].filter(Boolean).join(' · '), cambiado_por: choferActual ? choferActual.nombre : 'Sin identificar'
+    motivo: [row.pdf_regenerar ? ((historialPrevio[historialPrevio.length - 1] || {}).corregido ? 'Corrección desde Tráfico: ' + historialPrevio[historialPrevio.length - 1].motivo : `PDF del DeCA nuevo${row.dividido_de ? ' (partida dividida de ' + row.dividido_de + ')' : ''}`) : '', nuevaLimpia !== row.matricula ? `Matrícula ${row.matricula || '—'} → ${nuevaLimpia}` : '', cambiaTrans ? `Transportista efectivo ${row.transportista_nombre || '—'} → ${tNuevo.nombre} (sale de la nave)` : '', cambiaCargador ? `Cargador contractual ${row.cargador_nombre || '—'} → ${cg.nombre}` : ''].filter(Boolean).join(' · '), cambiado_por: choferActual ? choferActual.nombre : 'Sin identificar'
   });
   if(verErr){ alert('No se pudo guardar la versión anterior del DeCA, así que no se ha cambiado nada: ' + verErr.message); return; }
 
@@ -2791,7 +2791,7 @@ function buildPdf(r, qrDataUrl, qrObj){
   doc.setFontSize(7.5);
   const hist = Array.isArray(r.matriculaHistorial) ? r.matriculaHistorial : [];
   const maxLineWidth = W-4;
-  const CAMPO = {matricula:'Matrícula', transportista:'Transportista efectivo', cargador:'Cargador contractual'};
+  const CAMPO = {matricula:'Matrícula', transportista:'Transportista efectivo', cargador:'Cargador contractual', bultos:'Nº de bultos', peso:'Peso bruto', destino:'Lugar de entrega'};
   const lineaCambio = h => `${h.fecha || ''} · ${CAMPO[h.campo || 'matricula'] || h.campo}: ${h.anterior || '—'} (NO VÁLIDO); ahora: ${h.nueva || '—'}. Motivo: ${h.motivo || h.origen_cambio || 'cambio de vehículo'}.`;
   const maxLineas = 12;
   let lineas;

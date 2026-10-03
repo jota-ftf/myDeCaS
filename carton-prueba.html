@@ -464,6 +464,14 @@ table.fichero td.acc{white-space:nowrap;width:1%}
 
 /* ====== Hoja impresa (A4 apaisado, tres columnas como el cartón doblado) ====== */
 #printArea{display:none}
+.etq-hoja{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:92mm;gap:4mm}
+.etq{border:1.5pt dashed #000;padding:4mm 5mm;break-inside:avoid;display:flex;flex-direction:column;gap:1.5mm;overflow:hidden;font-family:Arial,sans-serif}
+.etq-dest{font-size:24pt;font-weight:800;text-transform:uppercase;line-height:1.05}
+.etq-q{font-size:18pt;font-weight:700}
+.etq-l{font-size:11pt}
+.etq-cam{font-size:13pt;font-weight:700;border-top:1pt solid #000;padding-top:1.5mm}
+.etq-pie{display:flex;gap:4mm;align-items:center;margin-top:auto;font-size:10pt}
+.etq-pie img{width:26mm;height:26mm}
 @page{size:A4 landscape;margin:9mm}
 @media print{
   body{background:#fff;color:#000;padding:0;font-size:9.5pt}
@@ -593,6 +601,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       <button type="button" class="btn small solo-dir" id="accesoBtn" title="Pone el cartón como una aplicación más en el escritorio de este ordenador">📌 Acceso directo</button>
       <button type="button" class="btn small solo-carton" id="panelBtn" title="Oculta o muestra la columna de la izquierda para dar más sitio al cartón">Ocultar panel</button>
       <button type="button" class="btn small solo-carton" id="imprimir" title="Imprime lo que estás viendo (Todos, Levante o Sur)">🖨 Imprimir</button>
+      <button type="button" class="btn small solo-carton" id="etqNave" hidden title="Imprimir una etiqueta por cada partida que está en la nave">🏷️ Etiquetas</button>
       <button type="button" class="btn small primary solo-carton" id="verOrdenes">Órdenes de carga</button>
     </div>
   </div>
@@ -762,7 +771,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       <label>Kilos (si se cobra por kilo)<input class="field" id="edKilos" type="number" min="0" step="1" placeholder="Opcional"></label>
       <label class="solo-direccion">Precio a mano € (sustituye la tarifa)<input class="field" id="edPrecio" type="number" min="0" step="0.01" placeholder="Vacío = según tarifa"></label>
     </div>
-    <div class="send-row" style="justify-content:flex-end"><button type="button" class="btn" id="edDividir" style="margin-right:auto" title="Partir este pedido en dos (por ejemplo 23 palets: 10 en un camión y 13 en otro)">✂️ Dividir partida</button><button type="button" class="btn" id="edCancelar">Cancelar</button><button type="button" class="btn primary" id="edGuardar">Guardar cambios</button></div>
+    <div class="send-row" style="justify-content:flex-end"><button type="button" class="btn" id="edCorregir" hidden title="Cambiar cantidades, peso o destino de un DeCA ya hecho (queda constancia en el PDF)">✏️ Corregir DeCA</button><button type="button" class="btn" id="edDividir" style="margin-right:auto" title="Partir este pedido en dos (por ejemplo 23 palets: 10 en un camión y 13 en otro)">✂️ Dividir partida</button><button type="button" class="btn" id="edCancelar">Cancelar</button><button type="button" class="btn primary" id="edGuardar">Guardar cambios</button></div>
   </div>
 </div>
 <datalist id="almacenesList"></datalist>
@@ -1689,7 +1698,7 @@ function truckHTML(t){
       return kg > maxKg ? `<div class="aviso-punta" style="background:var(--bad-soft);border-color:var(--bad);color:var(--bad)">⚖️ Unos ${kg.toLocaleString('es-ES')} kg: supera la carga máxima (${maxKg.toLocaleString('es-ES')} kg)</div>`
                         : `<div class="hint" style="margin:2px 0" title="Kilos apuntados, o calculados con el peso medio de cada palet">⚖️ ~${kg.toLocaleString('es-ES')} kg de ${maxKg.toLocaleString('es-ES')}</div>`; })()}
     ${(() => { const r = reglaPunta(t.id); return r ? `<div class="aviso-punta">⚠️ ${r.euros} euro + ${r.grandes} grandes: ${esc(r.obs)} · se le avisa a ${[r.hayRuta ? 'el chófer (carga por los almacenes)' : '', ...Object.keys(r.primeraPorCargador).map(id => esc((persona(id) || {}).nombre || 'cargador') + ' (en la nave)')].filter(Boolean).join(', ') || 'quien cargue'} y sale en la hoja impresa</div>` : ''; })()}
-    <div class="section-label"><span>Ida · ${ida.length} recogidas</span>${ida.length ? `<button type="button" class="linkbtn" data-camact="ordendesc" data-cam="${t.id}" title="Orden de descarga sugerido (por distancia y horario de cada destino) y hoja de carga para la nave">🧭 Orden de descarga y carga</button>` : ''}</div>
+    <div class="section-label"><span>Ida · ${ida.length} recogidas</span>${ajustes.etiquetas_partida === 'si' && ida.some(l => decas[l.carga_id] && !decas[l.carga_id].anulado) ? `<button type="button" class="linkbtn" data-camact="etiquetas" data-cam="${t.id}" title="Imprimir una etiqueta por partida de este camión">🏷️ Etiquetas</button>` : ''}${ida.length ? `<button type="button" class="linkbtn" data-camact="ordendesc" data-cam="${t.id}" title="Orden de descarga sugerido (por distancia y horario de cada destino) y hoja de carga para la nave">🧭 Orden de descarga y carga</button>` : ''}</div>
     <ul class="lines ${ida.length ? '' : 'empty'}" data-zone="${t.id}" data-ret="0">${ida.map((l,i) => lineHTML(l, i, ida.length)).join('')}</ul>
     <div class="retorno">
       <div class="section-label"><span>Retorno ${vuelta.length ? `<span class="ret-pend ret-ok">Decidido · ${fmt(paletsDe(vuelta))} palets → ${esc(t.fin_retorno || 'Nave')}</span>` : '<span class="ret-pend">Pendiente · lo decide dirección</span>'}</span>
@@ -1799,6 +1808,7 @@ function render(){
     return `<section class="dirblock ${hayCam && !ts.length ? 'vacia' : ''}"><h3>${DIR_TXT[d]} · ${ts.length} camiones${d !== 'X' && nec[d] ? ` <span class="nec ${nec[d] > ts.length ? 'falta' : ''}">· hacen falta ${nec[d]}${nec[d] > ts.length ? ` (faltan ${nec[d] - ts.length})` : ''}</span>` : ''}</h3>
       <div class="trucks">${ts.map(truckHTML).join('') || '<p class="hint">Nadie sale en esta dirección.</p>'}</div></section>`;
   }).join('');
+  { const be = $('#etqNave'); if(be) be.hidden = ajustes.etiquetas_partida !== 'si'; }
   if(modoVista === 'hoja') renderHoja();
   if(ordersOpen) renderOrders();
 }
@@ -1850,7 +1860,8 @@ function abrirEdicion(l){
   else if(enviada(l)){ av.hidden = false; av.textContent = 'La orden ya se envió: al guardar, el cambio le llega también a la app de quien la tiene.'; }
   else av.hidden = true;
   { const unidades = d ? partesDeca(d.detalle).reduce((t, x) => t + (x ? x.n : 0), 0) : ['e_pal','m_pal','carros','box','cajas'].reduce((t, k) => t + (+l[k] || 0), 0);
-    $('#edDividir').hidden = unidades < 2 || !!(d && (d.entregado || d.anulado)); }
+    $('#edDividir').hidden = unidades < 2 || !!(d && (d.entregado || d.anulado));
+    $('#edCorregir').hidden = !(d && !d.entregado && !d.anulado); }
   $('#editar').hidden = false;
   setTimeout(() => (bloqueado ? $('#edRef') : $('#edAlm')).focus(), 50);
 }
@@ -2018,6 +2029,79 @@ async function dividirConDeca(l, d, items, p1, p2, camDest){
   return true;
 }
 $('#edDividir').onclick = abrirDividir;
+// ====== CORREGIR UN DeCA YA HECHO (cantidades, peso o destino) ======
+// Resolución de 5 de junio de 2026, apartado quinto: en el mismo PDF se añaden los datos nuevos y el motivo, y los antiguos
+// quedan marcados como «NO VÁLIDO». El PDF lo rehace la app de quien lleva la carga (misma dirección y mismo QR).
+function abrirCorregir(){
+  const l = lineas.find(x => x.id === editandoId); if(!l) return;
+  const d = decas[l.carga_id];
+  if(!d || d.anulado){ toast('Este pedido no tiene DeCA.', true); return; }
+  if(d.entregado){ toast('Este DeCA ya está descargado: no se puede corregir.', true); return; }
+  const items = partesDeca(d.detalle);
+  if(!items.length || items.some(x => !x)){ toast(`No sé leer las cantidades del DeCA ${d.deca_id} («${d.detalle || ''}»).`, true); return; }
+  let dlg = $('#corDlg');
+  if(!dlg){ dlg = document.createElement('div'); dlg.id = 'corDlg'; dlg.className = 'modal'; document.body.appendChild(dlg); dlg.addEventListener('mousedown', e => { if(e.target === dlg) dlg.hidden = true; }); }
+  const pesoAct = parseFloat(String(d.peso || '').replace(',', '.')) || 0;
+  dlg.innerHTML = `<div class="modal-card" style="max-width:560px"><h2>✏️ Corregir DeCA ${esc(d.deca_id)}</h2>
+    <p class="hint" style="margin:0 0 8px">${esc(nCorto(l.almacen))} → ${esc(nCorto(d.destino || l.destino))} · ${esc(l.cliente_nombre || '')}<br>
+    En el PDF quedarán los datos de ahora marcados como <b>«NO VÁLIDO»</b>, con los nuevos y el motivo. Se mantiene la misma dirección y el mismo QR.</p>
+    <table class="adm"><thead><tr><th></th><th class="num">Ahora</th><th>Correcto</th></tr></thead><tbody>
+    ${items.map((it, i) => `<tr><td>${esc(it.nombre + (it.rem ? ' (remontado)' : ''))}</td><td class="num">${it.n}</td><td><input class="field num" type="number" min="0" value="${it.n}" data-corq="${i}" style="width:90px"></td></tr>`).join('')}
+    <tr><td>Peso (kg)</td><td class="num">${esc(d.peso || '—')}</td><td><input class="field num" type="number" min="0" step="1" id="corPeso" value="${pesoAct || ''}" style="width:110px"></td></tr>
+    <tr><td>Destino</td><td>${esc(nCorto(d.destino))}</td><td><div class="combo"><input class="field" id="corDest" data-combo="destinos" autocomplete="off" value="${esc(d.destino || '')}"><div class="combo-list" hidden></div></div></td></tr>
+    </tbody></table>
+    <label style="display:block;margin-top:10px">Motivo de la corrección (sale en el DeCA)<input class="field" id="corMotivo" placeholder="Por ejemplo: falta 1 palet en la carga"></label>
+    <div class="send-row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button type="button" class="btn" id="corCancelar">Cancelar</button><button type="button" class="btn primary" id="corOk">Guardar corrección</button></div></div>`;
+  dlg.hidden = false;
+  const kgUnidad = items.reduce((t, it) => t + it.n * TIPOS_DECA[it.nombre].kg, 0);
+  dlg.querySelectorAll('[data-corq]').forEach(inp => inp.oninput = () => {   // el peso se ajusta solo en proporción (se puede cambiar a mano)
+    const kgNuevo = items.reduce((t, it, i) => t + (parseInt(dlg.querySelector(`[data-corq="${i}"]`).value, 10) || 0) * TIPOS_DECA[it.nombre].kg, 0);
+    if(pesoAct && kgUnidad) $('#corPeso').value = Math.round(pesoAct * kgNuevo / kgUnidad);
+  });
+  $('#corCancelar').onclick = () => { dlg.hidden = true; };
+  $('#corOk').onclick = async () => {
+    const motivo = $('#corMotivo').value.trim();
+    if(!motivo){ toast('Escribe el motivo de la corrección: sale en el DeCA.', true); $('#corMotivo').focus(); return; }
+    const nq = items.map((it, i) => Math.max(0, parseInt(dlg.querySelector(`[data-corq="${i}"]`).value, 10) || 0));
+    if(!nq.some(Boolean)){ toast('La cantidad no puede quedar a cero. Si no va nada, quita el pedido del camión.', true); return; }
+    const det = items.map((it, i) => nq[i] ? `${nq[i]} ${it.nombre}${it.rem ? ' (remontado)' : ''}` : '').filter(Boolean).join(', ');
+    const ldm = items.reduce((t, it, i) => t + nq[i] * TIPOS_DECA[it.nombre].ldm * (it.rem ? 0.5 : 1), 0).toFixed(1);
+    const pesoN = $('#corPeso').value.trim(), peso = pesoN ? String(Math.round(parseFloat(pesoN))) : (d.peso || '');
+    const dest = $('#corDest').value.trim() || d.destino;
+    const ahora = new Date().toLocaleString('es-ES'), quien = (usuario && usuario.nombre) || 'Tráfico';
+    const ent = [];
+    if(det !== d.detalle) ent.push({campo: 'bultos', anterior: d.detalle, nueva: det});
+    if(String(peso) !== String(d.peso || '')) ent.push({campo: 'peso', anterior: d.peso ? d.peso + ' kg' : '—', nueva: peso + ' kg'});
+    if(normTxt(dest) !== normTxt(d.destino)) ent.push({campo: 'destino', anterior: nCorto(d.destino) || d.destino, nueva: nCorto(dest) || dest});
+    if(!ent.length){ toast('No has cambiado nada.', true); return; }
+    ent.forEach(e => Object.assign(e, {fecha: ahora, cambiado_por: quien, motivo, corregido: true}));
+    const btn = $('#corOk'); btn.disabled = true;
+    try{
+      // 1) se guarda cómo estaba (para la trazabilidad)
+      const { data: vp } = await sb.from('deca_versiones').select('version').eq('deca_row_id', String(d.id)).order('version', {ascending: false}).limit(1);
+      await sb.from('deca_versiones').insert({deca_row_id: String(d.id), deca_id: d.deca_id, version: ((vp && vp[0] && vp[0].version) || 0) + 1, datos: d, pdf_url_version: null, motivo: 'Antes de corregir: ' + motivo, cambiado_por: quien});
+      // 2) los datos nuevos; la app de quien lleva la carga rehace el PDF
+      const patch = {detalle: det, ldm, peso, destino: dest, matricula_historial: [...(Array.isArray(d.matricula_historial) ? d.matricula_historial : []), ...ent], pdf_regenerar: true};
+      if(normTxt(dest) !== normTxt(d.destino)){ const { data: de } = await sb.from('destinos').select('direccion').eq('nombre', dest).limit(1); patch.destino_direccion = (de && de[0] && de[0].direccion) || null; }
+      const t = camion(l.camion_id);
+      const lleva = (t && t.chofer_id && t.matricula && (l.modo === 'ruta' || (t.estado === 'enviado' && l.propuesta_enviada))) ? {mat: t.matricula, id: t.chofer_id}
+        : (l.modo === 'hub' && !d.entregado_hub && l.cargador_id) ? {mat: d.matricula, id: l.cargador_id} : null;   // en la nave: se rehace cuando el chófer lo reciba
+      if(lleva) Object.assign(patch, {matricula_pendiente: lleva.mat, chofer_destino_id: String(lleva.id)});
+      let { error } = await sb.from('decas').update(patch).eq('id', d.id);
+      if(error && /pdf_regenerar/.test(error.message || '')){ toast('Para corregir DeCAs hay que ejecutar antes la actualización 54 en Supabase.', true); return; }
+      if(error){ toast('No se pudo guardar: ' + error.message, true); return; }
+      Object.assign(d, patch);
+      // 3) el pedido y su orden también se ponen al día
+      const q = {e_pal: 0, m_pal: 0, carros: 0, box: 0, cajas: 0}; items.forEach((it, i) => { q[TIPOS_DECA[it.nombre].k] += nq[i]; });
+      await sb.from('carton_lineas').update({...q, destino: dest}).eq('id', l.id); Object.assign(l, q, {destino: dest});
+      if(l.carga_id) await sb.from('cargas_planificadas').update({detalle_planificado: detalleDe(l), peso, destino: dest}).eq('id', l.carga_id);
+      toast(`DeCA ${d.deca_id} corregido. ${lleva ? `A ${(persona(lleva.id) || {}).nombre || 'quien lo lleva'} le llega a su app, que rehace el PDF.` : 'El PDF se rehará cuando el chófer lo reciba en su app.'}`);
+      dlg.hidden = true; cerrarEdicion(); refrescar(true);
+    } finally { btn.disabled = false; }
+  };
+  setTimeout(() => { const f = dlg.querySelector('[data-corq]'); if(f){ f.focus(); f.select(); } }, 50);
+}
+$('#edCorregir').onclick = abrirCorregir;
 // «Salen hoy» plegable como «Personal operativo hoy»: se recuerda si lo tienes abierto o cerrado
 try{ if(localStorage.getItem('carton_salen_abierto') === '1') $('#salenDet').open = true; }catch(_){}
 $('#salenDet').addEventListener('toggle', () => { try{ localStorage.setItem('carton_salen_abierto', $('#salenDet').open ? '1' : '0'); }catch(_){} });
@@ -2839,6 +2923,12 @@ function renderAjustes(box){
         <button type="button" class="btn small" id="guardarOrigenGps">Guardar</button>
       </div>
       <div class="baja-card">
+        <b>🏷️ Etiquetas por partida (nave)</b>
+        <span class="hint">Para saber en la nave de quién es cada grupo de palets: una etiqueta por partida con el destino, el cliente, los palets, el nº de DeCA, el camión asignado y un QR. Se imprimen desde «🏷️ Etiquetas» (arriba) o desde la caja de cada camión.</span>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="etqActivo" ${ajustes.etiquetas_partida === 'si' ? 'checked' : ''}> Activado</label>
+        <button type="button" class="btn small" id="guardarEtq">Guardar</button>
+      </div>
+      <div class="baja-card">
         <b>🌍 CMR para el extranjero</b>
         <span class="hint">Activado: si el destino tiene otro país en su ficha (Destinos → País), en lugar del DeCA se hace el CMR (carta de porte internacional). Desactivado: todo va con DeCA, como siempre.</span>
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="cmrActivo" ${ajustes.cmr_activo === 'si' ? 'checked' : ''}> Activado</label>
@@ -3080,10 +3170,10 @@ async function renderEnRuta(box){
   const { data: dsCam } = cargaIds.length ? await sb.from('decas').select('*').in('carga_id', cargaIds).limit(3000) : {data: []};
   const porCarga = {}; (dsCam || []).forEach(d => porCarga[String(d.carga_id)] = d);
   const enCamion = new Set((dsCam || []).map(d => d.id));
-  const vivos = (sueltos.data || []).filter(r => !r.anulado && !enCamion.has(r.id));
+  const vivos = (sueltos.data || []).filter(r => !r.anulado && !r.importado && !enCamion.has(r.id));
   const enHub = vivos.filter(r => r.entregado_hub);
   const conCargador = vivos.filter(r => !r.entregado_hub);
-  const pend = (props.data || []).filter(r => !r.anulado);
+  const pend = (props.data || []).filter(r => !r.anulado && !r.importado);
   const li = r => `<li>${r.entregado ? (r.fuera_zona ? '<b style="color:var(--bad)">! descargado lejos</b> · ' : '⚑ descargado · ') : ''}${esc(r.deca_id)} · ${esc(r.origen || '—')} → ${esc(r.destino || '—')} · ${esc(r.matricula || '—')}${r.pdf_url ? ` · <a href="${esc(r.pdf_url)}?v=${Date.now()}" target="_blank" rel="noopener">PDF</a>` : ''}
       ${r.entregado ? '' : ` · <button type="button" class="linkbtn" data-decaentregado="${r.id}">Marcar entregado</button>`}${enPruebas() ? ` · <button type="button" class="linkbtn" data-decaanular="${r.id}" data-decaid="${esc(r.deca_id)}" style="color:var(--bad)">Anular</button>` : ''}</li>`;
   const grupoCam = c => {
@@ -3480,9 +3570,152 @@ document.addEventListener('click', async e => {
 const busq = {num:'', desde:'', hasta:'', mat:'', cond:'', cli:'', trans:'', orig:'', dest:'', estado:'', autonomo:null, res:null, abiertos:new Set()};
 function estadoDeca(r){
   if(r.anulado) return ['anulado', 'Anulado'];
+  if(r.importado) return ['desc', 'Importado' + (r.plataforma_origen ? ' de ' + r.plataforma_origen : '')];
   if(r.entregado) return r.fuera_zona ? ['lejos', 'Descargado lejos'] : ['desc', 'Descargado'];
   if(r.entregado_hub) return ['hub', 'En la nave / en ruta'];
   return ['ruta', 'Con el cargador'];
+}
+// ====== ETIQUETAS POR PARTIDA (para la nave): una por partida, 4 por hoja A4 ======
+function imprimirEtiquetas(lista, que){
+  if(!lista.length){ toast(`No hay partidas con DeCA ${que ? (que === 'en la nave' ? 'en la nave' : 'en ' + que) : ''}.`, true); return; }
+  const qr = url => { try{ const q = qrcode(0, 'M'); q.addData(url); q.make(); return `<img src="${q.createDataURL(4, 2)}" alt="QR">`; }catch(_){ return ''; } };
+  const orden = lista.slice().sort((a, b) => normTxt(nCorto(a.destino)).localeCompare(normTxt(nCorto(b.destino))) || normTxt(a.cliente_nombre).localeCompare(normTxt(b.cliente_nombre)));
+  $('#printArea').innerHTML = `<div class="etq-hoja">${orden.map(l => { const d = decas[l.carga_id], t = camion(l.camion_id);
+    return `<div class="etq">
+      <div class="etq-dest">→ ${esc(nCorto(d.destino || l.destino) || '—')}</div>
+      <div class="etq-q">${esc(d.detalle || qtyText(l))}</div>
+      <div class="etq-l"><b>Cliente:</b> ${esc(l.cliente_nombre || d.cliente_nombre || d.cargador_nombre || '—')}</div>
+      <div class="etq-l"><b>Almacén:</b> ${esc(nCorto(l.almacen) || '—')}</div>
+      <div class="etq-cam">🚛 ${t ? esc(t.nombre) + (t.matricula ? ' · ' + esc(t.matricula) : '') : 'SIN CAMIÓN TODAVÍA'}</div>
+      <div class="etq-pie">${d.pdf_url ? qr(d.pdf_url) : ''}<div><b>${esc(d.deca_id)}</b><br>${fechaBonita(fecha)}${l.referencia ? '<br>Ref. ' + esc(l.referencia) : ''}</div></div>
+    </div>`; }).join('')}</div>`;
+  document.body.classList.add('imprimiendo-etq');
+  setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove('imprimiendo-etq'), 500); }, 100);
+}
+// ====== IMPORTAR DeCAs DE OTRAS PLATAFORMAS (PDF o Excel/CSV) ======
+// Se leen los datos que se puedan del PDF (o las columnas del Excel), se revisan en una tabla y se guardan marcados como «importados».
+const IMP_CAMPOS = [['num','Nº DeCA'],['fecha','Fecha'],['cargador','Cargador contractual'],['cargador_nif','NIF cargador'],['transportista','Transportista efectivo'],['transportista_nif','NIF transportista'],
+  ['origen','Origen'],['destino','Destino'],['matricula','Matrícula'],['mercancia','Mercancía'],['peso','Peso (kg)'],['detalle','Bultos']];
+let impFilas = [];
+function cargarScript(url){ return new Promise((ok, mal) => { const sc = document.createElement('script'); sc.src = url; sc.onload = ok; sc.onerror = mal; document.head.appendChild(sc); }); }
+async function textoDePdf(file){
+  if(!window.pdfjsLib){ await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }
+  const pdf = await window.pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
+  const lineasTxt = [];
+  for(let i = 1; i <= Math.min(pdf.numPages, 3); i++){
+    const c = await (await pdf.getPage(i)).getTextContent(), filas = {};
+    c.items.forEach(it => { const y = Math.round(it.transform[5] / 3); (filas[y] = filas[y] || []).push(it); });
+    Object.keys(filas).map(Number).sort((a, b) => b - a).forEach(y => lineasTxt.push(filas[y].sort((a, b) => a.transform[4] - b.transform[4]).map(it => it.str).join(' ').replace(/\s+/g, ' ').trim()));
+  }
+  return lineasTxt.filter(Boolean);
+}
+function datosDeTexto(ls){
+  const todo = ls.join('\n'), r = {};
+  const tras = (re) => { const i = ls.findIndex(x => re.test(x)); if(i < 0) return ''; let resto = ls[i].replace(re, ''); const dp = resto.indexOf(':'); if(dp >= 0 && dp < 40) resto = resto.slice(dp + 1); resto = resto.replace(/^[\s:(\-]*(nombre[^)]*\))?[\s:\-]*/i, '').trim();
+    if(resto.length > 2 && !/NIF|domicilio/i.test(resto.slice(0, 4))) return resto; const sig = ls.slice(i + 1).find(x => x.length > 1 && !/^\d+\s/.test(x) || /[a-z]/i.test(x)); return (sig || '').replace(/^NIF.*$/i, '').trim(); };
+  const m = todo.match(/\b(DECA[-\s]?[A-Z0-9\-]{3,}|CMR[-\s]?[A-Z0-9\-]{3,})\b/i) || todo.match(/N[ºo°]\.?\s*(?:de\s*)?(?:DeCA|documento|doc\.?)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/]{3,})/i);
+  r.num = m ? m[1].replace(/\s/g, '') : '';
+  const f = todo.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/); r.fecha = f ? `${f[3]}-${f[2].padStart(2, '0')}-${f[1].padStart(2, '0')}` : '';
+  const nifs = [...new Set((todo.toUpperCase().match(/\b([ABCDEFGHJKLMNPQRSUVW]-?\d{7}[0-9A-J]|\d{8}-?[A-Z]|[XYZ]-?\d{7}-?[A-Z])\b/g) || []).map(x => x.replace(/-/g, '')))];
+  r.cargador_nif = nifs[0] || ''; r.transportista_nif = nifs[1] || '';
+  r.cargador = tras(/cargador( contractual)?|remitente|expedidor/i);
+  r.transportista = tras(/transportista( efectivo)?|porteador/i);
+  r.origen = tras(/lugar (y fecha )?de carga|origen/i);
+  r.destino = tras(/lugar de (entrega|descarga)|destino|consignatario/i);
+  r.mercancia = tras(/naturaleza|mercanc[ií]a/i);
+  const p = todo.match(/peso[^\d]{0,30}([\d.,]+)\s*(kg|kilos)?/i); r.peso = p ? p[1].replace(/\./g, '').replace(',', '.') : '';
+  const mats = [...new Set((todo.toUpperCase().match(/\b(\d{4}\s?[BCDFGHJKLMNPRSTVWXYZ]{3}|R[\s-]?\d{4}[\s-]?[BCDFGHJKLMNPRSTVWXYZ]{3})\b/g) || []).map(x => x.replace(/[\s-]/g, '')))];
+  r.matricula = mats.slice(0, 2).join(' / ');
+  const b = todo.match(/(\d+)\s*(palets?|pal\.|europalets?|bultos|cajas|carros|box)/i); r.detalle = b ? b[0] : '';
+  return r;
+}
+const IMP_SINON = {num:['nº deca','n deca','numero','número','deca','documento','nº documento','id'], fecha:['fecha','fecha carga','date'], cargador:['cargador','cliente','cargador contractual','remitente'],
+  cargador_nif:['nif cargador','cif cargador','nif cliente','cif cliente'], transportista:['transportista','transportista efectivo','porteador'], transportista_nif:['nif transportista','cif transportista'],
+  origen:['origen','lugar de carga','carga'], destino:['destino','lugar de entrega','entrega','descarga'], matricula:['matricula','matrícula','vehiculo','vehículo','camion','camión'],
+  mercancia:['mercancia','mercancía','naturaleza','producto'], peso:['peso','kg','kilos','peso (kg)'], detalle:['bultos','palets','detalle','nº bultos'], pdf:['pdf','enlace','url','link']};
+function filaDeExcel(o){
+  const r = {}; const claves = Object.keys(o);
+  Object.entries(IMP_SINON).forEach(([k, sin]) => { const c = claves.find(x => sin.includes(normTxt(x).replace(/\s+/g, ' ').trim())); if(c != null) r[k] = String(o[c] ?? '').trim(); });
+  if(r.fecha && /^\d{5}$/.test(r.fecha)){ const d = new Date(Math.round((+r.fecha - 25569) * 864e5)); r.fecha = d.toISOString().slice(0, 10); }
+  else if(r.fecha){ const f = r.fecha.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/); if(f) r.fecha = `${f[3]}-${f[2].padStart(2, '0')}-${f[1].padStart(2, '0')}`; }
+  return r;
+}
+function abrirImportar(){
+  let dlg = $('#impDlg');
+  if(!dlg){ dlg = document.createElement('div'); dlg.id = 'impDlg'; dlg.className = 'modal'; document.body.appendChild(dlg); }
+  impFilas = [];
+  dlg.innerHTML = `<div class="modal-card" style="max-width:1200px;width:96vw"><h2>📥 Importar DeCAs de otra plataforma</h2>
+    <p class="hint" style="margin:0 0 8px">Elige los <b>PDF</b> de los DeCAs (puedes elegir muchos a la vez) o un <b>Excel/CSV</b> con la lista. Leo lo que pueda de cada uno; revísalo en la tabla, corrige lo que haga falta y guarda.
+    Quedan marcados como «importados»: se ven en Buscar DeCA y en las fichas, pero no salen en la app de los conductores ni se modifican.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input type="file" id="impArch" accept=".pdf,.xlsx,.xls,.csv" multiple>
+      <label class="hint" style="margin:0">Plataforma de origen <input class="field" id="impPlat" placeholder="p. ej. Transporeon, Excel de la agencia…" style="width:240px"></label>
+    </div>
+    <div id="impEstado" class="hint" style="margin:8px 0"></div>
+    <div id="impTabla" class="tabla-wrap" style="max-height:55vh;overflow:auto"></div>
+    <div class="send-row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button type="button" class="btn" id="impCerrar">Cerrar</button><button type="button" class="btn primary" id="impGuardar" disabled>Guardar los DeCAs</button></div></div>`;
+  dlg.hidden = false;
+  $('#impCerrar').onclick = () => { dlg.hidden = true; };
+  $('#impArch').onchange = async e => {
+    const files = [...e.target.files]; if(!files.length) return;
+    $('#impEstado').textContent = 'Leyendo…';
+    for(const f of files){
+      try{
+        if(/\.pdf$/i.test(f.name)){ const ls = await textoDePdf(f); impFilas.push({...datosDeTexto(ls), _file: f, _nombre: f.name, _ok: true}); }
+        else {
+          if(typeof XLSX === 'undefined'){ toast('No se pudo cargar la herramienta de Excel. Pulsa ⟳ Actualizar y vuelve a probar.', true); continue; }
+          const libro = XLSX.read(await f.arrayBuffer(), {type: 'array'}); const hoja = libro.Sheets[libro.SheetNames[0]];
+          XLSX.utils.sheet_to_json(hoja, {defval: '', raw: true}).forEach((o, i) => { const r = filaDeExcel(o); if(Object.values(r).some(Boolean)) impFilas.push({...r, _nombre: `${f.name} · fila ${i + 2}`, _ok: true}); });
+        }
+      }catch(err){ impFilas.push({_nombre: f.name, _ok: false, _error: 'No se pudo leer: ' + (err.message || err)}); }
+      $('#impEstado').textContent = `Leídos ${impFilas.length}…`;
+    }
+    pintarImportar();
+  };
+  $('#impGuardar').onclick = guardarImportados;
+}
+function pintarImportar(){
+  const ok = impFilas.filter(r => r._ok);
+  $('#impEstado').textContent = impFilas.length ? `${impFilas.length} documento${impFilas.length === 1 ? '' : 's'}. Revisa y corrige los datos (lo que esté vacío no se ha podido leer).` : '';
+  $('#impTabla').innerHTML = impFilas.length ? `<table class="adm" style="font-size:12px"><thead><tr><th>✓</th><th>Archivo</th>${IMP_CAMPOS.map(([, t]) => `<th>${t}</th>`).join('')}</tr></thead><tbody>
+    ${impFilas.map((r, i) => `<tr><td><input type="checkbox" data-impok="${i}" ${r._ok ? 'checked' : ''} ${r._error ? 'disabled' : ''}></td><td title="${esc(r._nombre)}" style="max-width:140px;overflow-wrap:anywhere">${esc(r._nombre)}${r._error ? `<div style="color:var(--bad)">${esc(r._error)}</div>` : ''}</td>
+      ${IMP_CAMPOS.map(([k]) => `<td><input class="field" data-imp="${i}" data-k="${k}" value="${esc(r[k] || '')}" ${k === 'fecha' ? 'type="date"' : ''} style="min-width:${k === 'num' || k === 'fecha' || k.endsWith('nif') || k === 'peso' ? 95 : 140}px;padding:3px 5px;font-size:12px"></td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+  $('#impTabla').oninput = e => { const x = e.target; if(x.dataset.imp != null) impFilas[+x.dataset.imp][x.dataset.k] = x.value.trim(); };
+  $('#impTabla').onchange = e => { const x = e.target; if(x.dataset.impok != null) impFilas[+x.dataset.impok]._ok = x.checked; };
+  $('#impGuardar').disabled = !ok.length;
+}
+async function guardarImportados(){
+  const lista = impFilas.filter(r => r._ok && !r._error);
+  const faltan = lista.filter(r => !r.cargador || !r.transportista || !r.fecha);
+  if(faltan.length && !confirm(`${faltan.length} DeCA(s) no tienen cargador, transportista o fecha. ¿Guardarlos igualmente?`)) return;
+  const btn = $('#impGuardar'); btn.disabled = true;
+  const plat = $('#impPlat').value.trim() || 'otra plataforma';
+  const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const nums = lista.map(r => r.num).filter(Boolean);
+  const { data: ya } = nums.length ? await sb.from('decas').select('deca_id').in('deca_id', nums) : {data: []};
+  const existen = new Set((ya || []).map(x => x.deca_id));
+  let hechos = 0, repetidos = 0, fallos = 0;
+  for(const r of lista){
+    if(r.num && existen.has(r.num)){ repetidos++; r._ok = false; r._error = 'Ya estaba guardado'; continue; }
+    try{
+      let url = r.pdf || null;
+      if(r._file){ const ruta = `importados/${uid()}.pdf`; const { error: eu } = await sb.storage.from('decas').upload(ruta, r._file, {contentType: 'application/pdf', upsert: false}); if(eu) throw eu; url = `${SUPABASE_URL}/storage/v1/object/public/decas/${ruta}`; }
+      const fila = {deca_id: r.num || 'IMP-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase(),
+        fecha: r.fecha ? new Date(r.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
+        cargador_nombre: r.cargador || null, cargador_nif: r.cargador_nif || null, cliente_nombre: r.cargador || null, cliente_nif: r.cargador_nif || null,
+        transportista_nombre: r.transportista || null, transportista_nif: r.transportista_nif || null, origen: r.origen || null, destino: r.destino || null,
+        matricula: r.matricula || null, mercancia: r.mercancia || null, peso: r.peso || null, detalle: r.detalle || null, pdf_url: url,
+        importado: true, plataforma_origen: plat, entregado: false, matricula_historial: []};
+      let { error } = await sb.from('decas').insert(fila);
+      if(error && /cliente_n/.test(error.message || '')){ delete fila.cliente_nombre; delete fila.cliente_nif; ({ error } = await sb.from('decas').insert(fila)); }
+      if(error && /importado|plataforma_origen/.test(error.message || '')){ toast('Para importar DeCAs hay que ejecutar antes la actualización 56 en Supabase.', true); btn.disabled = false; return; }
+      if(error) throw error;
+      hechos++; r._ok = false; r._error = '✅ Guardado';
+    }catch(err){ fallos++; r._error = 'No se pudo guardar: ' + (err.message || err); }
+  }
+  pintarImportar();
+  toast(`${hechos} DeCA${hechos === 1 ? '' : 's'} importado${hechos === 1 ? '' : 's'}${repetidos ? ` · ${repetidos} ya estaban` : ''}${fallos ? ` · ${fallos} con error` : ''}.`, !!fallos);
+  if(hechos && vista === 'buscar') renderFicheros();
 }
 function qrDe(url){ try{ const q = qrcode(0, 'M'); q.addData(url); q.make(); return `<img src="${q.createDataURL(4, 6)}" width="140" height="140" alt="QR del DeCA" style="background:#fff;padding:4px;border-radius:6px">`; }catch(_){ return '<span class="hint">(no se pudo dibujar el QR)</span>'; } }
 function buscarDecasDe(autonomoId){
@@ -3533,7 +3766,7 @@ function pintarResultadosBusqueda(){
           <div style="flex:1;min-width:260px"><b>Detalle:</b> ${esc(r.detalle || '—')} · ${esc(r.peso || '—')} kg · ${esc(r.mercancia || '')}<br>
             <b>Cliente:</b> ${esc(r.cliente_nombre || r.cargador_nombre || '—')}${r.cliente_nombre && !mismoNombre(r.cliente_nombre, r.cargador_nombre) ? ` · <b>Cargador contractual:</b> ${esc(r.cargador_nombre || '—')} (NIF ${esc(r.cargador_nif || '—')})` : ` (NIF ${esc(r.cargador_nif || '—')})`} · <b>Transportista efectivo:</b> ${esc(r.transportista_nombre || '—')} (NIF ${esc(r.transportista_nif || '—')})<br>
             <b>GPS al generarlo:</b> ${esc(r.geo || '—')}${r.fecha_entrega_hub ? ` · <b>En la nave:</b> ${new Date(r.fecha_entrega_hub).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}` : ''}${r.fecha_entrega ? ` · <b>Descargado:</b> ${new Date(r.fecha_entrega).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'})}${r.distancia_entrega_m != null ? ` (a ${Math.round(r.distancia_entrega_m)} m del destino)` : ''}` : ''}<br>
-            <b>Modificaciones:</b> ${(r.matricula_historial || []).length ? `<ul style="margin:4px 0">${r.matricula_historial.map(h => `<li>${esc(h.fecha || '')} · ${esc(({matricula:'Matrícula', transportista:'Transportista efectivo', cargador:'Cargador contractual'})[h.campo || 'matricula'] || h.campo)}: ${esc(h.anterior || '—')} → <b>${esc(h.nueva || '')}</b>${h.motivo ? ' · ' + esc(h.motivo) : ''} · ${esc(h.cambiado_por || '')}</li>`).join('')}</ul>` : 'sin cambios.'}
+            <b>Modificaciones:</b> ${(r.matricula_historial || []).length ? `<ul style="margin:4px 0">${r.matricula_historial.map(h => `<li>${esc(h.fecha || '')} · ${esc(({matricula:'Matrícula', transportista:'Transportista efectivo', cargador:'Cargador contractual', bultos:'Nº de bultos', peso:'Peso', destino:'Lugar de entrega'})[h.campo || 'matricula'] || h.campo)}: ${esc(h.anterior || '—')} → <b>${esc(h.nueva || '')}</b>${h.motivo ? ' · ' + esc(h.motivo) : ''} · ${esc(h.cambiado_por || '')}</li>`).join('')}</ul>` : 'sin cambios.'}
             <div id="bqv-${r.id}" class="hint">Buscando versiones anteriores del PDF…</div></div></div></td></tr>` : ''}`; }).join('')}
     </tbody></table></div>${res.length > 500 ? '<p class="hint">Se enseñan los 500 primeros; el Excel lleva todos.</p>' : ''}`;
   // versiones anteriores del PDF de los que están abiertos
@@ -3547,7 +3780,7 @@ function renderBuscar(box){
   if(!busq.hasta){ const d = new Date(); busq.hasta = hoyISO(d); busq.desde = hoyISO(new Date(d.getTime() - 30*864e5)); }
   const campo = (id, et, ph, tipo) => `<label class="ctl">${et}<input class="field" id="bq_${id}" ${tipo ? `type="${tipo}"` : ''} value="${esc(busq[id] || '')}" placeholder="${ph || ''}"></label>`;
   const nombres = [...new Set(personalTodos.map(p => p.nombre).concat(transportistasTodos.map(t => t.nombre)))].sort((a, b) => a.localeCompare(b, 'es'));
-  box.innerHTML = `<div class="fich-head"><div><h2>Buscar DeCA</h2><p class="hint">Todos los DeCAs guardados. Por ejemplo, si la Guardia Civil pregunta por un camión de un día concreto: pon la matrícula (vale solo la tractora o solo el remolque) y las fechas.</p></div></div>
+  box.innerHTML = `<div style="float:right"><button type="button" class="btn small" data-importar="1" title="Guardar aquí los DeCAs hechos con otro programa (PDF o Excel)">📥 Importar DeCAs de otra plataforma</button></div><div class="fich-head"><div><h2>Buscar DeCA</h2><p class="hint">Todos los DeCAs guardados. Por ejemplo, si la Guardia Civil pregunta por un camión de un día concreto: pon la matrícula (vale solo la tractora o solo el remolque) y las fechas.</p></div></div>
     ${busq.autonomo ? `<div class="aviso-punta" style="display:flex;gap:8px;align-items:center">Solo los DeCAs del autónomo <b>${esc(busq.autonomo.nombre)}</b> <button type="button" class="btn small" data-bqquitaraut="1">Quitar filtro ✕</button></div>` : ''}
     <form class="bq-form" id="bqForm" onsubmit="return false">
       ${campo('num', 'Nº DeCA', 'DECA-…')}${campo('desde', 'Desde', '', 'date')}${campo('hasta', 'Hasta', '', 'date')}
@@ -3713,6 +3946,10 @@ document.addEventListener('click', async e => {
     if(b.id === 'guardarOrigenGps'){ let ok = await guardarAjuste('origen_gps', $('#origenGps').checked ? 'si' : 'no');
       if(ok) ok = await guardarAjuste('radio_almacen_m', String(Math.max(100, parseInt($('#radioAlmacen').value, 10) || 1500)));
       if(ok) toast('Guardado: se aplica en las apps en unos minutos'); return; }
+    if(b.dataset.importar){ return abrirImportar(); }
+    if(b.id === 'guardarEtq'){ if(await guardarAjuste('etiquetas_partida', $('#etqActivo').checked ? 'si' : 'no')){ toast($('#etqActivo').checked ? 'Etiquetas activadas: tienes el botón «🏷️ Etiquetas» arriba y en cada camión' : 'Etiquetas desactivadas'); render(); } return; }
+    if(b.id === 'etqNave'){ return imprimirEtiquetas(lineas.filter(l => !l.retorno && decas[l.carga_id] && !decas[l.carga_id].anulado && decas[l.carga_id].entregado_hub && !decas[l.carga_id].entregado), 'en la nave'); }
+    if(b.dataset.camact === 'etiquetas'){ const t = camion(b.dataset.cam); return imprimirEtiquetas(lineas.filter(l => l.camion_id === b.dataset.cam && !l.retorno && decas[l.carga_id] && !decas[l.carga_id].anulado && !decas[l.carga_id].entregado), t ? t.nombre : ''); }
     if(b.id === 'guardarCmr'){ if(await guardarAjuste('cmr_activo', $('#cmrActivo').checked ? 'si' : 'no')){ toast($('#cmrActivo').checked ? 'CMR activado: se aplica en las apps en unos minutos' : 'CMR desactivado: todo con DeCA'); render(); } return; }
     if(b.id === 'guardarFirma'){ if(await guardarAjuste('firma_entrega', $('#firmaEntrega').value)) toast('Guardado: se aplica en las apps en unos minutos'); return; }
     if(b.id === 'guardarAvDesc'){ const n = (id, min, max, def) => String(Math.min(max, Math.max(min, parseInt($(id).value, 10) || def)));
