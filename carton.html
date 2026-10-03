@@ -118,7 +118,7 @@ form.row .full{grid-column:1/-1}
 .truck{background:var(--surface);border-radius:4px;box-shadow:0 1px 0 var(--line);display:flex;flex-direction:column;transition:box-shadow .15s;min-width:0;container-type:inline-size}
 .truck.drop,.tray.drop{box-shadow:0 0 0 2px var(--pen)}
 .truck-top{display:flex;align-items:flex-start;gap:10px;padding:12px 12px 6px}
-.nametag{background:var(--tag);font-family:var(--f-hand);font-size:21px;font-weight:700;color:var(--pen);padding:2px 12px 0;transform:rotate(-1.5deg);box-shadow:1px 2px 3px var(--tag-shadow);line-height:1.3;white-space:nowrap;max-width:60%;overflow:hidden;text-overflow:ellipsis}
+.nametag{background:var(--tag);font-family:var(--f-hand);font-size:21px;font-weight:700;color:var(--pen);padding:2px 12px 0;transform:rotate(-1.5deg);box-shadow:1px 2px 3px var(--tag-shadow);line-height:1.3;white-space:normal;overflow-wrap:break-word;max-width:60%}
 .truck-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end;text-align:right}
 .truck-meta .dest{font-weight:700;font-size:15px}
 .pill{font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:99px;white-space:nowrap}
@@ -623,6 +623,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
           <select class="field full" id="camChofer" aria-label="Chófer"></select>
           <select class="field full" id="camAuto" aria-label="Autónomo"></select>
           <select class="field full" id="camAutoCond" aria-label="Conductor del autónomo" hidden></select>
+          <input class="field full" id="camProv" placeholder="…o provisional: zona o cliente (Murcia, Mercadona…)" title="Para ir agrupando cargas antes de saber quién las lleva. Luego eliges el chófer o el autónomo en su caja." aria-label="Nombre provisional">
           <select class="field full" id="camDir" aria-label="Dirección"></select>
           <button class="btn full" type="submit">Añadir al cartón</button>
         </form>
@@ -870,6 +871,9 @@ function nCorto(txt){
   const e = Object.values(lugares).find(x => x.nombreDeca && x.nombreDeca.trim().toLowerCase() === k);
   return e && e.nombre ? e.nombre : t;
 }
+// Caja provisional: se apuntó con una zona o un cliente (p. ej. «Murcia») y todavía no tiene chófer ni autónomo
+const esProvisional = t => !!t && t.tipo !== 'autonomo' && !t.chofer_id && !personalTodos.some(p => p.nombre === t.nombre);
+const etiquetaCaja = t => (String(t.nombre || '').match(/ \(([^)]+)\)$/) || [])[1] || (esProvisional(t) ? t.nombre : '');
 function zonaLinea(l){ const cam = l.camion_id && camion(l.camion_id); if(cam && cam.direccion && cam.direccion !== 'X' && ZONA_NOMBRE[cam.direccion]) return cam.direccion; return zonaDestino(l.destino) || 'X'; }
 // Botones de zona de arriba: Todos, Levante, Sur y las demás zonas solo si hoy tienen pedidos o camiones
 function pintarFiltroZonas(conCosas){
@@ -1603,7 +1607,8 @@ function truckHTML(t){
   const opt = (arr, sel, ph) => `<option value="">${ph}</option>` + arr.map(x => `<option ${x.matricula === sel ? 'selected' : ''}>${esc(x.matricula)}</option>`).join('')
     + (sel && sel !== '—' && !arr.some(x => x.matricula === sel) ? `<option selected>${esc(sel)}</option>` : '') + '<option value="__otra__">Otra matrícula…</option>';
   const autoNombre = t.tipo === 'autonomo' ? ((transportistas.find(x => String(x.id) === String(t.transportista_id)) || {}).nombre || t.nombre) : '';
-  const chofSel = `<select class="chofer" data-cam="${t.id}" data-f="chofer_id" aria-label="Chófer en la app"><option value="">${t.tipo === 'autonomo' ? esc(autoNombre) + ' (sin app)' : '¿Chófer en la app?'}</option>${personal.filter(p => puedeSer(p, 'chofer') && (t.tipo === 'autonomo' ? String(p.transportista_id || '') === String(t.transportista_id) : !p.transportista_id) || (t.tipo !== 'autonomo' && esOficina(p) && !ausente(p.id)) || String(p.id) === String(t.chofer_id)).map(p => `<option value="${p.id}" ${String(p.id) === String(t.chofer_id) ? 'selected' : ''}>${esc(p.nombre)}${esOficina(p) ? ' (oficina)' : ''}</option>`).join('')}</select>`;
+  const prov = esProvisional(t);
+  const chofSel = `<select class="chofer ${prov ? 'bad' : ''}" data-cam="${t.id}" data-f="chofer_id" aria-label="Chófer en la app"><option value="">${t.tipo === 'autonomo' ? esc(autoNombre) + ' (sin app)' : prov ? '¿Quién lo lleva?' : '¿Chófer en la app?'}</option>${personal.filter(p => puedeSer(p, 'chofer') && (t.tipo === 'autonomo' ? String(p.transportista_id || '') === String(t.transportista_id) : !p.transportista_id) || (t.tipo !== 'autonomo' && esOficina(p) && !ausente(p.id)) || String(p.id) === String(t.chofer_id)).map(p => `<option value="${p.id}" ${String(p.id) === String(t.chofer_id) ? 'selected' : ''}>${esc(p.nombre)}${esOficina(p) ? ' (oficina)' : ''}</option>`).join('')}${prov && transportistas.some(x => x.autonomo) ? `<optgroup label="Autónomos">${transportistas.filter(x => x.autonomo).map(x => `<option value="a:${x.id}">${esc(x.nombre)}</option>`).join('')}</optgroup>` : ''}</select>`;
   const estTxt = {preparando:'Preparando', confirmado:'Confirmado' + (t.confirmado_por ? ' por ' + t.confirmado_por : ' por dirección'), enviado:'Enviado al chófer'}[t.estado] || t.estado;
   const pendientesEnvio = ida.concat(vuelta).filter(l => (l.modo === 'ruta' && !enviada(l)) || (l.modo === 'hub' && decas[l.carga_id] && decas[l.carga_id].entregado_hub && !l.propuesta_enviada)).length;
   let motivo = '';
@@ -1631,7 +1636,7 @@ function truckHTML(t){
         return `<details class="decas-cam"><summary title="DeCAs de este camión">📄 ${ds.length} DeCA${ds.length === 1 ? '' : 's'}${suyos ? ` · ${suyos} hecho${suyos === 1 ? '' : 's'} por él` : ''}</summary><ul>${ds.map(d => `<li>${d.pdf_url ? `<a href="${esc(d.pdf_url)}" target="_blank" rel="noopener">${esc(d.deca_id)}</a>` : esc(d.deca_id)} · ${esc(d.origen || '')}${d.entregado ? ' · ⚑ descargado' : ''}</li>`).join('')}</ul></details>`;
       })()}
       <div class="truck-meta"><select class="dir-sel" data-cam="${t.id}" data-f="direccion" aria-label="Dirección del camión">${opcionesZona(t.direccion)}</select>${gps}
-        <span class="pill ${t.estado}">${estTxt}</span>${t.finalizado ? '<span class="pill enviado" title="El chófer ha dejado el camión en la nave">🏁 Terminado</span>' : ''}${t.tipo === 'autonomo' ? '<span class="pill preparando">Autónomo</span>' : ''}</div>
+        <span class="pill ${t.estado}">${estTxt}</span>${t.finalizado ? '<span class="pill enviado" title="El chófer ha dejado el camión en la nave">🏁 Terminado</span>' : ''}${t.tipo === 'autonomo' ? '<span class="pill preparando">Autónomo</span>' : ''}${prov ? '<span class="pill preparando" title="Apuntado con una zona o un cliente: elige abajo quién lo lleva">Provisional</span>' : ''}</div>
     </div>
     <div class="veh">${chofSel}
       <select data-cam="${t.id}" data-f="tractora" aria-label="Tractora">${opt(tractoras, tSel, 'Tractora')}</select>
@@ -1763,13 +1768,13 @@ let editandoId = null;
 const hayExtraContractual = () => true;   // por norma el transportista contractual va siempre en el DeCA (encima del efectivo): ya no es un extra
 function opcionesContractual(sel, valor){
   const pr = transPropia();
-  sel.innerHTML = '<option value="">Contractual: tu empresa (por defecto)</option>' + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
+  sel.innerHTML = `<option value="">Contractual: ${pr ? esc(pr.nombre) : 'tu empresa'} (por defecto)</option>` + transportistas.filter(x => !x.autonomo).map(x => `<option value="${x.id}">Contractual: ${esc(x.nombre)}${x.propia ? ' (empresa propia)' : ''}</option>`).join('');
   sel.value = valor !== undefined && valor !== null ? valor : (pr ? pr.id : '');
 }
 function pintarContractual(){
   const sel = $('#lnContr'); if(!sel) return;
   const ver = hayExtraContractual();
-  if(ver) opcionesContractual(sel, sel.dataset.listo ? sel.value : undefined);
+  if(ver) opcionesContractual(sel, sel.dataset.listo && sel.value ? sel.value : undefined);   // vacío = tu empresa (con su nombre)
   sel.dataset.listo = '1';
   sel.hidden = !ver;
 }
@@ -3818,11 +3823,18 @@ document.addEventListener('change', async e => {
           // matrícula cambiada con el camión ya enviado: se vuelven a proponer sus DeCAs con la nueva
           await sb.from('carton_lineas').update({propuesta_enviada:false}).eq('camion_id', t.id).eq('modo', 'hub');
         }
+      } else if(s.dataset.f === 'chofer_id' && s.value.startsWith('a:')){
+        // caja provisional → se la lleva un autónomo (se conserva la zona o el cliente entre paréntesis)
+        const au = transportistas.find(x => String(x.id) === s.value.slice(2)); if(!au) return;
+        const et = etiquetaCaja(t);
+        Object.assign(patch, {tipo: 'autonomo', transportista_id: String(au.id), chofer_id: null, nombre: au.nombre + (et ? ` (${et})` : ''), telefono: au.telefono || t.telefono || null});
+        if(au.matricula_actual) patch.matricula = au.matricula_actual;
       } else if(s.dataset.f === 'chofer_id'){
         patch.chofer_id = s.value || null;
         const p = persona(s.value);
         if(p){
-          if(t.tipo !== 'autonomo' || t.nombre === ((persona(t.chofer_id)||{}).nombre)) patch.nombre = p.nombre;
+          const et = etiquetaCaja(t);   // la zona o el cliente con que se apuntó se queda entre paréntesis: «Pepe (Murcia)»
+          if(t.tipo !== 'autonomo' || t.nombre === ((persona(t.chofer_id)||{}).nombre)) patch.nombre = p.nombre + (t.tipo !== 'autonomo' && et ? ` (${et})` : '');
           if(p.matricula_actual) patch.matricula = p.matricula_actual;   // las matrículas siguen al chófer
           if(p.telefono && !t.telefono) patch.telefono = p.telefono;
         }
@@ -3975,7 +3987,17 @@ $('#addCamion').addEventListener('submit', async e => {
   const auto = transportistas.find(x => String(x.id) === va);
   const condAut = auto && !$('#camAutoCond').hidden && $('#camAutoCond').value ? persona($('#camAutoCond').value) : null;   // conductor del autónomo (con app)
   const p = persona(choferId);
-  if(!p && !auto){ toast('Elige un chófer propio o un autónomo de la lista.', true); return; }
+  const prov = $('#camProv').value.trim();
+  if(!p && !auto && !prov){ toast('Elige un chófer propio o un autónomo de la lista, o escribe un nombre provisional (zona o cliente).', true); return; }
+  if(!p && !auto){
+    // Caja provisional (zona o cliente): para ir agrupando cargas; el chófer o el autónomo se elige después en su caja
+    const dir = $('#camDir').value && $('#camDir').value !== 'X' ? $('#camDir').value : (zonaDestino(prov) || 'X');
+    try{
+      await run(sb.from('carton_camiones').insert({fecha, nombre: prov, direccion: dir, tipo: 'propio', chofer_id: null, destino: null, matricula: null}), `«${prov}» añadido al cartón (provisional: elige después quién lo lleva)`);
+      e.target.reset(); actualizarCondAut(); refrescar(true);
+    }catch(_){}
+    return;
+  }
   const nombre = p ? p.nombre : condAut ? condAut.nombre : auto.nombre;
   const row = p
     ? {fecha, nombre, direccion: $('#camDir').value, tipo: 'propio', chofer_id: choferId, telefono: p.telefono || null, destino: null, matricula: p.matricula_actual || null}
