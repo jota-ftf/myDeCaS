@@ -582,8 +582,8 @@ async function cargarLugares(){
   const [a, d, cl, tr] = await Promise.all([leerTodo(() => sb.from('almacenes').select('*').order('nombre').order('id')), leerTodo(() => sb.from('destinos').select('*').order('nombre').order('id')),
     leerTodo(() => sb.from('clientes').select('*').order('nombre').order('id')), leerTodo(() => sb.from('transportistas').select('*').order('nombre').order('id'))]);
   lugares = {};
-  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || ''});
-  (d.data || []).forEach(x => { const k = String(x.nombre).toLowerCase(), prev = lugares[k] || {}; lugares[k] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', horarioCarga: prev.horario || ''}; });
+  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || ''});
+  (d.data || []).forEach(x => { const k = String(x.nombre).toLowerCase(), prev = lugares[k] || {}; lugares[k] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || '', horarioCarga: prev.horario || ''}; });
   // Listas para rellenar rápido el «Nuevo DeCA»
   listaClientes = cl.data || []; listaTrans = tr.data || [];
   const opts = arr => [...new Set(arr.filter(Boolean).map(String))].map(v => `<option value="${escA(v)}">`).join('');
@@ -1168,7 +1168,10 @@ function activarPersona(persona){
     plateSel.style.display = 'block';
     plateRemolqueLabel.style.display = 'block';
     plateRemolqueSel.style.display = 'block';
-    if(persona.matricula_actual){ document.getElementById('plate').value = persona.matricula_actual; setTimeout(()=> sincronizarPlateSelectsCargador(persona.matricula_actual), 800); }
+    // el cargador no tiene matrícula habitual: empieza el día sin ella (solo se recuerda la que ya confirmó hoy en este móvil)
+    let hoyMat = null; try{ hoyMat = localStorage.getItem(`mat_ok_${persona.id}_${hoyLocal()}`); }catch(e){}
+    document.getElementById('plate').value = hoyMat || '';
+    if(hoyMat) setTimeout(()=> sincronizarPlateSelectsCargador(hoyMat), 800);
   } else {
     plateInput.style.display = 'block';
     plateSel.style.display = 'none';
@@ -2497,6 +2500,8 @@ function pdfFinal(doc, fechaCreacion, fechaModificacion){
   return new Blob([bytes], {type:'application/pdf'});
 }
 
+// En el DeCA sale el nombre largo del destino/almacén si su ficha lo tiene («Nombre en el DeCA»); en la app y el cartón se usa el corto
+const nombreEnDeca = n => { const l = lugares[String(n || '').toLowerCase()]; return (l && l.nombreDeca) || n; };
 // Construye el PDF nativo (texto real, no imagen) con el QR ya embebido
 function buildPdf(r, qrDataUrl, qrObj){
   const { jsPDF } = window.jspdf;
@@ -2553,12 +2558,12 @@ function buildPdf(r, qrDataUrl, qrObj){
   const h2 = 27;
   const dirPdf = (txt, x, yy, w)=>{ if(!txt) return; doc.setFontSize(8); doc.text(doc.splitTextToSize(String(txt), w).slice(0, 2), x, yy); doc.setFontSize(9); };
   box(M, y, wA, h2); label(M, y, '4  LUGAR Y FECHA DE CARGA (origen, dirección)');
-  negrita(String(r.origen||'—'), M+2, y+9, {maxWidth:wA-4});
+  negrita(String(nombreEnDeca(r.origen)||'—'), M+2, y+9, {maxWidth:wA-4});
   dirPdf(r.origenDireccion, M+2, y+14, wA-4);
   doc.text('Fecha: ' + r.date, M+2, y+24);
 
   box(M+wA, y, wB, h2); label(M+wA, y, '3  LUGAR DE ENTREGA (destino, dirección)');
-  negrita(String(r.destino||'—'), M+wA+2, y+9, {maxWidth:wB-4});
+  negrita(String(nombreEnDeca(r.destino)||'—'), M+wA+2, y+9, {maxWidth:wB-4});
   dirPdf(r.destinoDireccion, M+wA+2, y+14, wB-4);
   if(r.descargaPrevista) doc.text('Fecha prevista de descarga: ' + r.descargaPrevista, M+wA+2, y+24);
   y += h2;

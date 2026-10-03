@@ -286,6 +286,7 @@ body[data-cerrado="1"] #board aside .panel, body[data-cerrado="1"] #tray, body[d
 body[data-cerrado="1"] .truck:not(.terminado){outline:2px solid var(--accent);outline-offset:2px}
 .inc-btn{border:0;background:transparent;cursor:pointer;font-size:15px;padding:0 0 0 4px;line-height:1}
 .inc-btn.mal{animation:none}
+.adm tr.grupo td{background:var(--surface-2, rgba(127,127,127,.08));border-top:1px solid var(--line)}
 .tray-zona-t{font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 2px;text-transform:uppercase;letter-spacing:.04em}
 .dirblock h3 .nec{font-weight:600;color:var(--muted)}.dirblock h3 .nec.falta{color:var(--bad)}
 .estados-bar span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
@@ -2021,7 +2022,7 @@ const FICHEROS = {
     {tabla:'tractoras', subtitulo:'Tractoras', orden:'matricula', campos:[['matricula','Matrícula'],['remolque_habitual','Remolque habitual']]},
     {tabla:'remolques', subtitulo:'Remolques', orden:'matricula', campos:[['matricula','Matrícula']]}]},
   destinos: {titulo:'Destinos', aviso:'', tablas:[
-    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de descarga'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
+    {tabla:'destinos', orden:'nombre', campos:[['nombre','Nombre corto (para buscar y en el cartón)'],['nombre_deca','Nombre en el DeCA (si es distinto)'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de descarga'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lng'}]]}]},
   tarifas_cli: {titulo:'Tarifas de clientes', aviso:'Una fila por cliente y destino. Deja el destino vacío para la tarifa general de ese cliente (se usa cuando no hay una más concreta). «Cobro por»: palet (rellena el precio de cada tipo), viaje (precio por camión completo para ese cliente) o kilo.', tablas:[
     {tabla:'tarifas_cliente', orden:'created_at', ordenar:(a,b) => nombreCliente(a.cliente_id).localeCompare(nombreCliente(b.cliente_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['cliente_id','Cliente','cliente'],['destino','Destino (vacío = todos)','destino'],['tipo','Cobro por',['palet','viaje','kilo']],['precio_e','€ europalet','num'],['precio_m','€ palet grande','num'],['precio_c','€ carro','num'],['precio_b','€ box','num'],['precio_k','€ caja','num'],['precio_kilo','€ / kilo','num'],['precio_viaje','€ / viaje','num']]}]},
@@ -2029,7 +2030,7 @@ const FICHEROS = {
     {tabla:'tarifas_autonomo', orden:'created_at', ordenar:(a,b) => nombreTrans(a.transportista_id).localeCompare(nombreTrans(b.transportista_id), 'es') || String(a.destino||'').localeCompare(String(b.destino||''), 'es'),
      campos:[['transportista_id','Autónomo','autonomo'],['destino','Destino (vacío = todos)','destino'],['tipo','Pago por',['viaje','porcentaje','palet']],['precio','Importe (€ viaje · % · € palet)','num']]}]},
   almacenes: {titulo:'Almacenes (puntos de recogida)', aviso:'Borra los que ya no trabajáis y añade los nuevos: esta es la lista del desplegable del cartón.', tablas:[
-    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de carga / descarga'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
+    {tabla:'almacenes', orden:'nombre', campos:[['nombre','Nombre corto (para buscar y en el cartón)'],['nombre_deca','Nombre en el DeCA (si es distinto)'],['direccion','Dirección (sale en el DeCA)'],['horario','Horario de carga / descarga'],['telefono','Teléfono'],['maps_url','Ubicación: pega el enlace de Google Maps (o lat, lng)','mapa',{lat:'lat',lng:'lon'}]]}]},
 };
 function cambiarVista(v){
   if(usuario && !puedeVer(v)){ toast('No tienes permiso para ver esta sección.', true); v = 'carton'; }
@@ -2042,6 +2043,8 @@ function cambiarVista(v){
 function celda(campo, valor, tabla, idFila, fila){
   const [k, , tipo, extra] = campo;
   fila = fila || {};
+  if(k === 'matricula_actual' && tabla === 'personal' && idFila && fila.puesto && fila.puesto !== 'chofer')   // los cargadores (y la oficina) no tienen matrícula habitual: empiezan cada día sin ella
+    return `<span class="hint" style="margin:0" title="Cada día coge el vehículo que le toque">${fila.puesto === 'cargador' ? 'Sin matrícula fija (la elige cada día)' : '—'}</span>`;
   if(tipo === 'bool' && k === 'propia' && tabla === 'transportistas' && propiaActualId && !editandoPropia){
     // Ya hay empresa propia: solo se ve en su fila, con un botón para cambiarla
     if(idFila && String(idFila) === String(propiaActualId)) return `<input type="checkbox" data-k="propia" checked hidden><b style="color:var(--ok)">✔ Empresa propia</b> <button type="button" class="btn small" data-cambiarpropia="1">Cambiar</button>`;
@@ -2152,6 +2155,7 @@ const SINONIMOS = {
   puesto: ['puesto','cargo','categoria'],
   matricula_actual: ['matricula','matricula actual'],
   horario: ['horario','horario de descarga','horario de carga','horas','horario descarga','hora de descarga'],
+  nombre_deca: ['nombre en el deca','nombre deca','razon social','razón social','nombre completo','nombre fiscal'],
   maps_url: ['ubicacion','mapa','google maps','enlace google maps','enlace mapa','maps','coordenadas','localizacion'],
   cliente_id: ['cliente','nombre cliente','razon social','empresa','cargador'],
   transportista_id: ['autonomo','nombre autonomo','transportista','de que autonomo'],
@@ -2396,7 +2400,7 @@ async function rellenarDireccionesGps(_, boton){
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-dirgps]'); if(b) rellenarDireccionesGps(b.dataset.dirgps, b); });
 // Columnas nuevas que todavía no existen en Supabase (si falta ejecutar una actualización)
-const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax'], transportistas:['domicilio'], almacenes:['direccion','horario'], destinos:['horario']};
+const COLUMNAS_NUEVAS = {clientes:['contacto','email','fax'], transportistas:['domicilio'], almacenes:['direccion','horario','nombre_deca'], destinos:['horario','nombre_deca']};
 const columnasCache = {};
 async function columnasQueFaltan(tabla){
   if(!COLUMNAS_NUEVAS[tabla]) return [];
@@ -2882,7 +2886,15 @@ const nombreTrans = id => (transportistasTodos.find(t => String(t.id) === String
 const eur = n => n == null || isNaN(n) ? '—' : (+n).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
 const numES = n => (+n || 0).toLocaleString('es-ES', {maximumFractionDigits:2});
 const normTxt = t => String(t || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const adm = {periodo:'mes', desde:null, hasta:null, datos:null, abiertos:new Set()};
+const adm = {periodo:'mes', desde:null, hasta:null, datos:null, abiertos:new Set(), agrupar:null};
+// Detalle de un cliente agrupado por días o por meses (con su total en cada grupo)
+function detalleAgrupado(filas, cols){
+  const porMes = (adm.agrupar || ((adm.datos && (new Date(adm.datos.hasta) - new Date(adm.datos.desde)) > 40 * 864e5) ? 'mes' : 'dia')) === 'mes';
+  const clave = f => porMes ? String(f.l.fecha).slice(0, 7) : String(f.l.fecha).slice(0, 10);
+  const nombre = k => porMes ? new Date(k + '-15').toLocaleDateString('es-ES', {month:'long', year:'numeric'}).replace(/^./, c => c.toUpperCase()) : new Date(k + 'T12:00:00').toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'long'}).replace(/^./, c => c.toUpperCase());
+  const grupos = {}; filas.slice().sort((a, b) => String(a.l.fecha).localeCompare(String(b.l.fecha))).forEach(f => (grupos[clave(f)] = grupos[clave(f)] || []).push(f));
+  return Object.entries(grupos).map(([k, fs]) => `<tr class="det grupo"><td><b>📅 ${esc(nombre(k))}</b> <span class="hint" style="margin:0">· ${fs.length} pedido${fs.length === 1 ? '' : 's'}</span></td><td class="n" colspan="2"><b>${numES(paletsDe(fs.map(f => f.l)))} palets</b></td><td class="n"><b>${eur(fs.reduce((t, f) => t + (f.importe || 0), 0))}</b></td><td></td></tr>` + fs.map(cols).join('')).join('');
+}
 function periodoAdm(){
   if(adm.periodo === 'dia') return [fecha, fecha];
   if(adm.periodo === 'rango' && adm.desde && adm.hasta) return [adm.desde, adm.hasta];
@@ -3014,11 +3026,11 @@ async function renderAdmin(box){
         <td><button type="button" class="btn small" data-admguardar="${f.l.id}">Guardar</button></td></tr>`).join('')}
       </tbody></table></section>` : ''}
 
-    <section class="adm-sec"><h3>Por cliente (a cobrar)</h3>
+    <section class="adm-sec"><h3>Por cliente (a cobrar) <span class="hint" style="margin:0;font-weight:500;font-size:12px">· toca un cliente para ver sus viajes, agrupados por <button type="button" class="linkbtn" data-admagr="dia" style="${adm.agrupar === 'dia' ? 'font-weight:800' : ''}">días</button> o por <button type="button" class="linkbtn" data-admagr="mes" style="${adm.agrupar === 'mes' ? 'font-weight:800' : ''}">meses</button></span></h3>
       <table class="adm"><thead><tr><th>Cliente</th><th class="n">Pedidos</th><th class="n">Palets</th><th class="n">Importe</th><th></th></tr></thead><tbody>
-      ${clis.map(o => `<tr><td><b>${esc(o.nombre)}</b>${o.falta ? ` <span class="adm-falta">· ${o.falta} sin precio</span>` : ''}</td><td class="n">${o.filas.length}</td><td class="n">${numES(paletsDe(o.filas.map(f => f.l)))}</td><td class="n"><b>${eur(o.importe)}</b></td>
+      ${clis.map(o => `<tr><td><button type="button" class="linkbtn" data-admabrir="c:${esc(o.k)}" style="font-weight:800;font-size:inherit;text-align:left" title="Ver todos sus viajes">${abierto('c:' + o.k) ? '▾' : '▸'} ${esc(o.nombre)}</button>${o.falta ? ` <span class="adm-falta">· ${o.falta} sin precio</span>` : ''}</td><td class="n">${o.filas.length}</td><td class="n">${numES(paletsDe(o.filas.map(f => f.l)))}</td><td class="n"><b>${eur(o.importe)}</b></td>
         <td class="n"><button type="button" class="linkbtn" data-admabrir="c:${esc(o.k)}">${abierto('c:' + o.k) ? 'Ocultar' : 'Detalle'}</button> <button type="button" class="btn small" data-admprefac="${esc(o.k)}" title="Imprime el resumen valorado para preparar la factura">🖨️ Prefactura</button> <button type="button" class="btn small" data-admzipc="${esc(o.k)}" title="Descarga sus DeCAs del periodo (PDF + resumen) para adjuntarlos a la factura">⬇ DeCAs (${o.filas.filter(f => decaAdm(f.l)).length})</button></td></tr>
-        ${abierto('c:' + o.k) ? o.filas.map(f => `<tr class="det"><td>${fechaBonita(f.l.fecha)} · ${esc(f.l.almacen)} → ${esc(f.l.destino || '—')}${f.l.referencia ? ' · ' + esc(f.l.referencia) : ''}${decaAdm(f.l) ? ' · <b>' + esc(decaAdm(f.l).deca_id) + '</b>' : ' · <span class="hint" style="margin:0">sin DeCA</span>'}</td><td class="n" colspan="2">${cantTxt(f.l)}</td><td class="n">${f.importe == null ? `<span class="adm-falta">${esc(f.falta)}</span>` : eur(f.importe)}</td><td class="hint" style="margin:0">${esc(f.como)}</td></tr>`).join('') : ''}`).join('') || '<tr><td colspan="5" class="hint">No hay pedidos cargados en este periodo.</td></tr>'}
+        ${abierto('c:' + o.k) ? detalleAgrupado(o.filas, f => `<tr class="det"><td>${fechaBonita(f.l.fecha)} · ${esc((camion(f.l.camion_id) || adm.datos.viajes.map(v => v.c).find(c => c.id === f.l.camion_id) || {}).nombre || '')} · ${esc(f.l.almacen)} → ${esc(f.l.destino || '—')}${f.l.referencia ? ' · ' + esc(f.l.referencia) : ''}${decaAdm(f.l) ? ' · <b>' + esc(decaAdm(f.l).deca_id) + '</b>' : ' · <span class="hint" style="margin:0">sin DeCA</span>'}</td><td class="n" colspan="2">${cantTxt(f.l)}</td><td class="n">${f.importe == null ? `<span class="adm-falta">${esc(f.falta)}</span>` : eur(f.importe)}</td><td class="hint" style="margin:0">${esc(f.como)}</td></tr>`) : ''}`).join('') || '<tr><td colspan="5" class="hint">No hay pedidos cargados en este periodo.</td></tr>'}
       ${clis.length ? `<tr class="tot"><td>Total</td><td class="n">${filas.length}</td><td class="n">${numES(pal)}</td><td class="n">${eur(cobros)}</td><td></td></tr>` : ''}
       </tbody></table></section>
 
@@ -3084,6 +3096,7 @@ document.addEventListener('click', async e => {
   if(b.dataset.admv){ return cambiarVista(b.dataset.admv); }
   if(vista !== 'admin') return;
   if(b.dataset.admper){ adm.periodo = b.dataset.admper; if(adm.periodo === 'rango' && !adm.desde){ const [d, h] = periodoAdm(); adm.desde = fecha.slice(0, 8) + '01'; adm.hasta = fecha; } return renderFicheros(); }
+  if(b.dataset.admagr){ adm.agrupar = b.dataset.admagr; return renderFicheros(); }
   if(b.dataset.admabrir){ const k = b.dataset.admabrir; adm.abiertos.has(k) ? adm.abiertos.delete(k) : adm.abiertos.add(k); return renderFicheros(); }
   if(b.dataset.admexcel){ return exportarAdm(); }
   if(b.dataset.admguardar){
