@@ -585,7 +585,7 @@ async function cargarLugares(){
   const [a, d, cl, tr] = await Promise.all([leerTodo(() => sb.from('almacenes').select('*').order('nombre').order('id')), leerTodo(() => sb.from('destinos').select('*').order('nombre').order('id')),
     leerTodo(() => sb.from('clientes').select('*').order('nombre').order('id')), leerTodo(() => sb.from('transportistas').select('*').order('nombre').order('id'))]);
   lugares = {};
-  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || ''});
+  (a.data || []).forEach(x => lugares[String(x.nombre).toLowerCase()] = {lat:x.lat, lng:x.lon, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || '', esAlmacen:true, nombre:x.nombre});
   (d.data || []).forEach(x => { const k = String(x.nombre).toLowerCase(), prev = lugares[k] || {}; lugares[k] = {lat:x.lat, lng:x.lng, url:x.maps_url, direccion:x.direccion || '', horario:x.horario || '', nombreDeca:x.nombre_deca || '', pais:x.pais || '', horarioCarga: prev.horario || ''}; });
   // Listas para rellenar rápido el «Nuevo DeCA»
   listaClientes = cl.data || []; listaTrans = tr.data || [];
@@ -851,15 +851,30 @@ async function vozAvisoMicro(){
 function vozPantalla(paso, pregunta, html){ $e('vozCapa').hidden = false; $e('vozPaso').textContent = paso || ''; if(html) $e('vozPregunta').innerHTML = html; else $e('vozPregunta').textContent = pregunta || ''; $e('vozOido').textContent = ''; $e('vozBotones').innerHTML = ''; $e('vozEstado').textContent = ''; $e('vozEstado').classList.remove('escucha'); }
 // Pregunta en voz alta y espera la respuesta hablada. En las de «sí o no» también se puede contestar tocando un botón grande
 let vozTocado;
+// Las preguntas llevan ejemplos las primeras veces; cuando el conductor ya las ha contestado varias veces, se hacen cortas.
+// Si no se le entiende, se repite la versión larga (con el ejemplo).
+// El almacén conocido más cercano (con ubicación en su ficha) si está a menos de 1,5 km
+function almacenCercano(g){
+  if(ajustesApp.origen_gps === 'no') return null;   // se apaga en Ajustes del cartón
+  let mejor = null, dMin = Infinity;
+  Object.entries(lugares).forEach(([k, l]) => { if(!l.esAlmacen) return; const la = parseFloat(String(l.lat ?? '').replace(',', '.')), lo = parseFloat(String(l.lng ?? '').replace(',', '.')); if(isNaN(la) || isNaN(lo)) return;
+    const d = distanciaM(g.lat, g.lng, la, lo); if(d < dMin){ dMin = d; mejor = l.nombre || k; } });
+  return dMin <= (+ajustesApp.radio_almacen_m || 1500) ? mejor : null;
+}
+function vozTxt(clave, largo, corto){
+  let n = 0; try{ n = +localStorage.getItem('vozuso_' + clave) || 0; localStorage.setItem('vozuso_' + clave, String(n + 1)); }catch(e){}
+  return {usar: n >= (+ajustesApp.voz_ejemplos_veces || 5) ? corto : largo, largo};
+}
 async function vozPreguntar(paso, texto, valida, pantalla){   // pantalla: lo que se ve (si es distinto de lo que se dice)
+  const tLargo = typeof texto === 'object' ? texto.largo : texto; texto = typeof texto === 'object' ? texto.usar : texto;
   for(let intento = 0; intento < 3 && vozActivo; intento++){
-    vozPantalla(paso, texto, pantalla);
+    vozPantalla(paso, intento ? tLargo : texto, pantalla);
     vozTocado = undefined;
     if(valida === vozSiNo){
       $e('vozBotones').innerHTML = '<button class="btn btn-ghost" type="button" data-voztoca="no">❌ No</button><button class="btn btn-primary" type="button" data-voztoca="si">✅ Sí</button>';
       $e('vozBotones').querySelectorAll('[data-voztoca]').forEach(b => b.onclick = () => { vozTocado = b.dataset.voztoca === 'si'; VOZ.parar(); });
     }
-    await VOZ.hablar(intento ? 'Perdona, no te he entendido. ' + texto : texto);
+    await VOZ.hablar(intento ? 'Perdona, no te he entendido. ' + tLargo : texto);
     if(!vozActivo) return null;
     if(vozTocado !== undefined){ $e('vozBotones').innerHTML = ''; return {valor: vozTocado, dicho: vozTocado ? 'sí' : 'no'}; }
     $e('vozEstado').textContent = '🎤 Te escucho… habla ahora'; $e('vozEstado').classList.add('escucha');
@@ -882,15 +897,20 @@ async function asistenteVoz(){
   const poner = (id, v) => { $e(id).value = v; $e(id).dispatchEvent(new Event('input', {bubbles: true})); };
   const datos = {};
   const pasos = {
-    async cargador(){ const r = await vozPreguntar('Paso 1 de 5', '¿Quién es el cargador? Di el nombre del cliente.', alts => alts);
+    async cargador(){ const r = await vozPreguntar('Paso 1 de 5', vozTxt('cargador', '¿Quién es el cargador? Di el nombre del cliente.', '¿Quién es el cargador?'), alts => alts);
       if(!r) return false; r.valor = await vozElegir('Paso 1 de 5', r.valor, lista('ndListaClientes'), 'clientes'); if(!vozActivo) return false;
       $e('ndCargadorNif').value = ''; $e('ndCargadorDom').value = ''; poner('ndCargador', r.valor); datos.cargador = r.valor;
       if(!$e('ndCargadorNif').value.trim()){ const cli = (await sb.from('clientes').select('*').ilike('nombre', String(r.valor).trim()).limit(1)).data; if(cli && cli[0]){ $e('ndCargadorNif').value = cli[0].nif || ''; $e('ndCargadorDom').value = cli[0].domicilio || ''; } }   // estaba en la base aunque no en la lista del móvil   // (se borran los datos del cliente anterior por si lo está cambiando)
       return true; },
-    async origen(){ const r = await vozPreguntar('Paso 2 de 5', '¿Dónde cargas? Di el almacén o el pueblo.', alts => alts); if(!r) return false; r.valor = await vozElegir('Paso 2 de 5', r.valor, lista('ndListaAlmacenes'), 'almacenes'); if(!vozActivo) return false; poner('ndOrigen', r.valor); datos.origen = r.valor; return true; },
+    async origen(){
+      // con el GPS se mira si está en un almacén conocido: «¿Cargas en X?» y solo si dice que no, se le pregunta dónde
+      const g = await capturarUbicacion(), cerca = g ? almacenCercano(g) : null;
+      if(cerca){ const c = await vozPreguntar('Paso 2 de 5', `¿Cargas en ${cerca}?`, vozSiNo, `¿Cargas en<span class="voz-mat" style="white-space:normal">${escH(cerca)}</span><span class="voz-sub">Di sí o no.</span>`);
+        if(!vozActivo) return false; if(c && c.valor){ poner('ndOrigen', cerca); datos.origen = cerca; return true; } }
+      const r = await vozPreguntar('Paso 2 de 5', vozTxt('origen', '¿Dónde cargas? Di el almacén o el pueblo.', '¿Dónde cargas?'), alts => alts); if(!r) return false; r.valor = await vozElegir('Paso 2 de 5', r.valor, lista('ndListaAlmacenes'), 'almacenes'); if(!vozActivo) return false; poner('ndOrigen', r.valor); datos.origen = r.valor; return true; },
     async destino(){ const r = await vozPreguntar('Paso 3 de 5', '¿A dónde va la carga?', alts => alts); if(!r) return false; r.valor = await vozElegir('Paso 3 de 5', r.valor, lista('ndListaDestinos'), 'destinos'); if(!vozActivo) return false; poner('ndDestino', r.valor); datos.destino = r.valor; return true; },
-    async palets(){ const r = await vozPreguntar('Paso 4 de 5', '¿Cuántos palets llevas y de qué tipo? Por ejemplo: veintiséis grandes, o diez europeos y cuatro carros.', vozPalets); if(!r) return false; datos.palets = r.valor; return true; },
-    async pedido(){ const r = await vozPreguntar('Paso 5 de 5', '¿Tiene número de pedido? Dilo, o di no.'); if(!r) return true;
+    async palets(){ const r = await vozPreguntar('Paso 4 de 5', vozTxt('palets', '¿Cuántos palets llevas y de qué tipo? Por ejemplo: veintiséis grandes, o diez europeos y cuatro carros.', '¿Cuántos palets y de qué tipo?'), vozPalets); if(!r) return false; datos.palets = r.valor; return true; },
+    async pedido(){ const r = await vozPreguntar('Paso 5 de 5', vozTxt('pedido', '¿Tiene número de pedido? Dilo, o di no.', '¿Número de pedido?')); if(!r) return true;
       const t = vozNorm(r.valor); if(/^(no|ninguno|nada|no tiene|no hay)\b/.test(t)){ $e('ndRef').value = ''; datos.pedido = ''; } else { $e('ndRef').value = vozNumeros(r.valor).replace(/^(el\s+)?(pedido|numero|n|referencia|es)(\s+(de\s+)?(pedido|numero))?\s+/, '').replace(/\s+/g, '').toUpperCase(); datos.pedido = $e('ndRef').value; } return true; }
   };
   const nombrePal = (t, n) => ({'europeo': n === 1 ? 'europeo' : 'europeos', 'grande (americano)': n === 1 ? 'grande' : 'grandes', 'carro': n === 1 ? 'carro' : 'carros', 'box': 'box', 'cajas': n === 1 ? 'caja' : 'cajas', 'especial': n === 1 ? 'bulto especial' : 'bultos especiales'})[t];
@@ -940,14 +960,14 @@ async function asistenteMatricula(dentroDeOtro){
   const m = matriculaActual();
   try{
     if(m){
-      const r = await vozPreguntar('Matrículas', `¿Llevas la tractora ${decirMatricula(m)}? Di sí o no.`, vozSiNo, `¿Llevas estas matrículas?${verMatriculas(m)}<span class="voz-sub">Di sí o no.</span>`);
+      const r = await vozPreguntar('Matrículas', vozTxt('mat_si', `¿Llevas la tractora ${decirMatricula(m)}? Di sí o no.`, `¿Llevas la tractora ${decirMatricula(m)}?`), vozSiNo, `¿Llevas estas matrículas?${verMatriculas(m)}<span class="voz-sub">Di sí o no.</span>`);
       if(!r){ if(!dentroDeOtro) vozCerrar(); return false; }
       if(r.valor){ $e('matSi').click(); if(!dentroDeOtro) vozCerrar(); return true; }
     }
     if(choferActual && choferActual.puesto === 'cargador'){ await VOZ.hablar('Cámbiala en la pantalla, por favor.'); vozCerrar(); $e('matNo').click(); return false; }
-    const t = await vozPreguntar('Matrículas', 'Dime la matrícula de la tractora. Primero los números y luego las letras.', vozMatricula);
+    const t = await vozPreguntar('Matrículas', vozTxt('mat_trac', 'Dime la matrícula de la tractora. Primero los números y luego las letras.', 'Dime la matrícula de la tractora.'), vozMatricula);
     if(!t){ await VOZ.hablar('No la he entendido. Escríbela en la pantalla.'); vozCerrar(); $e('matNo').click(); return false; }
-    const re = await vozPreguntar('Matrículas', '¿Y la del remolque? Si no llevas remolque, di ninguno.', alts => /\b(ninguno|ninguna|no|sin remolque|no llevo)\b/.test(vozNorm(alts.join(' '))) ? '' : vozMatricula(alts));
+    const re = await vozPreguntar('Matrículas', vozTxt('mat_rem', '¿Y la del remolque? Si no llevas remolque, di ninguno.', '¿Y la del remolque?'), alts => /\b(ninguno|ninguna|no|sin remolque|no llevo)\b/.test(vozNorm(alts.join(' '))) ? '' : vozMatricula(alts));
     const nueva = t.valor + (re && re.valor ? ' / ' + re.valor : '');
     const ok = await vozPreguntar('Matrículas', `He apuntado ${decirMatricula(nueva)}. ¿Está bien?`, vozSiNo, `He apuntado:${verMatriculas(nueva)}<span class="voz-sub">¿Está bien?</span>`);
     if(!ok || !ok.valor){ await VOZ.hablar('Vale. Escríbela en la pantalla.'); vozCerrar(); $e('matNo').click(); return false; }
@@ -966,7 +986,7 @@ async function asistenteCarga(){
   const nombrePal = (t, n) => ({'europeo': n === 1 ? 'europeo' : 'europeos', 'grande (americano)': n === 1 ? 'grande' : 'grandes', 'carro': n === 1 ? 'carro' : 'carros', 'box': 'box', 'cajas': n === 1 ? 'caja' : 'cajas', 'especial': n === 1 ? 'bulto especial' : 'bultos especiales'})[t];
   try{
     for(let vuelta = 0; vuelta < 3 && vozActivo; vuelta++){
-      const r = await vozPreguntar('Carga real', '¿Qué llevas de verdad? Dímelo todo junto. Por ejemplo: veinte europeos y cuatro grandes.', vozPalets);
+      const r = await vozPreguntar('Carga real', vozTxt('carga_real', '¿Qué llevas de verdad? Dímelo todo junto. Por ejemplo: veinte europeos y cuatro grandes.', '¿Qué llevas de verdad?'), vozPalets);
       if(!r){ return vozCerrar(); }
       const pal = Object.entries(r.valor).map(([t, n]) => n + ' ' + nombrePal(t, n)).join(' y ');
       const ok = await vozPreguntar('Carga real', `He entendido: ${pal}. ¿Está bien?`, vozSiNo);
@@ -2422,7 +2442,7 @@ async function pollHistorial(){
   // Bandeja de propuestas de matrícula enviadas desde Tráfico, pendientes de confirmar
   const pendBox = document.getElementById('pendientesMatricula');
   // Solo le aparecen al chófer al que Tráfico se las envía (nunca al cargador que hizo el DeCA)
-  const pendientes = data.filter(r=> !r.anulado && r.matricula_pendiente && r.matricula_pendiente !== r.matricula && choferActual && String(r.chofer_destino_id) === String(choferActual.id));
+  const pendientes = data.filter(r=> !r.anulado && r.matricula_pendiente && (r.matricula_pendiente !== r.matricula || r.pdf_regenerar) && choferActual && String(r.chofer_destino_id) === String(choferActual.id));
   const idsProp = new Set(pendientes.map(r=>String(r.id)));
   if(idsPropuestasVistas && [...idsProp].some(id=>!idsPropuestasVistas.has(id))) avisoSonoro();
   idsPropuestasVistas = choferActual ? idsProp : null;
@@ -2475,7 +2495,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   // Al salir de la nave (propuesta de Tráfico que confirma el chófer) el transportista efectivo pasa a ser para quien trabaja este chófer
   const tNuevo = eraPendiente ? transportistaPorDefecto() : null;
   const cambiaTrans = !!(tNuevo && tNuevo.nombre && tNuevo.nombre !== row.transportista_nombre);
-  if(nuevaLimpia === row.matricula && !cambiaTrans){
+  if(nuevaLimpia === row.matricula && !cambiaTrans && !row.pdf_regenerar){   // (pdf_regenerar: DeCA salido de dividir una partida en el cartón; hay que hacerle su PDF)
     if(silencioso){ await sb.from('decas').update({matricula_pendiente: null}).eq('id', row.id); pollHistorial(); return; }   // ya la llevaba: solo se quita la propuesta
     alert('Es la misma matrícula que ya tenía, no se ha cambiado nada.'); return;
   }
@@ -2532,7 +2552,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   const { error: verErr } = await sb.from('deca_versiones').insert({
     deca_row_id: String(row.id), deca_id: row.deca_id, version: numVersion,
     datos: row, pdf_url_version: urlVersion,
-    motivo: [nuevaLimpia !== row.matricula ? `Matrícula ${row.matricula || '—'} → ${nuevaLimpia}` : '', cambiaTrans ? `Transportista efectivo ${row.transportista_nombre || '—'} → ${tNuevo.nombre} (sale de la nave)` : ''].filter(Boolean).join(' · '), cambiado_por: choferActual ? choferActual.nombre : 'Sin identificar'
+    motivo: [row.pdf_regenerar ? `PDF del DeCA nuevo${row.dividido_de ? ' (partida dividida de ' + row.dividido_de + ')' : ''}` : '', nuevaLimpia !== row.matricula ? `Matrícula ${row.matricula || '—'} → ${nuevaLimpia}` : '', cambiaTrans ? `Transportista efectivo ${row.transportista_nombre || '—'} → ${tNuevo.nombre} (sale de la nave)` : ''].filter(Boolean).join(' · '), cambiado_por: choferActual ? choferActual.nombre : 'Sin identificar'
   });
   if(verErr){ alert('No se pudo guardar la versión anterior del DeCA, así que no se ha cambiado nada: ' + verErr.message); return; }
 
@@ -2542,7 +2562,7 @@ async function aplicarNuevaMatricula(decaRowId, nuevaLimpia, eraPendiente, silen
   }
 
   const { error: updErr } = await sb.from('decas')
-    .update({matricula: nuevaLimpia, matricula_historial: nuevoHistorial, matricula_pendiente: null, chofer_destino_id: null,
+    .update({matricula: nuevaLimpia, matricula_historial: nuevoHistorial, matricula_pendiente: null, chofer_destino_id: null, ...(row.pdf_regenerar ? {pdf_regenerar: false} : {}),
       ...(cambiaTrans ? {transportista_nombre: tNuevo.nombre, transportista_nif: tNuevo.nif || null, transportista_domicilio: tNuevo.domicilio || null,
           transportista_contractual_nombre: record.contractual ? record.contractual.nombre : null, transportista_contractual_nif: record.contractual ? record.contractual.nif || null : null, transportista_contractual_domicilio: record.contractual ? record.contractual.domicilio || null : null} : {})})
     .eq('id', row.id);

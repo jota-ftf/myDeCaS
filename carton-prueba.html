@@ -356,22 +356,22 @@ body:not([data-modo="hoja"]) #hoja{display:none}
 .hcam .hsalen{border-bottom:1px dashed var(--line);margin-bottom:4px}
 .hoja{display:grid;grid-template-columns:minmax(0,1fr) 320px;background:var(--surface);border:2px solid var(--muted);border-radius:4px;overflow:hidden}
 .hoja-izq{padding:10px 12px;min-width:0}
-.hoja-cols{column-count:2;column-gap:24px;column-rule:2px solid var(--muted)}
+.hoja-cols{column-width:460px;column-gap:24px;column-rule:2px solid var(--muted)}
 .hoja-der{border-left:2px solid var(--muted);padding:10px 12px;background:var(--surface)}
 @media (max-width:1600px){.hoja-cols{column-count:1}}
 @media (max-width:900px){.hoja{grid-template-columns:1fr}.hoja-der{border-left:0;border-top:2px solid var(--muted)}}
 .hoja-grupo{break-inside:avoid;margin:0 0 14px}
 .hoja-grupo h4{margin:4px 0 2px;font-family:var(--f-hand);font-size:17px;font-weight:700;text-transform:uppercase;text-decoration:underline;text-underline-offset:3px}
 .hrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) minmax(0,.6fr) minmax(0,.9fr) 128px 16px 16px 16px;gap:6px;align-items:end;min-height:27px;border-bottom:1px solid var(--line);font-family:var(--f-hand);font-size:14px;text-transform:uppercase;line-height:1.1;padding:2px 0}
-.hrow > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrow > span{overflow-wrap:anywhere;white-space:normal}   /* en la Hoja se ve el nombre entero (si no cabe, baja de línea) */
 .hrow .hsub{font-size:11px;color:var(--muted);font-family:var(--f-mono);text-transform:none}
 .hrow .hq{text-align:right;font-weight:700;color:var(--pen);font-size:20px;min-width:58px}
 .hrow > span.hq{overflow:visible;white-space:normal;line-height:1.35}
 .hsel{appearance:none;-webkit-appearance:none;border:0;border-bottom:1.5px solid var(--ink);background:transparent;font:inherit;text-transform:uppercase;text-align:center;text-align-last:center;padding:0 2px;width:100%;color:var(--pen);cursor:pointer}
 .hsel.vacio{color:var(--muted)}
-.halm{display:flex;align-items:flex-end;gap:4px;min-width:0}
-.halm-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
-.hcg{font:11px var(--f-ui, system-ui, sans-serif);text-transform:none;max-width:88px;flex:none;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--pen);padding:0 2px;height:20px}
+.halm{display:flex;align-items:flex-end;gap:4px;min-width:0;flex-wrap:wrap}
+.halm-n{white-space:normal;overflow-wrap:break-word;min-width:0;flex:1 1 110px}
+.hcg{font:11px var(--f-ui, system-ui, sans-serif);text-transform:none;width:118px;max-width:118px;flex:none;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--pen);padding:0 2px;height:20px}
 .hcg.vacio{color:#b3261e;border-color:#b3261e}
 .hsend{padding:0 6px!important;font-size:11px!important;height:20px;flex:none;font-family:var(--f-body);text-transform:none}
 .hcg-txt{font:10px var(--f-ui, system-ui, sans-serif);text-transform:none;color:var(--muted);flex:none}
@@ -738,7 +738,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
       <label>Kilos (si se cobra por kilo)<input class="field" id="edKilos" type="number" min="0" step="1" placeholder="Opcional"></label>
       <label class="solo-direccion">Precio a mano € (sustituye la tarifa)<input class="field" id="edPrecio" type="number" min="0" step="0.01" placeholder="Vacío = según tarifa"></label>
     </div>
-    <div class="send-row" style="justify-content:flex-end"><button type="button" class="btn" id="edCancelar">Cancelar</button><button type="button" class="btn primary" id="edGuardar">Guardar cambios</button></div>
+    <div class="send-row" style="justify-content:flex-end"><button type="button" class="btn" id="edDividir" style="margin-right:auto" title="Partir este pedido en dos (por ejemplo 23 palets: 10 en un camión y 13 en otro)">✂️ Dividir partida</button><button type="button" class="btn" id="edCancelar">Cancelar</button><button type="button" class="btn primary" id="edGuardar">Guardar cambios</button></div>
   </div>
 </div>
 <datalist id="almacenesList"></datalist>
@@ -1306,7 +1306,7 @@ async function autoProponer(){
 }
 async function proponerDeca(l, cam){
   const d = decas[l.carga_id];
-  if(d.matricula !== cam.matricula){
+  if(d.matricula !== cam.matricula || d.pdf_regenerar){   // (pdf_regenerar: DeCA salido de dividir una partida, su app le hace el PDF)
     const { error } = await sb.from('decas').update({matricula_pendiente: cam.matricula, chofer_destino_id: cam.chofer_id}).eq('id', d.id);
     if(error){ toast('No se pudo proponer el DeCA ' + d.deca_id + ': ' + error.message, true); return; }
     d.matricula_pendiente = cam.matricula;
@@ -1769,6 +1769,8 @@ function abrirEdicion(l){
   if(bloqueado){ av.hidden = false; av.textContent = `Este pedido ya tiene el DeCA ${d.deca_id}: sus datos (almacén, cliente, destino, cantidades…) ya no se pueden cambiar desde aquí. Sí puedes cambiar el nº de pedido, la remonta o el camión.`; }
   else if(enviada(l)){ av.hidden = false; av.textContent = 'La orden ya se envió: al guardar, el cambio le llega también a la app de quien la tiene.'; }
   else av.hidden = true;
+  { const unidades = d ? partesDeca(d.detalle).reduce((t, x) => t + (x ? x.n : 0), 0) : ['e_pal','m_pal','carros','box','cajas'].reduce((t, k) => t + (+l[k] || 0), 0);
+    $('#edDividir').hidden = unidades < 2 || !!(d && (d.entregado || d.anulado)); }
   $('#editar').hidden = false;
   setTimeout(() => (bloqueado ? $('#edRef') : $('#edAlm')).focus(), 50);
 }
@@ -1821,6 +1823,121 @@ async function guardarEdicion(){
   }catch(_){}
 }
 $('#edGuardar').onclick = guardarEdicion;
+// ====== DIVIDIR UNA PARTIDA (p. ej. 23 palets: 10 se quedan y 13 van en otro camión) ======
+// Sin DeCA: el pedido se parte en dos pedidos. Con DeCA: el DeCA original queda ANULADO (no se borra) y se hacen
+// dos nuevos (DECA-…-1 y DECA-…-2) con el mismo historial de matrículas; la app del chófer que los lleva genera sus PDF.
+const TIPOS_DECA = {'Palet Europeo':{ldm:0.4, kg:700, k:'e_pal'}, 'Palet Americano':{ldm:0.5, kg:900, k:'m_pal'}, 'Carro de plantas':{ldm:13.2/38, kg:250, k:'carros'},
+  'Box de Plástico':{ldm:0.5, kg:400, k:'box'}, 'Bulto especial':{ldm:0.5, kg:500, k:'box'}, 'Cajas sueltas':{ldm:0.02, kg:15, k:'cajas'}};
+const NOMBRE_CANT = {e_pal:'Europalets', m_pal:'Palets de metro', carros:'Carros', box:'Box', cajas:'Cajas sueltas'};
+function partesDeca(det){ return String(det || '').split(/,\s*/).map(x => x.trim()).filter(Boolean).map(x => { const m = x.match(/^(\d+)\s+(.+?)(\s*\(remontado\))?$/); return m && TIPOS_DECA[m[2]] ? {n: +m[1], nombre: m[2], rem: !!m[3]} : null; }); }
+function abrirDividir(){
+  const l = lineas.find(x => x.id === editandoId); if(!l) return;
+  const d = decas[l.carga_id] && !decas[l.carga_id].anulado ? decas[l.carga_id] : null;
+  let items;
+  if(d){
+    if(d.entregado){ toast('Este DeCA ya está descargado: no se puede dividir.', true); return; }
+    if(l.modo === 'hub' && !d.entregado_hub){ toast(`El DeCA ${d.deca_id} lo lleva todavía el cargador: divídelo cuando lo haya dejado en la nave.`, true); return; }
+    items = partesDeca(d.detalle);
+    if(!items.length || items.some(x => !x)){ toast(`No sé leer las cantidades del DeCA ${d.deca_id} («${d.detalle || ''}»): no se puede dividir solo.`, true); return; }
+    items = items.map(x => ({...x, etq: x.nombre + (x.rem ? ' (remontado)' : '')}));
+  } else items = Object.keys(NOMBRE_CANT).filter(k => +l[k]).map(k => ({k, n: +l[k], etq: NOMBRE_CANT[k]}));
+  let dlg = $('#divDlg');
+  if(!dlg){ dlg = document.createElement('div'); dlg.id = 'divDlg'; dlg.className = 'modal'; document.body.appendChild(dlg); dlg.addEventListener('mousedown', e => { if(e.target === dlg) dlg.hidden = true; }); }
+  dlg.innerHTML = `<div class="modal-card" style="max-width:560px"><h2>✂️ Dividir partida</h2>
+    <p class="hint" style="margin:0 0 8px"><b>${esc(l.almacen)}${l.cliente_nombre ? ' – ' + esc(l.cliente_nombre) : ''}</b> → ${esc(l.destino || '')}<br>
+    ${d ? `El DeCA <b>${esc(d.deca_id)}</b> queda <b>anulado</b> (no se borra) y se hacen dos nuevos: <b>${esc(d.deca_id)}-1</b> (lo que se queda) y <b>${esc(d.deca_id)}-2</b> (lo que pasa). Conservan el historial de matrículas y la app del chófer que los lleve les genera el PDF.` : 'El pedido se parte en dos pedidos.'}</p>
+    <table class="adm"><thead><tr><th></th><th class="num">Total</th><th class="num">Se queda</th><th>Pasa a la 2ª parte</th></tr></thead><tbody>
+    ${items.map((it, i) => `<tr><td>${esc(it.etq)}</td><td class="num">${it.n}</td><td class="num"><b data-divq="${i}">${it.n}</b></td><td><input class="field num" type="number" min="0" max="${it.n}" value="0" data-divp="${i}" style="width:90px"></td></tr>`).join('')}
+    </tbody></table>
+    <label style="display:block;margin-top:10px">La 2ª parte va en<select class="field" id="divCam"><option value="">— Sin asignar —</option>${camiones.map(t => `<option value="${t.id}" ${t.id === l.camion_id ? 'selected' : ''}>${esc(t.nombre)}${t.matricula ? ' · ' + esc(t.matricula) : ''}</option>`).join('')}</select></label>
+    <div class="send-row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button type="button" class="btn" id="divCancelar">Cancelar</button><button type="button" class="btn primary" id="divOk">✂️ Dividir</button></div></div>`;
+  dlg.hidden = false;
+  const leer = () => items.map((it, i) => Math.min(it.n, Math.max(0, parseInt(dlg.querySelector(`[data-divp="${i}"]`).value, 10) || 0)));
+  dlg.querySelectorAll('[data-divp]').forEach(inp => inp.oninput = () => { const p2 = leer(); items.forEach((it, i) => { dlg.querySelector(`[data-divq="${i}"]`).textContent = it.n - p2[i]; }); });
+  setTimeout(() => { const f = dlg.querySelector('[data-divp]'); if(f){ f.focus(); f.select(); } }, 50);
+  $('#divCancelar').onclick = () => { dlg.hidden = true; };
+  $('#divOk').onclick = async () => {
+    const p2 = leer(), p1 = items.map((it, i) => it.n - p2[i]);
+    if(!p2.some(Boolean)){ toast('Pon cuánto pasa a la 2ª parte.', true); return; }
+    if(!p1.some(Boolean)){ toast('Si pasa todo, no hace falta dividir: cambia el camión del pedido.', true); return; }
+    const camDest = $('#divCam').value || null, btn = $('#divOk');
+    btn.disabled = true;
+    try{ const ok = d ? await dividirConDeca(l, d, items, p1, p2, camDest) : await dividirSinDeca(l, items, p1, p2, camDest);
+      if(ok){ dlg.hidden = true; cerrarEdicion(); refrescar(true); } }
+    catch(_){}
+    finally{ btn.disabled = false; }
+  };
+}
+async function dividirSinDeca(l, items, p1, p2, camDest){
+  const q1 = {}, q2 = {e_pal: 0, m_pal: 0, carros: 0, box: 0, cajas: 0};
+  items.forEach((it, i) => { q1[it.k] = p1[i]; q2[it.k] = p2[i]; });
+  const yaEnviada = enviada(l);
+  await escribirComprobado(sb.from('carton_lineas').update(q1).eq('id', l.id));
+  Object.assign(l, q1);
+  if(yaEnviada) await run(sb.from('cargas_planificadas').update({detalle_planificado: detalleDe(l), peso: String(pesoDe(l) || '')}).eq('id', l.carga_id));
+  const nueva = {...l, ...q2, carga_id: null, camion_id: null, orden: null, propuesta_enviada: false};
+  delete nueva.id; delete nueva.created_at;
+  const ins = await run(sb.from('carton_lineas').insert(nueva).select('*').single());
+  lineas.push(ins);
+  if(camDest) await moverLinea(ins, camDest, !!l.retorno);
+  const t = camion(ins.camion_id);
+  if(yaEnviada && (ins.modo === 'hub' || (t && t.estado === 'enviado'))) await enviarLinea(ins, true);
+  toast(`Partida dividida: ${qtyText(l)} se quedan y ${qtyText(ins)} ${t ? 'van en ' + t.nombre : 'quedan sin asignar'}.`);
+  return true;
+}
+async function dividirConDeca(l, d, items, p1, p2, camDest){
+  const t1 = camion(l.camion_id), t2 = camion(camDest);
+  if(l.modo === 'ruta'){
+    for(const [t, n] of [[t1, '1ª'], [t2, '2ª']]) if(!t || !t.chofer_id || !t.matricula){ toast(`La carga ya va cargada: la ${n} parte tiene que ir en un camión con chófer de la app y matrícula.`, true); return false; }
+  }
+  const carga = cargas[l.carga_id];
+  if(!carga){ toast('No encuentro la orden de este pedido. Recarga la página y vuelve a probar.', true); return false; }
+  const det = arr => items.map((it, i) => arr[i] ? `${arr[i]} ${it.nombre}${it.rem ? ' (remontado)' : ''}` : '').filter(Boolean).join(', ');
+  const ldmP = arr => items.reduce((s, it, i) => s + arr[i] * TIPOS_DECA[it.nombre].ldm * (it.rem ? 0.5 : 1), 0);
+  const kgP = arr => items.reduce((s, it, i) => s + arr[i] * TIPOS_DECA[it.nombre].kg, 0);
+  const kgTot = kgP(items.map(it => it.n)), pesoTot = parseFloat(String(d.peso || '').replace(',', '.')) || 0;
+  const pesoP = arr => String(Math.round(pesoTot ? pesoTot * kgP(arr) / (kgTot || 1) : kgP(arr)));
+  const cant = arr => { const q = {e_pal: 0, m_pal: 0, carros: 0, box: 0, cajas: 0}; items.forEach((it, i) => { q[TIPOS_DECA[it.nombre].k] += arr[i]; }); return q; };
+  const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const resumen = `${d.deca_id}-1 (${det(p1)}) y ${d.deca_id}-2 (${det(p2)})`;
+  if(!confirm(`Se anula el DeCA ${d.deca_id} (se conserva) y se hacen:\n\n· ${d.deca_id}-1: ${det(p1)}${t1 ? ' · ' + t1.nombre : ''}\n· ${d.deca_id}-2: ${det(p2)}${t2 ? ' · ' + t2.nombre : ' · sin asignar'}\n\n¿Seguir?`)) return false;
+  // 1) Dos órdenes nuevas (copias de la original, ya cargadas)
+  const nuevaCarga = arr => { const c = {...carga, detalle_planificado: detalleDe(cant(arr)), peso: pesoP(arr), estado: 'cerrada'}; delete c.id; delete c.created_at; return run(sb.from('cargas_planificadas').insert(c).select('id').single()); };
+  const c1 = await nuevaCarga(p1), c2 = await nuevaCarga(p2);
+  // 2) Dos DeCAs nuevos
+  const hijo = (suf, arr, cId) => { const h = {...d, deca_id: `${d.deca_id}-${suf}`, carga_id: cId, detalle: det(arr), ldm: ldmP(arr).toFixed(1), peso: pesoP(arr),
+    pdf_url: `${SUPABASE_URL}/storage/v1/object/public/decas/${uid()}.pdf`, anulado: false, fecha_anulacion: null, motivo_anulacion: null,
+    matricula_pendiente: null, chofer_destino_id: null, pdf_regenerar: true, dividido_de: d.deca_id};
+    delete h.id; delete h.created_at; return h; };
+  const { data: hijos, error: eh } = await sb.from('decas').insert([hijo(1, p1, c1.id), hijo(2, p2, c2.id)]).select('*');
+  if(eh || !hijos || hijos.length !== 2){
+    await sb.from('cargas_planificadas').delete().in('id', [c1.id, c2.id]);
+    toast(/pdf_regenerar|dividido_de/.test((eh && eh.message) || '') ? 'Para dividir partidas con DeCA hay que ejecutar antes la actualización 54 en Supabase.' : 'No se pudo dividir: ' + ((eh && eh.message) || 'no se guardaron los DeCAs nuevos'), true);
+    return false;
+  }
+  const h1 = hijos.find(x => x.deca_id.endsWith('-1')), h2 = hijos.find(x => x.deca_id.endsWith('-2'));
+  // 3) El original: se guarda su versión y queda anulado (por la norma no se borra)
+  const { data: vp } = await sb.from('deca_versiones').select('version').eq('deca_row_id', String(d.id)).order('version', {ascending: false}).limit(1);
+  await sb.from('deca_versiones').insert({deca_row_id: String(d.id), deca_id: d.deca_id, version: ((vp && vp[0] && vp[0].version) || 0) + 1, datos: d, pdf_url_version: d.pdf_url || null,
+    motivo: 'Partida dividida en ' + resumen, cambiado_por: (usuario && usuario.nombre) || 'Tráfico'});
+  await anularDeca(d.id, 'Dividido en ' + resumen);
+  // 4) A cada DeCA nuevo le llega a la app el chófer que lo lleva (si su camión ya está en marcha)
+  const proponer = async (h, t) => { if(t && t.chofer_id && t.matricula && (l.modo === 'ruta' || t.estado === 'enviado')){ await run(sb.from('decas').update({matricula_pendiente: t.matricula, chofer_destino_id: t.chofer_id}).eq('id', h.id)); return true; } return false; };
+  const prop1 = await proponer(h1, t1), prop2 = await proponer(h2, t2);
+  // 5) El pedido se queda con la 1ª parte y se apunta otro con la 2ª
+  const q1 = {...cant(p1), carga_id: String(c1.id), propuesta_enviada: prop1};
+  await escribirComprobado(sb.from('carton_lineas').update(q1).eq('id', l.id));
+  Object.assign(l, q1);
+  const hermanas = lineas.filter(x => camDest && x.camion_id === camDest && !!x.retorno === !!l.retorno);
+  const nueva = {...l, ...cant(p2), carga_id: String(c2.id), camion_id: camDest, propuesta_enviada: prop2,
+    orden: camDest ? hermanas.reduce((m, x) => Math.max(m, x.orden ?? -1), -1) + 1 : null};
+  delete nueva.id; delete nueva.created_at;
+  const ins = await run(sb.from('carton_lineas').insert(nueva).select('*').single());
+  lineas.push(ins);
+  toast(`Partida dividida: ${resumen}.${prop1 || prop2 ? ' Al chófer le llega a su app para aceptarlo (su app hace el PDF).' : ' Los PDF se hacen cuando el chófer los acepte en su app.'}`);
+  return true;
+}
+$('#edDividir').onclick = abrirDividir;
 $('#edCancelar').onclick = cerrarEdicion;
 $('#editar').addEventListener('mousedown', e => { if(e.target.id === 'editar') cerrarEdicion(); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('#editar').hidden) cerrarEdicion(); if(e.key === 'Escape' && !$('#pinDlg').hidden) cerrarPin(); });
@@ -2615,6 +2732,13 @@ function renderAjustes(box){
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="esperaActiva" ${ajustes.espera_activa === 'si' ? 'checked' : ''}> Activada</label>
         <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Tiempo máximo de espera <input class="field" id="esperaMax" type="number" min="10" step="5" value="${+ajustes.espera_max || 120}" style="width:80px"> minutos</span>
         <button type="button" class="btn small" id="guardarEspera">Guardar</button>
+      </div>
+      <div class="baja-card">
+        <b>📍 Origen con el GPS (app del conductor)</b>
+        <span class="hint">Al hacer un DeCA por voz, si el conductor está cerca de un almacén con ubicación en su ficha, la app le pregunta «¿Cargas en …?». Solo si dice que no, le pregunta dónde carga.</span>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="origenGps" ${ajustes.origen_gps !== 'no' ? 'checked' : ''}> Activado</label>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">Distancia máxima al almacén <input class="field" id="radioAlmacen" type="number" min="100" step="100" value="${+ajustes.radio_almacen_m || 1500}" style="width:90px"> metros</span>
+        <button type="button" class="btn small" id="guardarOrigenGps">Guardar</button>
       </div>
       <div class="baja-card">
         <b>🌍 CMR para el extranjero</b>
@@ -3488,6 +3612,9 @@ document.addEventListener('click', async e => {
       return renderFicheros(); }
     if(b.dataset.decaentregado){ if(!confirm('¿Marcar este DeCA como ya entregado en destino?')) return; await run(sb.from('decas').update({entregado:true, fecha_entrega:new Date().toISOString()}).eq('id', b.dataset.decaentregado), 'Marcado como entregado'); return renderFicheros(); }
     if(b.id === 'finDiaBtn'){ return finDeJornada(); }
+    if(b.id === 'guardarOrigenGps'){ let ok = await guardarAjuste('origen_gps', $('#origenGps').checked ? 'si' : 'no');
+      if(ok) ok = await guardarAjuste('radio_almacen_m', String(Math.max(100, parseInt($('#radioAlmacen').value, 10) || 1500)));
+      if(ok) toast('Guardado: se aplica en las apps en unos minutos'); return; }
     if(b.id === 'guardarCmr'){ if(await guardarAjuste('cmr_activo', $('#cmrActivo').checked ? 'si' : 'no')){ toast($('#cmrActivo').checked ? 'CMR activado: se aplica en las apps en unos minutos' : 'CMR desactivado: todo con DeCA'); render(); } return; }
     if(b.id === 'guardarFirma'){ if(await guardarAjuste('firma_entrega', $('#firmaEntrega').value)) toast('Guardado: se aplica en las apps en unos minutos'); return; }
     if(b.id === 'guardarAvDesc'){ const n = (id, min, max, def) => String(Math.min(max, Math.max(min, parseInt($(id).value, 10) || def)));
@@ -3665,6 +3792,7 @@ document.addEventListener('change', async e => {
       const l = lineas.find(x => x.id === s.closest('.hrow').dataset.id); if(!l) return;
       await run(sb.from('carton_lineas').update({cargador_id: s.value || null}).eq('id', l.id));
       if(enviada(l) && s.value) await run(sb.from('cargas_planificadas').update({asignado_id: s.value}).eq('id', l.carga_id), 'Orden pasada al nuevo cargador');
+      await mismoAlmacenMismoCargador(l, s.value);
       return refrescar(true);
     }
     if(s.dataset.hmover){ const l = lineas.find(x => x.id === s.closest('.hrow').dataset.id); if(!l) return;
@@ -3680,11 +3808,22 @@ document.addEventListener('change', async e => {
     if(s.dataset.act === 'cargador'){
       await run(sb.from('carton_lineas').update({cargador_id: s.value || null}).eq('id', l.id));
       if(enviada(l) && s.value) await run(sb.from('cargas_planificadas').update({asignado_id: s.value}).eq('id', l.carga_id), 'Orden pasada al nuevo cargador');
+      await mismoAlmacenMismoCargador(l, s.value);
       return refrescar(true);
     }
   }catch(err){ refrescar(true); }
 });
 
+// Al poner cargador a un pedido, los demás pedidos del MISMO almacén que aún no tienen cargador se le ponen también
+// (va a ir allí igualmente). Tráfico lo puede cambiar después en cada pedido.
+async function mismoAlmacenMismoCargador(l, cgId){
+  if(!cgId || !l) return;
+  const alm = normTxt(l.almacen);
+  const otras = lineas.filter(x => x.id !== l.id && !x.retorno && x.modo !== 'ruta' && !x.cargador_id && normTxt(x.almacen) === alm && !decas[x.carga_id] && !enviada(x) && (x.fecha === l.fecha || !x.camion_id));
+  if(!otras.length) return;
+  await Promise.all(otras.map(x => { x.cargador_id = cgId; return sb.from('carton_lineas').update({cargador_id: cgId}).eq('id', x.id); }));
+  toast(`También se le han puesto a ${(persona(cgId) || {}).nombre || 'ese cargador'} ${otras.length === 1 ? 'el otro pedido' : 'los otros ' + otras.length + ' pedidos'} de ${l.almacen} (puedes cambiarlo en cada uno).`);
+}
 async function moverLinea(l, camId, retorno){
   const patch = {camion_id: camId, retorno: !!(camId && retorno)};
   if(patch.retorno) patch.modo = 'ruta';
@@ -3827,10 +3966,11 @@ $('#addLinea').addEventListener('submit', async e => {
       await sb.from('almacenes').insert({nombre: row.almacen});   // almacén nuevo: queda en la lista para la próxima vez
       almacenesNombres.push(row.almacen); almacenesNombres.sort((a,b) => a.localeCompare(b,'es'));
     }
-    ['#lnAlm','#lnCli','#lnRef','#lnE','#lnM','#lnC','#lnB','#lnK','#lnAut'].forEach(id => $(id).value = '');
+    ['#lnAlm','#lnCli','#lnDest','#lnRef','#lnE','#lnM','#lnC','#lnB','#lnK','#lnAut'].forEach(id => $(id).value = '');   // todo vacío, listo para el siguiente pedido
     $('#lnMerc').value = 'fruta y verdura';
     guardarBorrador('pedido', null);
-    $('#lnTrans').value = '';   // el contractual se queda como estaba
+    $('#lnTrans').value = '';
+    if($('#lnContr')) opcionesContractual($('#lnContr'), undefined);   // contractual: vuelve a tu empresa (por defecto)
     $('#lnRem').checked = false; $('#lnAlm').focus();
     refrescar(true);
   }catch(_){}

@@ -331,7 +331,39 @@ function pResumen(){
         ${avisos.map(([e, s]) => `<tr><td><b>${esc(e.nombre)}</b>${e.principal ? ' <span class="chip pen">tu empresa</span>' : ''}</td><td><span class="chip ${s.c}">${esc(s.txt)}</span></td><td>${esc(nombrePlan(e.plan))}</td><td class="num">${eur(mensual(e))}</td>
           <td><div class="acc">${s.aviso === 'prueba' ? `<button class="btn small" data-alargar="${e.id}">+ días de prueba</button>` : ''}<button class="btn small primary" data-cobrar="${e.id}">💶 Apuntar cobro</button></div></td></tr>`).join('')}
       </tbody></table></div>` : '<p class="vacio">Todo en orden: ninguna prueba ni pago a punto de vencer.</p>'}
+    </div>
+    <div class="card">
+      <div class="fila" style="justify-content:space-between;margin-bottom:6px">
+        <h2 style="margin:0">📊 Reparto de pedidos por empresa</h2>
+        <select class="field" id="repPeriodo" style="width:auto">${[['mes','Este mes'],['mesant','Mes pasado'],['3m','Últimos 3 meses'],['anio','Este año']].map(([v, t]) => `<option value="${v}" ${repPeriodo === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      </div>
+      <p class="hint" style="margin:0 0 8px">Qué parte de los pedidos de cada empresa llevan sus camiones propios y qué parte los autónomos (pedidos de ida del cartón; los retornos no cuentan).</p>
+      <div id="repRes"><p class="vacio">Calculando…</p></div>
     </div>`;
+  $('#repPeriodo').onchange = e => { repPeriodo = e.target.value; cargarReparto(); };
+  cargarReparto();
+}
+let repPeriodo = 'mes';
+async function cargarReparto(){
+  const box = $('#repRes'); if(!box) return;
+  const d = new Date(), iso = x => x.toLocaleDateString('sv-SE');
+  let desde, hasta = iso(d);
+  if(repPeriodo === 'mes') desde = iso(new Date(d.getFullYear(), d.getMonth(), 1));
+  else if(repPeriodo === 'mesant'){ desde = iso(new Date(d.getFullYear(), d.getMonth() - 1, 1)); hasta = iso(new Date(d.getFullYear(), d.getMonth(), 0)); }
+  else if(repPeriodo === '3m') desde = iso(new Date(d.getFullYear(), d.getMonth() - 3, d.getDate()));
+  else desde = iso(new Date(d.getFullYear(), 0, 1));
+  const { data, error } = await sb.rpc('maestro_reparto', {p_desde: desde, p_hasta: hasta});
+  if(!$('#repRes')) return;
+  if(error){ box.innerHTML = `<p class="hint" style="color:var(--warn)">${/maestro_reparto|function/i.test(error.message || '') ? 'Para ver el reparto, ejecuta la <b>actualización 54</b> en Supabase y recarga esta página.' : 'No se pudo calcular: ' + esc(error.message)}</p>`; return; }
+  const pct = (a, t) => t ? Math.round(a * 100 / t) : 0;
+  const barra = (p) => `<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line,#ddd);min-width:120px"><div style="width:${p}%;background:var(--accent,#3ea6ff)"></div><div style="width:${100 - p}%;background:var(--warn,#c77d00)"></div></div>`;
+  const filas = (Array.isArray(data) ? data : []).filter(r => +r.pedidos_propios + +r.pedidos_autonomos + +r.pedidos_sin_camion > 0);
+  box.innerHTML = filas.length ? `<div class="tabla-wrap"><table><thead><tr><th>Empresa</th><th class="num">Pedidos</th><th class="num">Propios</th><th class="num">Autónomos</th><th></th><th class="num">Palets propios / autónomos</th></tr></thead><tbody>
+    ${filas.map(r => { const p = +r.pedidos_propios, a = +r.pedidos_autonomos, t = p + a, pp = +r.palets_propios, pa = +r.palets_autonomos, tp = pp + pa;
+      return `<tr><td><b>${esc(r.empresa)}</b>${+r.pedidos_sin_camion ? `<div class="hint" style="margin:0">${r.pedidos_sin_camion} sin camión (no cuentan)</div>` : ''}</td><td class="num">${t}</td>
+        <td class="num"><b>${pct(p, t)}%</b> <span class="hint">(${p})</span></td><td class="num"><b>${pct(a, t)}%</b> <span class="hint">(${a})</span></td><td>${barra(pct(p, t))}</td>
+        <td class="num">${pct(pp, tp)}% / ${pct(pa, tp)}% <span class="hint">(${pp} / ${pa})</span></td></tr>`; }).join('')}
+  </tbody></table></div><p class="hint" style="margin:6px 0 0">Azul: camiones propios · Naranja: autónomos. Del ${desde.split('-').reverse().join('/')} al ${hasta.split('-').reverse().join('/')}.</p>` : '<p class="vacio">No hay pedidos en ese periodo.</p>';
 }
 
 function pEmpresas(){
