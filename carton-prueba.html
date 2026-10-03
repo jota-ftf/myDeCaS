@@ -342,6 +342,18 @@ tr.de-baja td{opacity:.6}
 /* ====== Vista «Hoja» (el cartón como en la hoja de cálculo) ====== */
 body[data-modo="hoja"] #tray, body[data-modo="hoja"] #dirBlocks{display:none}
 body:not([data-modo="hoja"]) #hoja{display:none}
+/* Vista en columnas: pedidos sin asignar a la izquierda (fijos al bajar) y camiones a la derecha */
+#columnasBtn[aria-pressed="true"]{background:var(--accent,#3b6fd4);color:#fff;border-color:transparent}
+@media (min-width:900px){
+  body[data-columnas="si"]:not([data-modo="hoja"]) main.carton{display:grid;grid-template-columns:minmax(300px,36%) minmax(0,1fr);gap:14px;align-items:start}
+  body[data-columnas="si"]:not([data-modo="hoja"]) main.carton > .carton-head{grid-column:1 / -1}
+  body[data-columnas="si"]:not([data-modo="hoja"]) #tray{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto;margin:0}
+  body[data-columnas="si"]:not([data-modo="hoja"]) #dirBlocks{min-width:0}
+  body[data-columnas="si"] .hoja{grid-template-columns:minmax(300px,40%) minmax(0,1fr)}
+  body[data-columnas="si"] .hoja-cols{column-count:1}
+}
+.hcam{border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:0 0 10px;background:var(--surface)}
+.hcam .hsalen{border-bottom:1px dashed var(--line);margin-bottom:4px}
 .hoja{display:grid;grid-template-columns:minmax(0,1fr) 320px;background:var(--surface);border:2px solid var(--muted);border-radius:4px;overflow:hidden}
 .hoja-izq{padding:10px 12px;min-width:0}
 .hoja-cols{column-count:2;column-gap:24px;column-rule:2px solid var(--muted)}
@@ -538,6 +550,7 @@ table.fichero td.acc{white-space:nowrap;width:1%}
         <button type="button" data-modo="cajas" aria-pressed="true">▦ Cajas</button>
         <button type="button" data-modo="hoja" aria-pressed="false">☰ Hoja</button>
       </div>
+      <button type="button" class="btn small solo-carton" id="columnasBtn" aria-pressed="false" title="Pedidos sin asignar en una columna y camiones en otra, uno al lado del otro">▥ Columnas</button>
       <div class="seg solo-carton" role="group" aria-label="Filtrar por dirección" id="filter">
         <button type="button" data-f="all" aria-pressed="true">Todos <span class="cnt" id="cnt-all"></span></button>
         <button type="button" data-f="V" aria-pressed="false">Levante <span class="cnt" id="cnt-V"></span></button>
@@ -1683,7 +1696,7 @@ function render(){
   $('#roster').innerHTML = camiones.length ? camiones.map(t => {
     const pct = Math.round(ldmDe(lineas.filter(l => l.camion_id === t.id && !l.retorno))/CAP*100);
     const falta = !t.chofer_id ? 'falta chófer en la app' : (t.tipo === 'autonomo' ? 'autónomo' : '');
-    return `<li><span class="dir ${t.direccion}" title="${DIR_TXT[t.direccion] || ''}">${t.direccion === 'X' ? '–' : t.direccion}</span>
+    return `<li><span class="dir ${t.direccion || 'X'}" title="${DIR_TXT[t.direccion] || 'Sin dirección aún'}">${!t.direccion || t.direccion === 'X' ? '–' : t.direccion}</span>
       <span class="who">${esc(t.nombre)}${falta ? `<small>${falta}</small>` : ''}</span><span class="load">${pct}%</span>
       <button type="button" class="xbtn" data-delcam="${t.id}" aria-label="Quitar a ${esc(t.nombre)}">×</button></li>`;
   }).join('') : '<li class="hint">Aún no has apuntado a nadie.</li>';
@@ -1819,6 +1832,15 @@ $('#pinDlg').addEventListener('click', e => { if(e.target.id === 'pinDlg') cerra
 // ====== VISTA «HOJA»: el cartón escrito como en la hoja de cálculo ======
 let modoVista = 'cajas';
 try{ modoVista = localStorage.getItem('carton_modo') || 'cajas'; }catch(_){}
+let enColumnas = false;
+try{ enColumnas = localStorage.getItem('carton_columnas') === 'si'; }catch(_){}
+function ponerColumnas(v){
+  enColumnas = v; document.body.dataset.columnas = v ? 'si' : 'no';
+  const b = document.getElementById('columnasBtn'); if(b) b.setAttribute('aria-pressed', String(v));
+  try{ localStorage.setItem('carton_columnas', v ? 'si' : 'no'); }catch(_){}
+  render();
+}
+document.getElementById('columnasBtn').onclick = () => ponerColumnas(!enColumnas);
 function ponerModo(m){
   modoVista = m; document.body.dataset.modo = m;
   document.querySelectorAll('#modoSeg button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.modo === m)));
@@ -1880,6 +1902,19 @@ function renderHoja(){
       <select class="hdir" data-cam="${t.id}" data-f="direccion" aria-label="Dirección">${opcionesZona(t.direccion, true)}</select>
       <span class="hpal ${huecoTxt(t.id).cls}" title="Lo mismo que en la vista Cajas">${huecoTxt(t.id).txt}</span>${acc}</div>`;
   }).join('');
+  if(enColumnas){
+    const sinAsig = ls.filter(l => !l.camion_id), gs = {};
+    sinAsig.forEach(l => { const k = (l.destino || 'Sin destino').trim().toUpperCase(); (gs[k] = gs[k] || []).push(l); });
+    const camsHtml = cams.map(t => { const suyas = lineas.filter(l => l.camion_id === t.id && !l.retorno);
+      const cab = salen.split('<div class="hsalen">').filter(Boolean)[cams.indexOf(t)] || '';
+      return `<div class="hcam"><div class="hsalen">${cab}${suyas.length ? filasGrupo(suyas.slice()) : '<p class="hint" style="margin:4px 0">Sin pedidos todavía: elígelo en el desplegable de un pedido de la izquierda.</p>'}</div>`; }).join('');
+    box.innerHTML = `<div class="hoja-izq">${nueva}
+        <h4 style="margin:8px 0 6px;font-family:var(--f-hand);font-size:17px;text-decoration:underline">PEDIDOS SIN ASIGNAR · ${sinAsig.length}</h4>
+        <div class="hoja-cols">${Object.entries(gs).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista)}</div>`).join('') || '<p class="hint">No hay pedidos sin asignar. 👍</p>'}</div>
+      </div>
+      <div class="hoja-der"><h4 style="margin:4px 0 6px;font-family:var(--f-hand);font-size:17px;text-decoration:underline">CAMIONES · ${cams.length}</h4>${camsHtml || '<p class="hint">Añade los camiones en «Salen hoy» (panel de la izquierda).</p>'}</div>`;
+    return;
+  }
   box.innerHTML = `<div class="hoja-izq">${nueva}
       <div class="hoja-cols">${Object.entries(grupos).map(([k, lista]) => `<div class="hoja-grupo"><h4>${esc(k)}</h4>${filasGrupo(lista)}</div>`).join('') || '<p class="hint">Aún no hay pedidos. Apúntalos en la fila de arriba: almacén, cliente, destino y cantidad (por ejemplo 4+1E).</p>'}</div>
     </div>
@@ -3805,6 +3840,7 @@ $('#addLinea').addEventListener('submit', async e => {
 $('#fecha').value = fecha;
 document.body.dataset.vista = 'carton';
 document.body.dataset.modo = modoVista;
+document.body.dataset.columnas = enColumnas ? 'si' : 'no'; document.getElementById('columnasBtn').setAttribute('aria-pressed', String(enColumnas));
 document.querySelectorAll('#modoSeg button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.modo === modoVista)));
 document.addEventListener('keydown', e => { if(e.key === 'Enter' && e.target.id === 'hCant'){ e.preventDefault(); apuntarDesdeHoja(); } });
 // ====== BORRADORES: lo que se está escribiendo se guarda en el ordenador al momento (por si se va la luz) ======
