@@ -352,7 +352,7 @@ body:not([data-modo="hoja"]) #hoja{display:none}
   body[data-columnas="si"]:not([data-modo="hoja"]) #trayZonas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 12px;align-items:start}
   body[data-columnas="si"]:not([data-modo="hoja"]) #trayZonas > .tray-zona + .tray-zona{border-left:1px dashed var(--line);padding-left:10px}
   body[data-columnas="si"]:not([data-modo="hoja"]) #dirBlocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px;align-items:start}
-  body[data-columnas="si"]:not([data-modo="hoja"]) #dirBlocks .trucks{grid-template-columns:1fr}
+  body[data-columnas="si"]:not([data-modo="hoja"]) #dirBlocks .trucks{grid-template-columns:repeat(auto-fill,minmax(360px,1fr))}   /* los camiones de una misma dirección también se reparten en columnas si hay sitio */
   body[data-columnas="si"]:not([data-modo="hoja"]) .dirblock.vacia{display:none}
   body[data-columnas="si"]:not([data-modo="hoja"]) main.carton > .carton-head{grid-column:1 / -1}
   body[data-columnas="si"]:not([data-modo="hoja"]) #tray{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto;margin:0}
@@ -383,6 +383,8 @@ body:not([data-modo="hoja"]) #hoja{display:none}
 .hzona{border-left:2px solid var(--muted);padding-left:12px}
 .hzona-t{margin:0 0 4px;font:700 12px var(--f-ui, system-ui, sans-serif);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .hcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;align-items:start}
+.hcol{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0 12px;align-items:start}
+.hcol > .hzona-t{grid-column:1 / -1}
 .hrow .hsub{font-size:11px;color:var(--muted);font-family:var(--f-mono);text-transform:none}
 .hrow .hq{text-align:right;font-weight:700;color:var(--pen);font-size:20px;min-width:58px}
 .hrow > span.hq{overflow:visible;white-space:normal;line-height:1.35}
@@ -397,7 +399,7 @@ body:not([data-modo="hoja"]) #hoja{display:none}
 .hrow .st{width:16px;height:16px;font-size:9px}
 .hrow .xbtn{font-size:14px;padding:0;opacity:.35}
 .hrow:hover .xbtn{opacity:1}
-.hnueva{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(0,1fr) 90px auto;gap:6px;align-items:center;padding:6px;margin-bottom:10px;background:var(--pen-soft);border-radius:6px}
+.hnueva{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;align-items:center;padding:6px;margin-bottom:10px;background:var(--pen-soft);border-radius:6px}
 .hnueva .combo{grid-column:auto}
 .hnueva .field{padding:5px 6px;font-size:13px}
 @media (max-width:700px){.hnueva{grid-template-columns:1fr 1fr}}
@@ -850,6 +852,44 @@ const REF_ZONAS = [
   ['N',41.65,-4.72],['N',42.34,-3.70],['N',42.60,-5.57],['N',40.97,-5.66],['N',40.95,-4.12],['N',40.66,-4.70],['N',41.76,-2.46],['N',41.50,-5.75],['N',42.01,-4.53],['N',43.26,-2.93],['N',42.85,-2.67],
   ['N',43.32,-1.98],['N',42.81,-1.64],['N',42.47,-2.45],['N',43.46,-3.80],['N',43.36,-5.84],['N',43.53,-5.66],['N',43.36,-8.41],['N',42.24,-8.72],['N',43.01,-7.56],['N',42.34,-7.86],['N',41.65,-0.88],
   ['N',42.14,-0.41],['N',40.34,-1.11],['N',44.84,-0.58]];
+// Nombres de ciudades, provincias y regiones → zona (para las cajas apuntadas con una zona, p. ej. «Murcia»)
+const ZONA_PALABRAS = {
+  V: 'murcia cartagena lorca aguilas mazarron totana molina alicante elche benidorm orihuela torrevieja valencia castellon tarragona reus barcelona mercabarna girona gerona lleida lerida palma mallorca baleares cataluna catalunya levante perpinan perpignan montpellier marsella lyon paris rungis milan frankfurt amsterdam londres bruselas munich francia alemania italia holanda belgica suiza austria',
+  S: 'almeria ejido nijar adra granada motril malaga jaen cordoba sevilla cadiz algeciras jerez huelva andalucia sur',
+  C: 'madrid mercamadrid getafe alcala fuenlabrada mostoles leganes centro',
+  M: 'toledo talavera ciudad real puertollano cuenca guadalajara albacete mancha',
+  B: 'badajoz merida caceres plasencia extremadura',
+  P: 'lisboa porto oporto faro coimbra evora braga portugal',
+  N: 'valladolid burgos leon salamanca segovia avila soria zamora palencia bilbao vitoria san sebastian donostia pamplona navarra logrono rioja santander cantabria oviedo gijon asturias coruna vigo lugo ourense orense galicia zaragoza huesca teruel aragon burdeos norte'
+};
+// Zona a partir de un texto (nombre de una caja provisional): destino con ubicación, o ciudad/provincia conocida
+function zonaDeTexto(txt){
+  const t = normTxt(txt); if(!t) return '';
+  if(zonasDestino[t]) return zonasDestino[t];
+  const zs = Object.entries(zonasDestino).filter(([k]) => k.includes(t) || (k.length > 3 && t.includes(k))).map(([, z]) => z);
+  if(zs.length && zs.every(z => z === zs[0])) return zs[0];
+  const pal = ' ' + t.replace(/[^a-z0-9 ]/g, ' ') + ' ';
+  for(const [z, lista] of Object.entries(ZONA_PALABRAS)) if(lista.split(' ').some(w => pal.includes(' ' + w + ' '))) return z;
+  return '';
+}
+// Cajas sin dirección: se les pone sola, por los destinos de lo que llevan o, si aún van vacías, por su nombre (zona o cliente)
+async function autoDireccion(){
+  const tareas = [];
+  camiones.filter(t => !t.direccion || t.direccion === 'X').forEach(t => {
+    const cuenta = {};
+    lineas.filter(l => l.camion_id === t.id && !l.retorno).forEach(l => { const z = zonaDestino(l.destino); if(z) cuenta[z] = (cuenta[z] || 0) + 1; });
+    let z = Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0];
+    z = z ? z[0] : zonaDeTexto(etiquetaCaja(t) || '');
+    if(!z){   // caja con el nombre de un cliente: la zona de los destinos de sus pedidos de hoy
+      const cli = normTxt(etiquetaCaja(t));
+      if(cli){ lineas.filter(l => normTxt(l.cliente_nombre).includes(cli) || (cli.length > 3 && cli.includes(normTxt(l.cliente_nombre)))).forEach(l => { const zz = zonaDestino(l.destino); if(zz) cuenta[zz] = (cuenta[zz] || 0) + 1; });
+        const m = Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0]; if(m) z = m[0]; }
+    }
+    if(z && ZONA_NOMBRE[z]){ t.direccion = z; tareas.push(sb.from('carton_camiones').update({direccion: z}).eq('id', t.id)); }
+  });
+  if(tareas.length){ await Promise.all(tareas); return true; }
+  return false;
+}
 function zonaDeCoords(lat, lng){
   let mejor = '', dMin = Infinity;
   REF_ZONAS.forEach(([z, la, lo]) => { const dx = (lo - lng) * Math.cos((la + lat) / 2 * Math.PI / 180), dy = la - lat, d = dx*dx + dy*dy; if(d < dMin){ dMin = d; mejor = z; } });
@@ -1321,6 +1361,7 @@ async function refrescar(forzar){
   const ok = await cargarDia();
   if(!ok) return;
   await autoProponer();
+  if(!ajustes['cierre_' + fecha]) await autoDireccion().catch(() => false);
   sincronizarAvisos().catch(() => {});
   cargarAlertas().catch(() => {});
   if(forzar || !editando()) render();
@@ -3998,7 +4039,7 @@ $('#addCamion').addEventListener('submit', async e => {
   if(!p && !auto && !prov){ toast('Elige un chófer propio o un autónomo de la lista, o escribe un nombre provisional (zona o cliente).', true); return; }
   if(!p && !auto){
     // Caja provisional (zona o cliente): para ir agrupando cargas; el chófer o el autónomo se elige después en su caja
-    const dir = $('#camDir').value && $('#camDir').value !== 'X' ? $('#camDir').value : (zonaDestino(prov) || 'X');
+    const dir = $('#camDir').value && $('#camDir').value !== 'X' ? $('#camDir').value : (zonaDeTexto(prov) || 'X');
     try{
       await run(sb.from('carton_camiones').insert({fecha, nombre: prov, direccion: dir, tipo: 'propio', chofer_id: null, destino: null, matricula: null}), `«${prov}» añadido al cartón (provisional: elige después quién lo lleva)`);
       e.target.reset(); actualizarCondAut(); refrescar(true);
